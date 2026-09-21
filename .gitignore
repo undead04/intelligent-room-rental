@@ -1,0 +1,33 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Scratch & test outputs
+test_output.json
+test_output_1050.json
+categories.txt
+
+# Crawler Data (Large/Raw datasets & checkpoints)
+crawler/data/raw/listings/*.json
+crawler/data/raw/checkpoint.json
+crawler/data/raw/urls_queue.csv
+crawler/data/processed/*.csv
+
+# Keep folder structure
+!crawler/data/raw/listings/.gitkeep
+!crawler/data/processed/.gitkeep
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
