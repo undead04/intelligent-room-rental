@@ -24,7 +24,6 @@ from crawler.utils.parser import parse_chotot_item
 from crawler.etl.clean import combine_and_clean
 
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'listings')
-CHECKPOINT_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'checkpoint.json')
 
 def log(msg):
     """In log ngay lập tức ra màn hình (flush=True)"""
@@ -32,7 +31,6 @@ def log(msg):
 
 def init_dirs():
     os.makedirs(RAW_DIR, exist_ok=True)
-    os.makedirs(os.path.dirname(CHECKPOINT_FILE), exist_ok=True)
 
 def get_processed_ids():
     processed = set()
@@ -43,20 +41,26 @@ def get_processed_ids():
                 processed.add(pid)
     return processed
 
-def load_checkpoint():
-    if os.path.exists(CHECKPOINT_FILE):
+def get_checkpoint_file(region="all"):
+    """Tạo tên file checkpoint riêng biệt cho từng vùng/thành phố"""
+    return os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', f'checkpoint_{region}.json')
+
+def load_checkpoint(region="all"):
+    ckpt_file = get_checkpoint_file(region)
+    if os.path.exists(ckpt_file):
         try:
-            with open(CHECKPOINT_FILE, "r", encoding="utf-8") as f:
+            with open(ckpt_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("last_offset", 0)
-        except:
+        except Exception:
             return 0
     return 0
 
-def save_checkpoint(offset):
-    with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
-        json.dump({"last_offset": offset, "updated_at": time.time()}, f)
-    log(f"[Checkpoint] Đã lưu mốc offset: {offset}")
+def save_checkpoint(offset, region="all"):
+    ckpt_file = get_checkpoint_file(region)
+    with open(ckpt_file, "w", encoding="utf-8") as f:
+        json.dump({"region": region, "last_offset": offset, "updated_at": time.time()}, f)
+    log(f"[Checkpoint {region.upper()}] Đã lưu mốc offset: {offset}")
 
 def run_spider(max_pages=5, mode="resume", region="all", auto_clean=True):
     init_dirs()
@@ -77,11 +81,11 @@ def run_spider(max_pages=5, mode="resume", region="all", auto_clean=True):
         offset = 0
         log(">>> CHẠY CHẾ ĐỘ UPDATE: Bắt đầu quét từ Trang 1 (Tìm tin mới).")
     else:
-        offset = load_checkpoint()
+        offset = load_checkpoint(region)
         if offset > 0:
-            log(f">>> CHẠY CHẾ ĐỘ RESUME: Tiếp tục cào dữ liệu lịch sử từ offset {offset}.")
+            log(f">>> CHẠY CHẾ ĐỘ RESUME ({region.upper()}): Tiếp tục cào dữ liệu lịch sử từ offset {offset}.")
         else:
-            log(">>> CHẠY CHẾ ĐỘ RESUME: Bắt đầu từ offset 0 (Chưa có checkpoint).")
+            log(f">>> CHẠY CHẾ ĐỘ RESUME ({region.upper()}): Bắt đầu từ offset 0 (Chưa có checkpoint).")
             
     total_crawled = 0
     page = offset // settings.LIMIT_PER_PAGE
@@ -140,7 +144,7 @@ def run_spider(max_pages=5, mode="resume", region="all", auto_clean=True):
             
             # Chỉ lưu checkpoint ở chế độ resume (cào sâu). Chế độ update không lưu đè checkpoint.
             if mode == "resume":
-                save_checkpoint(offset)
+                save_checkpoint(offset, region)
             
             # Delay tránh rate limit
             delay = random.uniform(settings.DELAY_MIN, settings.DELAY_MAX)
@@ -150,12 +154,12 @@ def run_spider(max_pages=5, mode="resume", region="all", auto_clean=True):
     except KeyboardInterrupt:
         log("\n[Ngắt] Bạn vừa nhấn dừng chương trình (Ctrl+C).")
         if mode == "resume":
-            save_checkpoint(offset)
+            save_checkpoint(offset, region)
     except Exception as e:
         log(f"\n[Lỗi nghiêm trọng] Đã xảy ra lỗi: {e}")
         traceback.print_exc()
         if mode == "resume":
-            save_checkpoint(offset)
+            save_checkpoint(offset, region)
         
     log(f"\nCrawling hoàn tất! Lấy mới được {total_crawled} tin đăng.")
     
