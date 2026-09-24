@@ -1,9 +1,16 @@
 import os
+import sys
 import json
 import time
 import random
 import traceback
 import argparse
+
+# Tự động thêm thư mục gốc dự án vào sys.path để hỗ trợ import module 'crawler' khi chạy trực tiếp từ bất kỳ thư mục nào
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from crawler.config import settings
 from crawler.utils.http import fetch_with_retry
 from crawler.utils.parser import parse_chotot_item
