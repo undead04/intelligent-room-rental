@@ -1,6 +1,13 @@
-﻿import os
+import os
+import sys
 import json
-import pandas as pd
+import csv
+from collections import Counter
+
+# Tự động thêm thư mục gốc dự án vào sys.path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'listings')
 PROCESSED_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'processed', 'listings_clean.csv')
@@ -8,45 +15,57 @@ PROCESSED_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'processe
 def combine_and_clean():
     os.makedirs(os.path.dirname(PROCESSED_FILE), exist_ok=True)
     
-    all_data = []
-    
     if not os.path.exists(RAW_DIR):
-        print("Chưa có dữ liệu thô.")
+        print("Chưa có dữ liệu thô.", flush=True)
         return
         
-    for fname in os.listdir(RAW_DIR):
+    seen_ids = set()
+    records = []
+    
+    for fname in sorted(os.listdir(RAW_DIR)):
         if fname.endswith(".json"):
             file_path = os.path.join(RAW_DIR, fname)
             with open(file_path, "r", encoding="utf-8") as f:
                 try:
                     data = json.load(f)
-                    all_data.append(data)
+                    listing_id = data.get("listing_id")
+                    if listing_id and listing_id not in seen_ids:
+                        seen_ids.add(listing_id)
+                        
+                        # Chuyển mảng images thành chuỗi ghép bởi dấu pipe '|' để lưu CSV gọn gàng
+                        if isinstance(data.get("images"), list):
+                            data["images"] = "|".join(data["images"])
+                            
+                        records.append(data)
                 except Exception as e:
-                    print(f"Lỗi đọc file {fname}: {e}")
+                    print(f"Lỗi đọc file {fname}: {e}", flush=True)
                     
-    if not all_data:
-        print("Không có bản ghi nào để xử lý.")
+    if not records:
+        print("Không có bản ghi nào để xử lý.", flush=True)
         return
         
-    df = pd.DataFrame(all_data)
+    # Thu thập đầy đủ các cột dữ liệu
+    fieldnames = list(records[0].keys())
+    for r in records[1:]:
+        for k in r.keys():
+            if k not in fieldnames:
+                fieldnames.append(k)
+                
+    # Ghi ra CSV với utf-8-sig (BOM) để Excel mở không lỗi font
+    with open(PROCESSED_FILE, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(records)
+        
+    print(f"\n[ETL] Đã lưu {len(records)} bản ghi đã làm sạch vào {PROCESSED_FILE}", flush=True)
     
-    # 1. Khử trùng lặp
-    df = df.drop_duplicates(subset=['listing_id'])
-    
-    # 2. Xử lý missing values cơ bản
-    df['price_vnd'] = df['price_vnd'].fillna(0)
-    df['area_m2'] = df['area_m2'].fillna(0)
-    
-    # (Đã bỏ phần trích xuất tiện ích theo yêu cầu của user, chỉ dùng nội dung description)
-
-    # Lưu ra CSV
-    df.to_csv(PROCESSED_FILE, index=False, encoding="utf-8-sig")
-    print(f"Đã lưu {len(df)} bản ghi đã làm sạch vào {PROCESSED_FILE}")
-    
-    # In ra một số thống kê nhanh
-    print("\nThống kê số lượng theo Quận/Huyện:")
-    if 'district' in df.columns:
-        print(df['district'].value_counts())
+    # Thống kê số lượng theo Quận/Huyện
+    districts = [r.get("district") for r in records if r.get("district")]
+    if districts:
+        counts = Counter(districts)
+        print("\nThống kê số lượng theo Quận/Huyện:", flush=True)
+        for dist, count in counts.most_common(15):
+            print(f"  - {dist}: {count}", flush=True)
 
 if __name__ == "__main__":
     combine_and_clean()
