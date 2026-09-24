@@ -1,4 +1,4 @@
-﻿# Cấu hình crawler
+# Cấu hình crawler
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
@@ -11,6 +11,15 @@ TIMEOUT = 15
 
 # Chotot API Config
 CHOTOT_API_URL = "https://gateway.chotot.com/v1/public/ad-listing"
-REGION_HCM = 13000
 CATEGORY_PHONGTRO = 1050
 LIMIT_PER_PAGE = 50
+
+# Mã Vùng (region_v2) Chợ Tốt
+REGIONS = {
+    "hcm": 13000,          # TP. Hồ Chí Minh
+    "hanoi": 12000,        # Hà Nội
+    "danang": 3017,        # Đà Nẵng
+    "binhduong": 2011,     # Bình Dương
+    "dongnai": 2015,       # Đồng Nai
+    "cantho": 9047,        # Cần Thơ
+}

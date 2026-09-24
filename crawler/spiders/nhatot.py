@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import time
 import random
@@ -7,6 +7,7 @@ import argparse
 from crawler.config import settings
 from crawler.utils.http import fetch_with_retry
 from crawler.utils.parser import parse_chotot_item
+from crawler.etl.clean import combine_and_clean
 
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'listings')
 CHECKPOINT_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'checkpoint.json')
@@ -39,11 +40,21 @@ def save_checkpoint(offset):
         json.dump({"last_offset": offset, "updated_at": time.time()}, f)
     print(f"[Checkpoint] Đã lưu mốc offset: {offset}")
 
-def run_spider(max_pages=5, mode="resume"):
+def run_spider(max_pages=5, mode="resume", region="all", auto_clean=True):
     init_dirs()
     processed_ids = get_processed_ids()
     print(f"Đã có {len(processed_ids)} tin đăng trong kho dữ liệu thô.")
     
+    # Xác định mã vùng (region_v2)
+    region_code = None
+    if region in settings.REGIONS:
+        region_code = settings.REGIONS[region]
+        print(f"Đã chọn vùng: {region.upper()} (Code: {region_code})")
+    elif region == "all":
+        print("Đã chọn vùng: TOÀN QUỐC (Tất cả tỉnh thành)")
+    else:
+        print(f"Cảnh báo: Vùng '{region}' không có trong cấu hình, mặc định cào TOÀN QUỐC.")
+
     if mode == "update":
         offset = 0
         print(">>> CHẠY CHẾ ĐỘ UPDATE: Bắt đầu quét từ Trang 1 (Tìm tin mới).")
@@ -64,9 +75,10 @@ def run_spider(max_pages=5, mode="resume"):
             params = {
                 "limit": settings.LIMIT_PER_PAGE,
                 "o": offset,
-                "cg": settings.CATEGORY_PHONGTRO,
-                "region_v2": settings.REGION_HCM
+                "cg": settings.CATEGORY_PHONGTRO
             }
+            if region_code:
+                params["region_v2"] = region_code
             
             data = fetch_with_retry(settings.CHOTOT_API_URL, params=params)
             if not data or 'ads' not in data:
@@ -128,22 +140,39 @@ def run_spider(max_pages=5, mode="resume"):
             save_checkpoint(offset)
         
     print(f"\nCrawling hoàn tất! Lấy mới được {total_crawled} tin đăng.")
+    
+    # Tự động gọi ETL clean data khi cào xong
+    if auto_clean:
+        print("\n>>> TỰ ĐỘNG TỔNG HỢP VÀ LÀM SẠCH DỮ LIỆU (ETL)...")
+        combine_and_clean()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Chợ Tốt Crawler")
+    parser = argparse.ArgumentParser(description="Chợ Tốt Multi-Region Crawler")
     parser.add_argument(
         "--mode", 
         type=str, 
         choices=["resume", "update"], 
         default="resume",
-        help="Chế độ chạy: 'resume' (cào tiếp dữ liệu cũ từ checkpoint) hoặc 'update' (quét tin mới từ trang 1, tự dừng khi gặp tin cũ)."
+        help="Chế độ chạy: 'resume' (cào tiếp từ checkpoint) hoặc 'update' (quét tin mới từ trang 1)."
     )
     parser.add_argument(
         "--pages", 
         type=int, 
         default=5,
-        help="Số trang tối đa muốn crawl trong lần chạy này."
+        help="Số trang tối đa muốn crawl."
+    )
+    parser.add_argument(
+        "--region",
+        type=str,
+        default="all",
+        choices=["all", "hcm", "hanoi", "danang", "binhduong", "dongnai", "cantho"],
+        help="Vùng/Thành phố muốn cào: 'all' (Toàn quốc), 'hcm', 'hanoi', 'danang', 'binhduong', 'dongnai', 'cantho'."
+    )
+    parser.add_argument(
+        "--no-clean",
+        action="store_true",
+        help="Tắt tự động chạy ETL clean data sau khi cào."
     )
     
     args = parser.parse_args()
-    run_spider(max_pages=args.pages, mode=args.mode)
+    run_spider(max_pages=args.pages, mode=args.mode, region=args.region, auto_clean=not args.no_clean)
