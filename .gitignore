@@ -15,10 +15,12 @@ env/
 test_output.json
 test_output_1050.json
 categories.txt
+crawl-plan.md
+region_test.json
 
 # Crawler Data (Large/Raw datasets & checkpoints)
 crawler/data/raw/listings/*.json
-crawler/data/raw/checkpoint.json
+crawler/data/raw/checkpoint_*.json
 crawler/data/raw/urls_queue.csv
 crawler/data/processed/*.csv
 
@@ -31,3 +33,5 @@ crawler/data/processed/*.csv
 .idea/
 .DS_Store
 Thumbs.db
+
+
