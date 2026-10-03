@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" fill="none">
+  <g transform="translate(4, 4)">
+    <rect width="40" height="40" rx="12" fill="#0F5F4A"/>
+    <path d="M12 26L20 18L28 26V31C28 31.5523 27.5523 32 27 32H13C12.4477 32 12 31.5523 12 31V26Z" fill="#FAF8F4"/>
+    <circle cx="20" cy="24" r="3" fill="#FF6B4A"/>
+    <path d="M25 14L27 10L29 14L33 16L29 18L27 22L25 18L21 16L25 14Z" fill="#F5B73B"/>
+  </g>
+  <text x="52" y="30" font-family="'Plus Jakarta Sans', sans-serif" font-size="22" font-weight="800" fill="#0F5F4A" letter-spacing="-0.5">Homigo</text>
+  <circle cx="140" cy="27" r="3.5" fill="#FF6B4A"/>
+</svg>
