@@ -253,10 +253,10 @@ export default function SearchPage() {
 
 function toSearchResult(listing: ListingDto): SearchResult {
   return {
-    id: listing.listing_id,
+    id: String(listing.list_id),
     title: listing.title,
-    type: listing.room_type || "Phòng trọ",
-    location: listing.address_raw || "Đang cập nhật địa chỉ",
+    type: listing.room_type?.room_type || "Phòng trọ",
+    location: listing.address_raw || listing.district?.name || "Đang cập nhật địa chỉ",
     price: listing.price_string || formatPrice(listing.price_vnd),
     area: listing.area_m2 ? `${listing.area_m2}m²` : "Đang cập nhật",
     verified: false,

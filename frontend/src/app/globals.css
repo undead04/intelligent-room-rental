@@ -52,6 +52,20 @@
   scrollbar-width: none;
 }
 
+.custom-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.custom-select:focus {
+  box-shadow: 0 0 0 3px rgb(15 95 74 / 12%);
+}
+
+.custom-select:disabled {
+  cursor: not-allowed;
+}
+
 .price-range-input {
   position: absolute;
   width: 100%;

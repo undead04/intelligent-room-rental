@@ -133,27 +133,37 @@ export default function PriceAnalyticsPage() {
         {/* Filter Bar */}
         <div className="bg-white rounded-2xl p-4 border border-[#E8E4DC] shadow-xs mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
-            <select
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
-              className="px-4 py-2.5 rounded-full bg-[#FAF8F4] border border-[#E8E4DC] text-xs font-bold text-[#0F5F4A] outline-none cursor-pointer"
-            >
-              <option>TP. Hồ Chí Minh</option>
-              <option>Hà Nội</option>
-              <option>Đà Nẵng</option>
-            </select>
+            <div className="relative">
+              <select
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className="custom-select px-4 py-2.5 pr-10 rounded-full bg-[#FAF8F4] border border-[#E8E4DC] text-xs font-bold text-[#0F5F4A] outline-none"
+              >
+                <option>TP. Hồ Chí Minh</option>
+                <option>Hà Nội</option>
+                <option>Đà Nẵng</option>
+              </select>
+              <span className="material-symbols-outlined pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[18px] text-[#0F5F4A]">
+                expand_more
+              </span>
+            </div>
 
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="px-4 py-2.5 rounded-full bg-[#FAF8F4] border border-[#E8E4DC] text-xs font-semibold text-gray-700 outline-none cursor-pointer"
-            >
-              <option>Tất cả loại phòng</option>
-              <option>Phòng trọ / KTX</option>
-              <option>Căn hộ dịch vụ</option>
-              <option>Chung cư mini</option>
-              <option>Nhà nguyên căn</option>
-            </select>
+            <div className="relative">
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                className="custom-select px-4 py-2.5 pr-10 rounded-full bg-[#FAF8F4] border border-[#E8E4DC] text-xs font-semibold text-gray-700 outline-none"
+              >
+                <option>Tất cả loại phòng</option>
+                <option>Phòng trọ / KTX</option>
+                <option>Căn hộ dịch vụ</option>
+                <option>Chung cư mini</option>
+                <option>Nhà nguyên căn</option>
+              </select>
+              <span className="material-symbols-outlined pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[18px] text-[#0F5F4A]">
+                expand_more
+              </span>
+            </div>
           </div>
 
           <div className="text-xs text-gray-500 font-medium">

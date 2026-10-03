@@ -1,4 +1,13 @@
-import type { ListingDetailDto, ListingDto, ListingQueryDto } from "@shared/dto";
+import type {
+  CityDto,
+  DistrictDto,
+  ListingDetailDto,
+  ListingDto,
+  ListingQueryDto,
+  PriceStatsDto,
+  RoomTypeDto,
+  WardDto,
+} from "@shared/dto";
 import { API_BASE_URL } from "./config";
 
 export class ApiError extends Error {
@@ -11,10 +20,10 @@ export class ApiError extends Error {
   }
 }
 
-function buildQuery(params: ListingQueryDto) {
+function buildQuery<T extends object>(params: T) {
   const query = new URLSearchParams();
 
-  Object.entries(params).forEach(([key, value]) => {
+  Object.entries(params as Record<string, number | string | undefined>).forEach(([key, value]) => {
     if (value !== undefined && value !== "") {
       query.set(key, String(value));
     }
@@ -47,5 +56,31 @@ export const listingsApi = {
 
   getById(listingId: string) {
     return request<ListingDetailDto>(`/listings/${encodeURIComponent(listingId)}`);
+  },
+};
+
+export const locationsApi = {
+  cities(search?: string) {
+    return request<CityDto[]>(`/locations/cities${search ? `?search=${encodeURIComponent(search)}` : ""}`);
+  },
+
+  districts(params: { city_id?: number; search?: string } = {}) {
+    return request<DistrictDto[]>(`/locations/districts${buildQuery(params)}`);
+  },
+
+  wards(params: { district_id?: number; search?: string } = {}) {
+    return request<WardDto[]>(`/locations/wards${buildQuery(params)}`);
+  },
+};
+
+export const roomTypesApi = {
+  list(search?: string) {
+    return request<RoomTypeDto[]>(`/room-types/${search ? `?search=${encodeURIComponent(search)}` : ""}`);
+  },
+};
+
+export const priceStatsApi = {
+  get(params: { city_id?: number; district_id?: number; room_type_id?: number } = {}) {
+    return request<PriceStatsDto>(`/listings/price-stats${buildQuery(params)}`);
   },
 };
