@@ -5,5 +5,3 @@ export const FALLBACK_LISTING_LOCATION =
   "Đường Dương Quảng Hàm, Phường 5, Quận Gò Vấp, TP. Hồ Chí Minh";
 
 export const FALLBACK_LISTING_AREA = "20 m²";
-
-export const FALLBACK_LISTING_CODE = "HM-88294";

@@ -1,16 +1,21 @@
 import Link from "next/link";
+import PriceStatsSkeleton from "@/components/skeleton/PriceStatsSkeleton";
 import type { PriceStatRow } from "@/lib/utils/priceStats";
 
 interface PriceStatsTableProps {
   rows: PriceStatRow[];
+  cityId: number | undefined;
   districtId: number | undefined;
+  isLoading: boolean;
   onSelectDistrict: (districtId: number | undefined) => void;
 }
 
 export default function PriceStatsTable({
   rows,
   districtId,
+  isLoading,
   onSelectDistrict,
+  cityId,
 }: PriceStatsTableProps) {
   return (
     <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-xs overflow-hidden mb-10">
@@ -33,6 +38,9 @@ export default function PriceStatsTable({
         <span className="text-xs text-gray-500">Đơn vị: VNĐ / tháng</span>
       </div>
 
+      {isLoading ? (
+        <PriceStatsSkeleton />
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-[#FAF8F4] border-b border-[#E8E4DC] text-gray-600 font-bold uppercase tracking-wider">
@@ -64,7 +72,7 @@ export default function PriceStatsTable({
                 <td className="py-4 px-6 text-right">
                   {districtId ? (
                     <Link
-                      href={`/tim-kiem?district_id=${districtId}&ward_id=${row.id}`}
+                      href={`/tim-kiem?city_id=${cityId}&district_id=${districtId}&ward_id=${row.id}`}
                       className="px-3.5 py-1.5 rounded-full bg-[#E6F4EE] hover:bg-[#0F5F4A] hover:text-white text-[#0F5F4A] font-semibold transition-all inline-block"
                     >
                       Tìm phòng
@@ -84,6 +92,7 @@ export default function PriceStatsTable({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import SiteLayout from "@/components/SiteLayout";
 import Breadcrumbs from "@/components/Breadcrumbs";
@@ -8,16 +7,13 @@ import PriceStatsOverview from "@/app/tra-cuu-gia-tro/_components/PriceStatsOver
 import PriceStatsFilterBar from "@/app/tra-cuu-gia-tro/_components/PriceStatsFilterBar";
 import PriceStatsTable from "@/app/tra-cuu-gia-tro/_components/PriceStatsTable";
 import { usePriceStats } from "@/app/tra-cuu-gia-tro/_hooks/usePriceStats";
-import PriceStatsSkeleton from "@/components/skeleton/PriceStatsSkeleton";
 
 export default function PriceAnalyticsPage() {
-  const [selectedRoomType, setSelectedRoomType] = useState("Tất cả loại phòng");
-
   const {
     stats,
     rows,
     cities,
-    selectedCity,
+    cityId,
     selectCity,
     districtId,
     selectDistrict,
@@ -78,15 +74,15 @@ export default function PriceAnalyticsPage() {
 
         <PriceStatsOverview stats={stats} />
 
-        <PriceStatsFilterBar
-          cities={cities}
-          selectedCity={selectedCity}
-          selectedRoomType={selectedRoomType}
-          onCityChange={selectCity}
-          onRoomTypeChange={setSelectedRoomType}
-        />
+        <PriceStatsFilterBar cities={cities} cityId={cityId} onCityChange={selectCity} />
 
-        {isLoading ? <PriceStatsSkeleton /> : <PriceStatsTable rows={rows} districtId={districtId} onSelectDistrict={selectDistrict} />}
+        <PriceStatsTable
+          rows={rows}
+          districtId={districtId}
+          isLoading={isLoading}
+          onSelectDistrict={selectDistrict}
+          cityId={cityId}
+        />
       </main>
 
     </SiteLayout>

@@ -7,6 +7,6 @@ class RoomType(Base):
     __tablename__ = "room_types"
 
     id = Column(Integer, primary_key=True)
-    room_type = Column(String, nullable=True)
+    name = Column(String, nullable=True)
     listings = relationship("Listing", back_populates="room_type")
     

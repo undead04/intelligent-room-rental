@@ -1,11 +1,11 @@
 import Link from "next/link";
 import ListingCard from "@/components/ListingCard";
-import type { Listing } from "@/types";
+import type { ListingCardData } from "@/types";
 
 interface ListingSectionProps {
   title: string;
   description: string;
-  listings: Listing[];
+  listings: ListingCardData[];
 }
 
 export default function ListingSection({ title, description, listings }: ListingSectionProps) {

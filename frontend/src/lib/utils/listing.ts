@@ -1,12 +1,12 @@
 import type { ListingDto } from "@shared/dto";
-import type { Listing, SearchResult } from "@/types";
+import type { ListingCardData } from "@/types";
 import { DEFAULT_PROPERTY_IMAGE } from "@/lib/constants/property";
 
 export function formatPrice(priceVnd: number | null | undefined, emptyLabel = "Liên hệ") {
   return priceVnd ? `${(priceVnd / 1_000_000).toFixed(1)} triệu` : emptyLabel;
 }
 
-export function formatRelativeDate(value: string | null | undefined) {
+function formatRelativeDate(value: string | null | undefined) {
   if (!value) return "Đang cập nhật";
 
   const date = new Date(value);
@@ -25,45 +25,18 @@ export function formatRelativeDate(value: string | null | undefined) {
   return `${Math.floor(diffInDays / 365)} năm trước`;
 }
 
-export function formatPostedDate(value: string | null | undefined) {
-  if (!value) return "Mới cập nhật";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Mới cập nhật";
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
-}
-
-export function toHomeListing(listing: ListingDto): Listing {
+// Mapper duy nhất từ ListingDto sang view-model của ListingCard
+export function toListingCard(listing: ListingDto): ListingCardData {
   return {
     id: listing.id,
     title: listing.title,
+    badge: listing.room_type?.name || "Mới",
     location: listing.address_raw || listing.district?.name || "Đang cập nhật địa chỉ",
     price: listing.price_string || formatPrice(listing.price_vnd),
-    tag: "Mới",
+    area: listing.area_m2 ? `${listing.area_m2}m²` : undefined,
     source: listing.source || "Homigo",
     image: listing.main_image || DEFAULT_PROPERTY_IMAGE,
     time: formatRelativeDate(listing.posted_date),
-  };
-}
-
-export function toSearchResult(listing: ListingDto): SearchResult {
-  return {
-    id: listing.id,
-    title: listing.title,
-    type: listing.room_type?.name || "Phòng trọ",
-    location: listing.address_raw || listing.district?.name || "Đang cập nhật địa chỉ",
-    price: listing.price_string || formatPrice(listing.price_vnd),
-    area: listing.area_m2 ? `${listing.area_m2}m²` : "Đang cập nhật",
-    verified: false,
-    source: listing.source || "Homigo",
-    time: formatPostedDate(listing.posted_date),
-    image: listing.main_image || DEFAULT_PROPERTY_IMAGE,
-    tags: [],
   };
 }
 

@@ -1,31 +1,16 @@
-export interface Listing {
+// View-model dùng chung cho mọi nơi render tin đăng (trang chủ, tìm kiếm, ...)
+export interface ListingCardData {
   id: string;
   title: string;
   location: string;
   price: string;
-  tag: string;
+  badge: string;
   source: string;
   image: string;
   time: string;
+  area?: string;
 }
 
-export interface SearchResult {
-  id: string;
-  title: string;
-  type: string;
-  location: string;
-  price: string;
-  area: string;
-  verified: boolean;
-  source: string;
-  time: string;
-  image: string;
-  tags: string[];
-}
-
-export interface FilterQuery extends FilterValues {
-  search: string|null;
-}
 export interface FilterValues {
   province: number|null;
   district: number|null;

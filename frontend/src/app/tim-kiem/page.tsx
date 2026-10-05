@@ -1,19 +1,20 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SiteLayout from "@/components/SiteLayout";
 import FilterModal from "@/components/FilterModal";
-import SearchResultCard from "@/components/SearchResultCard";
+import ListingCard from "@/components/ListingCard";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import ListingCardSkeleton from "@/components/skeleton/ListingCardSkeleton";
 import SearchToolbar from "@/app/tim-kiem/_components/SearchToolbar";
-import { useDistrictOptions } from "@/app/tim-kiem/_hooks/useDistrictOptions";
-import { useFilterOptions } from "@/app/tim-kiem/_hooks/useFilterOptions";
+import { useDistrictOptions } from "@/hooks/useLocations";
+import { useFilterOptions } from "@/hooks/useFilterOptions";
 import { useSearchResults } from "@/app/tim-kiem/_hooks/useSearchResults";
 import type { FilterValues } from "@/types";
 import { buildSearchParams, countActiveFilters, parseSearchParams } from "@/lib/utils/filter";
 import { SORT_OPTIONS } from "@/lib/constants/search";
+import { Pagination } from "@/components/pagination/Pagination";
 
 function SearchPageContent() {
   const router = useRouter();
@@ -21,32 +22,36 @@ function SearchPageContent() {
   const paramsKey = searchParams.toString();
 
   // URL là nguồn dữ liệu duy nhất
-  const { search, filters } = useMemo(
+  const { search, filters, page } = useMemo(
     () => parseSearchParams(new URLSearchParams(paramsKey)),
     [paramsKey],
   );
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState(search);
+
+  // Ô tìm kiếm gắn với từ khóa trên URL: back/forward hoặc áp dụng bộ lọc sẽ tự về giá trị của URL
+  const [searchInput, setSearchInput] = useState({ search, value: search });
+  const searchText = searchInput.search === search ? searchInput.value : search;
+  const handleSearchInputChange = (value: string) => setSearchInput({ search, value });
 
   const { cities, roomTypes } = useFilterOptions();
   const districtOptions = useDistrictOptions(filters.province);
-  const { results, totalListings, apiError, isLoading } = useSearchResults({ search, filters });
+
+  const { results, totalListings, totalPages, currentPage, apiError, isLoading } =
+    useSearchResults({ search, filters, page });
 
   const activeFilterCount = countActiveFilters(filters);
 
-  const navigate = (query: string, values: FilterValues) => {
-    const qs = buildSearchParams(query, values).toString();
+  // Đổi từ khóa/bộ lọc thì về trang 1, chỉ đổi trang thì giữ nguyên bộ lọc
+  const navigate = (query: string, values: FilterValues, nextPage = 1) => {
+    const qs = buildSearchParams(query, values, nextPage).toString();
     router.push(`/tim-kiem${qs ? `?${qs}` : ""}`);
   };
-
-  // Đồng bộ ô tìm kiếm khi URL đổi (back/forward, áp dụng bộ lọc...)
-  useEffect(() => setSearchInput(search), [search]);
 
   const selectedDistrictName = districtOptions.find((d) => d.id === filters.district)?.name;
 
   return (
-    <SiteLayout className="bg-[#FAF8F4]" onOpenFilter={() => setIsFilterOpen(true)}>
+    <SiteLayout className="bg-[#FAF8F4]">
       <main className="w-full flex-1 max-w-[1500px] mx-auto px-4 lg:px-8 py-6">
         <Breadcrumbs
           className="mb-3"
@@ -58,13 +63,13 @@ function SearchPageContent() {
         </h1>
 
         <SearchToolbar
-          query={searchInput}
+          query={searchText}
           placeholder={`Hồ Chí Minh · ${selectedDistrictName ?? "Tất cả"}`}
           activeFilterCount={activeFilterCount}
-          onQueryChange={setSearchInput}
+          onQueryChange={handleSearchInputChange}
           onSubmit={(event) => {
             event.preventDefault();
-            navigate(searchInput, filters);
+            navigate(searchText, filters);
           }}
           onOpenFilter={() => setIsFilterOpen(true)}
         />
@@ -90,11 +95,18 @@ function SearchPageContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {isLoading
               ? Array.from({ length: 6 }, (_, i) => <ListingCardSkeleton key={i} />)
-              : results.map((item) => <SearchResultCard key={item.id} item={item} />)}
+              : results.map((item) => <ListingCard key={item.id} item={item} />)}
           </div>
         )}
 
-        {/* Pagination: giữ nguyên block cũ (hiện vẫn là số cứng) */}
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={(nextPage) => navigate(search, filters, nextPage)}
+          />
+        )}
       </main>
 
       <FilterModal

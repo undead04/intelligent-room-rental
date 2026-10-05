@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import ImageWithFallback from "@/components/ImageWithFallback";
 import { DEFAULT_PROPERTY_IMAGE } from "@/lib/constants/property";
 
 interface PropertyGalleryProps {
@@ -18,13 +19,10 @@ export default function PropertyGallery({ images, selectedIndex, onSelect }: Pro
   return (
     <div className="bg-white rounded-2xl p-4 border border-[#E8E4DC] shadow-xs">
       <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden bg-gray-100 mb-3">
-        <img
+        <ImageWithFallback
           src={images[selectedIndex]}
           alt="Ảnh phòng trọ"
-          onError={(event) => {
-            event.currentTarget.onerror = null;
-            event.currentTarget.src = DEFAULT_PROPERTY_IMAGE;
-          }}
+          fallbackSrc={DEFAULT_PROPERTY_IMAGE}
           className="w-full h-full object-cover transition-transform duration-300"
         />
         <button onClick={previous} aria-label="Ảnh trước" className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors shadow-md">
@@ -59,13 +57,10 @@ export default function PropertyGallery({ images, selectedIndex, onSelect }: Pro
         >
         {images.map((image, index) => (
           <button key={`${image}-${index}`} onClick={() => onSelect(index)} aria-label={`Xem ảnh ${index + 1}`} className={`h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 transition-all sm:h-20 sm:w-28 ${selectedIndex === index ? "border-[#0F5F4A] opacity-100" : "border-transparent opacity-60 hover:opacity-100"}`}>
-            <img
+            <ImageWithFallback
               src={image}
               alt={`Ảnh phòng ${index + 1}`}
-              onError={(event) => {
-                event.currentTarget.onerror = null;
-                event.currentTarget.src = DEFAULT_PROPERTY_IMAGE;
-              }}
+              fallbackSrc={DEFAULT_PROPERTY_IMAGE}
               className="w-full h-full object-cover"
             />
           </button>

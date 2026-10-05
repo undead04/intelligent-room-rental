@@ -9,6 +9,7 @@ import AiSearchPromo from "@/app/_components/AiSearchPromo";
 import HeroSearch from "@/app/_components/HeroSearch";
 import WhyChooseHomigo from "@/app/_components/WhyChooseHomigo";
 import { useHomeListings } from "@/app/_hooks/useHomeListings";
+import { useFilterOptions } from "@/hooks/useFilterOptions";
 import type { FilterValues } from "@/types";
 import ListingSectionSkeleton from "@/components/skeleton/ListingSectionSkeleton";
 import { buildSearchParams, countActiveFilters, DEFAULT_FILTERS } from "@/lib/utils/filter";
@@ -20,7 +21,8 @@ export default function HomePage() {
   const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { listings, cities, roomTypes, isLoading } = useHomeListings();
+  const { listings, isLoading } = useHomeListings();
+  const { cities, roomTypes } = useFilterOptions();
 
   const activeFilterCount = countActiveFilters(filters);
 
@@ -35,7 +37,7 @@ export default function HomePage() {
   };
 
   return (
-    <SiteLayout className="bg-[#FAF8F4]" onOpenFilter={() => setIsFilterOpen(true)}>
+    <SiteLayout className="bg-[#FAF8F4]">
 
       <main className="w-full flex-1">
         <HeroSearch

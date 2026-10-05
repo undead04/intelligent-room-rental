@@ -1,6 +1,6 @@
 import type { SortOptions } from "@/types";
 
-export interface SortConfig {
+interface SortConfig {
   sort_desc: boolean;
   order_by: string;
 }

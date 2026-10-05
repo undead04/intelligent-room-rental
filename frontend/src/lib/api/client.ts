@@ -10,9 +10,11 @@ import type {
   RoomTypeDto,
   WardDto,
 } from "@shared/dto";
-import { API_BASE_URL } from "./config";
+const DEFAULT_API_URL = "http://localhost:8000/api/v1";
 
-export class ApiError extends Error {
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL).replace(/\/$/, "");
+
+class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
@@ -79,8 +81,8 @@ export const listingsApi = {
 };
 
 export const locationsApi = {
-  cities(search?: string) {
-    return request<CityDto[]>(`/locations/cities${search ? `?search=${encodeURIComponent(search)}` : ""}`);
+  cities() {
+    return request<CityDto[]>("/locations/cities");
   },
 
   districts(params: { city_id?: number; search?: string } = {}) {
@@ -93,13 +95,13 @@ export const locationsApi = {
 };
 
 export const roomTypesApi = {
-  list(search?: string) {
-    return request<RoomTypeDto[]>(`/room-types/${search ? `?search=${encodeURIComponent(search)}` : ""}`);
+  list() {
+    return request<RoomTypeDto[]>("/room-types/");
   },
 };
 
 export const priceStatsApi = {
-  get(params: { city_id?: number; district_id?: number; room_type_id?: number } = {}) {
+  get(params: { city_id?: number; district_id?: number } = {}) {
     return request<PriceStatsDto>(`/listings/price-stats${buildQuery(params)}`);
   },
 };

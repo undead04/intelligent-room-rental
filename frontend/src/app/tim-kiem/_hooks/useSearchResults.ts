@@ -1,24 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FilterValues, SearchResult } from "@/types";
+import type { FilterValues, ListingCardData } from "@/types";
 import type { ListingQueryDto } from "@shared/dto";
 import { listingsApi } from "@/lib/api/client";
-import { toSearchResult } from "@/lib/utils/listing";
+import { toListingCard } from "@/lib/utils/listing";
 import { MAX_PRICE_MILLION } from "@/lib/utils/filter";
 import { DEFAULT_SORT_ID, SORT_MAP } from "@/lib/constants/search";
 
 const SEARCH_PAGE_SIZE = 20;
 const PRICE_UNIT_VND = 1_000_000;
 
+// Kết quả của một request, gắn kèm key để biết nó còn khớp query hiện tại hay không
+interface ListingsSnapshot {
+  requestKey: string;
+  results: ListingCardData[];
+  apiError: string | null;
+}
+
 interface UseSearchResultsParams {
   search: string;
   filters: FilterValues;
+  page: number;
 }
 
-export function useSearchResults({ search, filters }: UseSearchResultsParams) {
-  const [results, setResults] = useState<SearchResult[]>([]);
+export function useSearchResults({ search, filters, page }: UseSearchResultsParams) {
+  const [snapshot, setSnapshot] = useState<ListingsSnapshot | null>(null);
   const [totalListings, setTotalListings] = useState<number | null>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   const query = useMemo<ListingQueryDto>(
     () => ({
@@ -34,26 +40,36 @@ export function useSearchResults({ search, filters }: UseSearchResultsParams) {
     [search, filters],
   );
 
+  // totalListings vừa đổi có thể làm page vượt quá totalPages -> kẹp lại để không hỏi offset vượt
+  const totalPages = getTotalPages(totalListings);
+  const currentPage = Math.min(Math.max(page, 1), totalPages);
+  const offset = (currentPage - 1) * SEARCH_PAGE_SIZE;
+
+  const listParams = useMemo<ListingQueryDto>(() => {
+    const sort = SORT_MAP[filters.sort] || SORT_MAP[DEFAULT_SORT_ID];
+    return { ...query, ...sort, limit: SEARCH_PAGE_SIZE, offset };
+  }, [query, filters.sort, offset]);
+
+  const requestKey = JSON.stringify(listParams);
+
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setApiError(null);
-
-    const sort = SORT_MAP[filters.sort] || SORT_MAP[DEFAULT_SORT_ID];
 
     listingsApi
-      .list({ ...query, ...sort, limit: SEARCH_PAGE_SIZE })
+      .list(listParams)
       .then((listings) => {
-        if (!cancelled) setResults(listings.map(toSearchResult));
+        if (!cancelled) {
+          setSnapshot({ requestKey, results: listings.map(toListingCard), apiError: null });
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setResults([]);
-          setApiError(error instanceof Error ? error.message : "Không thể kết nối API.");
+          setSnapshot({
+            requestKey,
+            results: [],
+            apiError: error instanceof Error ? error.message : "Không thể kết nối API.",
+          });
         }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
       });
 
     listingsApi
@@ -68,7 +84,22 @@ export function useSearchResults({ search, filters }: UseSearchResultsParams) {
     return () => {
       cancelled = true;
     };
-  }, [query, filters.sort]);
+  }, [listParams, query, requestKey]);
 
-  return { results, totalListings, apiError, isLoading };
+  // Chỉ dùng dữ liệu của request hiện tại: đổi query là loading và không còn lỗi cũ
+  const isCurrent = snapshot?.requestKey === requestKey;
+
+  return {
+    results: isCurrent ? snapshot.results : [],
+    totalListings,
+    totalPages,
+    currentPage,
+    apiError: isCurrent ? snapshot.apiError : null,
+    isLoading: !isCurrent,
+  };
+}
+
+function getTotalPages(totalListings: number | null): number {
+  if (!totalListings || totalListings <= 0) return 1;
+  return Math.ceil(totalListings / SEARCH_PAGE_SIZE);
 }

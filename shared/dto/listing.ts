@@ -32,7 +32,7 @@ export interface WardDto {
 
 export interface RoomTypeDto {
   id: number;
-  name: string;
+  room_type: string;
 }
 
 export interface ListingDto {
@@ -82,7 +82,6 @@ export interface ListingQueryDto {
   limit?: number;
   offset?: number;
   search?: string;
-  district?: string;
   city_id?: number;
   district_id?: number;
   ward_id?: number;

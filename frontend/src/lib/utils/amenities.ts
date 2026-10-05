@@ -5,7 +5,7 @@ export interface AmenityDisplay {
   label: string;
 }
 
-export const AMENITY_LABELS: Record<AmenityKey, AmenityDisplay> = {
+const AMENITY_LABELS: Record<AmenityKey, AmenityDisplay> = {
   private_wc: {
     icon: "wc",
     label: "WC riêng / khép kín",

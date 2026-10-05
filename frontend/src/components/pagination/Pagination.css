@@ -1,0 +1,69 @@
+/*
+ * Màu chữ + viền tự lấy theo màu chữ của trang (currentColor),
+ * nên đúng với mọi nền sáng/tối, không phụ thuộc dark mode của hệ điều hành.
+ * Muốn đổi: ghi đè các biến --pg-* ở class cha.
+ */
+.pagination {
+  --pg-size: 40px;
+  --pg-radius: 10px;
+  --pg-text: inherit;
+  --pg-border: color-mix(in srgb, currentColor 30%, transparent);
+  --pg-hover: color-mix(in srgb, currentColor 8%, transparent);
+  --pg-active-bg: #2563eb;
+  --pg-active-text: #fff;
+  --pg-focus: #2563eb;
+}
+
+.pagination__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pagination__btn {
+  min-width: var(--pg-size);
+  height: var(--pg-size);
+  padding: 0 10px;
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius);
+  background: transparent;
+  color: var(--pg-text);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.pagination__btn:hover:not(:disabled):not(.pagination__btn--active) {
+  background: var(--pg-hover);
+}
+
+.pagination__btn:focus-visible {
+  outline: 2px solid var(--pg-focus);
+  outline-offset: 2px;
+}
+
+.pagination__btn--active {
+  background: var(--pg-active-bg);
+  border-color: var(--pg-active-bg);
+  color: var(--pg-active-text);
+  font-weight: 600;
+  cursor: default;
+}
+
+.pagination__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pagination__ellipsis {
+  min-width: var(--pg-size);
+  text-align: center;
+  opacity: 0.6;
+  user-select: none;
+}

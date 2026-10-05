@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FilterButton from "@/components/FilterButton";
 
 interface SearchToolbarProps {
   query: string;
@@ -28,30 +29,28 @@ export default function SearchToolbar({
 
       <form
         onSubmit={onSubmit}
-        className="flex-1 relative flex items-center bg-white border border-[#E8E4DC] rounded-full px-5 py-2.5 shadow-xs"
+        className="flex-1 relative flex items-center gap-2 bg-white border border-[#E8E4DC] rounded-full pl-4 pr-1.5 sm:pl-5 py-1.5 sm:py-2 shadow-xs"
       >
-        <span className="material-symbols-outlined text-[#0F5F4A] mr-3 text-[20px]">search</span>
+        <span className="material-symbols-outlined text-[#0F5F4A] text-[20px]">search</span>
         <input
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={placeholder}
-          className="flex-1 bg-transparent text-sm font-semibold text-[#121E1A] placeholder:text-[#6F7974] outline-none"
+          aria-label="Từ khóa tìm kiếm"
+          className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-[#121E1A] placeholder:text-[#6F7974] outline-none"
         />
+        <button
+          type="submit"
+          aria-label="Tìm"
+          title="Tìm"
+          className="shrink-0 px-3 sm:px-5 py-1.5 sm:py-2 rounded-full bg-[#0F5F4A] hover:bg-[#004635] text-white text-xs sm:text-sm font-semibold transition-colors"
+        >
+          <span className="material-symbols-outlined text-[18px] sm:hidden">search</span>
+        </button>
       </form>
 
-      <button
-        onClick={onOpenFilter}
-        className="relative w-11 h-11 shrink-0 rounded-full bg-white border border-[#0F5F4A] hover:bg-[#E9F7F0] text-[#0F5F4A] flex items-center justify-center shadow-xs transition-all"
-        title="Mở bộ lọc"
-      >
-        <span className="material-symbols-outlined text-[20px]">tune</span>
-        {activeFilterCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#FF6B4A] text-white text-[10px] font-bold flex items-center justify-center">
-            {activeFilterCount}
-          </span>
-        )}
-      </button>
+      <FilterButton activeFilterCount={activeFilterCount} onClick={onOpenFilter} variant="toolbar" />
     </div>
   );
 }

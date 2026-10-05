@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-interface NavbarProps {
-  onOpenFilter?: () => void;
-}
-
-export default function Navbar({ onOpenFilter }: NavbarProps) {
+export default function Navbar() {
   const pathname = usePathname();
 
   const navItems = [

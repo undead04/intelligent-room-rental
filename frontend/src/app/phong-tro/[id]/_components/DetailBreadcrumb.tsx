@@ -14,7 +14,7 @@ export default function DetailBreadcrumb({ listing, title }: DetailBreadcrumbPro
     ...(listing?.district?.name
       ? [{ label: listing.district.name, href: `/tim-kiem?district_id=${listing.district.id}` }]
       : []),
-    ...(listing?.ward?.name ? [{ label: listing.ward.name }] : []),
+    ...(listing?.ward?.name ? [{ label: listing.ward.name, href: `/tim-kiem?city_id=${listing.city?.id}&district_id=${listing.district?.id}&ward_id=${listing.ward.id}` }] : []),
     { label: title },
   ];
 

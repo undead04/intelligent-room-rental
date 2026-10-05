@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
+import ScrollToTop from "@/components/ScrollToTop";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,6 +28,9 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-[#FAF8F4] text-[#121E1A] antialiased min-h-screen">
+        <Suspense fallback={null}>
+          <ScrollToTop />
+        </Suspense>
         {children}
       </body>
     </html>

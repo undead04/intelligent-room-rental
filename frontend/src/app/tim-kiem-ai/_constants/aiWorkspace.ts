@@ -4,7 +4,6 @@ export const USER_AVATAR = "/stitch/1_avatar_user_317ba717e1464aafbe096f8b685c37
 
 export const DEFAULT_ROOM_ID = "room-1";
 export const DEFAULT_FILTER_ID = "all";
-export const MATCHED_ROOM_COUNT = 18;
 
 export const SAMPLE_ROOMS: RoomItem[] = [
   {
@@ -70,7 +69,7 @@ export const INITIAL_MESSAGES: ChatMessage[] = [
     text: "Mình hiểu nhu cầu của bạn:",
     mandatoryCriteria: ["Giá ≤ 5 triệu", "Gần UIT", "Có máy lạnh"],
     priorityCriteria: ["Phòng mới", "Có gác"],
-    summaryCount: MATCHED_ROOM_COUNT,
+    summaryCount: SAMPLE_ROOMS.length,
   },
 ];
 

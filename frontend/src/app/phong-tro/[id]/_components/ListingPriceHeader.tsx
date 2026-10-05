@@ -1,5 +1,3 @@
-import { FALLBACK_LISTING_CODE } from "../_constants/fallbackListing";
-
 interface ListingPriceHeaderProps {
   title: string;
   location: string;
@@ -20,9 +18,6 @@ export default function ListingPriceHeader({
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <span className="px-3 py-1 rounded-full bg-[#E6F4EE] text-[#0F5F4A] text-xs font-bold">
           Homigo Verified
-        </span>
-        <span className="px-3 py-1 rounded-full bg-[#FAF8F4] border border-[#E8E4DC] text-xs text-gray-600">
-          Mã tin: {FALLBACK_LISTING_CODE}
         </span>
         <button
           onClick={onToggleSave}

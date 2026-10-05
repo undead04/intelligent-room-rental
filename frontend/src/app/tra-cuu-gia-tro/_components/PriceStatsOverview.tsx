@@ -30,6 +30,7 @@ export default function PriceStatsOverview({ stats }: PriceStatsOverviewProps) {
         value={`${stats?.price_stats_general.total_listings ?? "..."}`}
         unit="căn"
         icon="bar_chart"
+        tone="neutral"
         footer={
           <span className="flex items-center gap-2 text-xs text-[#0F5F4A] font-semibold">
             <span className="material-symbols-outlined text-[16px]">sync</span>

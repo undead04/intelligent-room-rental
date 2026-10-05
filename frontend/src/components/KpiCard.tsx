@@ -4,13 +4,14 @@ interface KpiCardProps {
   icon: string;
   footer: React.ReactNode;
   unit?: string;
-  tone?: "emerald" | "coral";
+  tone?: "emerald" | "neutral" | "coral";
   compactValue?: boolean;
 }
 
 const TONE_STYLES = {
-  emerald: { icon: "bg-[#E6F4EE] text-[#0F5F4A]", value: "text-[#0F5F4A]" },
-  coral: { icon: "bg-[#FFF0ED] text-[#FF6B4A]", value: "text-[#FF6B4A]" },
+  emerald: { icon: "bg-[#E6F4EE] text-[#0F5F4A]", value: "text-[#0F5F4A]", unit: "" },
+  neutral: { icon: "bg-[#E6F4EE] text-[#0F5F4A]", value: "text-[#121E1A]", unit: "" },
+  coral: { icon: "bg-[#FFF0ED] text-[#FF6B4A]", value: "text-[#FF6B4A]", unit: "font-semibold" },
 } as const;
 
 export default function KpiCard({
@@ -37,7 +38,7 @@ export default function KpiCard({
             >
               {value}
             </span>
-            {unit && <span className="text-xs text-gray-500">{unit}</span>}
+            {unit && <span className={`text-xs text-gray-500 ${styles.unit}`}>{unit}</span>}
           </div>
         </div>
         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${styles.icon}`}>

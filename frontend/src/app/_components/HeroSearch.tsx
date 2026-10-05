@@ -1,3 +1,5 @@
+import FilterButton from "@/components/FilterButton";
+
 interface HeroSearchProps {
   query: string;
   activeFilterCount: number;
@@ -33,19 +35,7 @@ export default function HeroSearch({
             placeholder="Bạn muốn tìm phòng ở đâu? (vd: gần ĐH Bách Khoa, dưới 4 triệu...)"
             className="w-full h-full bg-transparent text-sm text-[#121E1A] placeholder:text-[#6F7974] outline-none"
           />
-          <button
-            type="button"
-            onClick={onOpenFilter}
-            className="relative flex items-center cursor-pointer justify-center w-10 h-10 rounded-full bg-[#E9F7F0] hover:bg-[#E3F1EA] text-[#0F5F4A] transition-colors shrink-0 "
-            title="Mở bộ lọc nâng cao"
-          >
-            <span className="material-symbols-outlined text-[20px]">tune</span>
-            {activeFilterCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#FF6B4A] text-white text-[10px] font-bold shadow-sm">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
+          <FilterButton activeFilterCount={activeFilterCount} onClick={onOpenFilter} variant="hero" />
           <button type="submit" className="px-5 py-2 rounded-full bg-[#0F5F4A] hover:bg-[#004635] text-white text-sm font-semibold transition-all shrink-0 hidden sm:inline-flex items-center gap-1.5">
             <span>Tìm</span>
           </button>

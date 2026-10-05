@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/app/tim-kiem-ai/types";
 import {
   AI_FOLLOW_UP_MESSAGE,
@@ -11,6 +11,12 @@ export function useAiChat() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const replyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Rời trang giữa lúc AI đang trả lời thì huỷ timer, tránh set state sau unmount
+  useEffect(() => () => {
+    if (replyTimer.current) clearTimeout(replyTimer.current);
+  }, []);
 
   const sendMessage = (event?: React.FormEvent) => {
     event?.preventDefault();
@@ -29,7 +35,7 @@ export function useAiChat() {
     setMessages((prev) => [...prev, userMessage]);
     setIsTyping(true);
 
-    setTimeout(() => {
+    replyTimer.current = setTimeout(() => {
       const aiMessage: ChatMessage = { ...AI_FOLLOW_UP_MESSAGE, id: `msg-${Date.now() + 1}` };
       setMessages((prev) => [...prev, aiMessage]);
       setIsTyping(false);

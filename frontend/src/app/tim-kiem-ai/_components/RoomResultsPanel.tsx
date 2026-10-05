@@ -1,6 +1,5 @@
 import QuickFilterPills from "@/app/tim-kiem-ai/_components/QuickFilterPills";
 import RoomResultCard from "@/app/tim-kiem-ai/_components/RoomResultCard";
-import { MATCHED_ROOM_COUNT } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 import type { RoomItem } from "@/app/tim-kiem-ai/types";
 
 interface RoomResultsPanelProps {
@@ -28,11 +27,11 @@ export default function RoomResultsPanel({
             <span>2. Kết quả danh sách phòng</span>
           </h2>
           <span className="text-[11px] font-bold text-[#0F5F4A] bg-[#E6F4EE] px-2 py-0.5 rounded-full">
-            {MATCHED_ROOM_COUNT} phòng
+            {rooms.length} phòng
           </span>
         </div>
         <p className="text-[11px] text-[#6F7974] font-medium">
-          Tìm được <span className="text-[#121E1A] font-bold">{MATCHED_ROOM_COUNT} phòng</span> phù hợp với yêu cầu của bạn.
+          Tìm được <span className="text-[#121E1A] font-bold">{rooms.length} phòng</span> phù hợp với yêu cầu của bạn.
         </p>
 
         {/* Filter Pills Row */}

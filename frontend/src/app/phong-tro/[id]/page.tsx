@@ -7,7 +7,6 @@ import PropertyGallery from "@/components/PropertyGallery";
 import LocationMap from "@/components/LocationMap";
 import DetailBreadcrumb from "./_components/DetailBreadcrumb";
 import LandlordCard from "./_components/LandlordCard";
-import SimilarListings from "./_components/SimilarListings";
 import AmenitiesGrid from "./_components/AmenitiesGrid";
 import ListingDescription from "./_components/ListingDescription";
 import ListingKeyDetails from "./_components/ListingKeyDetails";
@@ -103,8 +102,6 @@ export default function PropertyDetailPage() {
             onTogglePhone={() => setShowPhone(!showPhone)}
           />
         </div>
-
-        <SimilarListings images={images} defaultImage={DEFAULT_PROPERTY_IMAGE} />
       </main>
 
     </SiteLayout>
