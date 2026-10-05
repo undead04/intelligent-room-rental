@@ -1,0 +1,1 @@
+export const DEFAULT_PROPERTY_IMAGE = "/property-placeholder.svg";

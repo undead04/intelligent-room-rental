@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import FilterSelect from "@/components/FilterSelect";
 import PriceRangeFilter from "@/components/PriceRangeFilter";
-import { CityDto, DistrictDto, RoomTypeDto, WardDto } from "@shared/dto/listing";
+import { CityDto, RoomTypeDto } from "@shared/dto/listing";
 import { SortOptions, FilterValues } from "@/types";
-import { locationsApi } from "@/lib/api/client";
+import { useCascadingLocations } from "@/hooks/useCascadingLocations";
 import { DEFAULT_FILTERS } from "@/lib/utils/filter";
 
 interface FilterModalProps {
@@ -28,45 +28,13 @@ export default function FilterModal({
   onApply,
 }: FilterModalProps) {
   const [draft, setDraft] = useState<FilterValues>(initialValues);
-  const [districts, setDistricts] = useState<DistrictDto[]>([]);
-  const [wards, setWards] = useState<WardDto[]>([]);
+
+  const { districts, wards } = useCascadingLocations(draft.province, draft.district);
 
   // Mỗi lần mở modal, đồng bộ lại với bộ lọc đã áp dụng
   useEffect(() => {
     if (isOpen) setDraft(initialValues);
   }, [isOpen, initialValues]);
-
-  // Load quận theo tỉnh đang chọn trong modal
-  useEffect(() => {
-    if (!draft.province) {
-      setDistricts([]);
-      return;
-    }
-    let cancelled = false;
-    locationsApi
-      .districts({ city_id: draft.province })
-      .then((data) => !cancelled && setDistricts(data))
-      .catch(() => !cancelled && setDistricts([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [draft.province]);
-
-  // Load phường theo quận đang chọn
-  useEffect(() => {
-    if (!draft.district) {
-      setWards([]);
-      return;
-    }
-    let cancelled = false;
-    locationsApi
-      .wards({ district_id: draft.district })
-      .then((data) => !cancelled && setWards(data))
-      .catch(() => !cancelled && setWards([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [draft.district]);
 
   const handleReset = () => setDraft(DEFAULT_FILTERS);
 

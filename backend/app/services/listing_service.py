@@ -42,7 +42,7 @@ class ListingService:
         self,
         city_id: int,
         district_id: Optional[int],
-        room_type_id: Optional[int],
+        room_type_id: Optional[int]
     ) -> PriceStatsResponse:
         if district_id is not None:
             district = self.db.query(District).filter(District.id == district_id).one_or_none()

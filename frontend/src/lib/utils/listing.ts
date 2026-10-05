@@ -1,5 +1,6 @@
 import type { ListingDto } from "@shared/dto";
 import type { Listing, SearchResult } from "@/types";
+import { DEFAULT_PROPERTY_IMAGE } from "@/lib/constants/property";
 
 export function formatPrice(priceVnd: number | null | undefined, emptyLabel = "Liên hệ") {
   return priceVnd ? `${(priceVnd / 1_000_000).toFixed(1)} triệu` : emptyLabel;
@@ -45,7 +46,7 @@ export function toHomeListing(listing: ListingDto): Listing {
     price: listing.price_string || formatPrice(listing.price_vnd),
     tag: "Mới",
     source: listing.source || "Homigo",
-    image: listing.main_image || "/property-placeholder.svg",
+    image: listing.main_image || DEFAULT_PROPERTY_IMAGE,
     time: formatRelativeDate(listing.posted_date),
   };
 }
@@ -61,7 +62,12 @@ export function toSearchResult(listing: ListingDto): SearchResult {
     verified: false,
     source: listing.source || "Homigo",
     time: formatPostedDate(listing.posted_date),
-    image: listing.main_image || "/property-placeholder.svg",
+    image: listing.main_image || DEFAULT_PROPERTY_IMAGE,
     tags: [],
   };
+}
+
+export function resolveListingImages(images: string[] | null | undefined): string[] {
+  const validImages = images?.filter(Boolean) ?? [];
+  return validImages.length > 0 ? validImages : [DEFAULT_PROPERTY_IMAGE];
 }

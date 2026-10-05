@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { DEFAULT_PROPERTY_IMAGE } from "@/lib/constants/property";
 
 interface PropertyGalleryProps {
   images: string[];
@@ -22,7 +23,7 @@ export default function PropertyGallery({ images, selectedIndex, onSelect }: Pro
           alt="Ảnh phòng trọ"
           onError={(event) => {
             event.currentTarget.onerror = null;
-            event.currentTarget.src = "/property-placeholder.svg";
+            event.currentTarget.src = DEFAULT_PROPERTY_IMAGE;
           }}
           className="w-full h-full object-cover transition-transform duration-300"
         />
@@ -63,7 +64,7 @@ export default function PropertyGallery({ images, selectedIndex, onSelect }: Pro
               alt={`Ảnh phòng ${index + 1}`}
               onError={(event) => {
                 event.currentTarget.onerror = null;
-                event.currentTarget.src = "/property-placeholder.svg";
+                event.currentTarget.src = DEFAULT_PROPERTY_IMAGE;
               }}
               className="w-full h-full object-cover"
             />
