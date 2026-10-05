@@ -1,18 +1,5 @@
 import Link from "next/link";
-
-export interface SearchResult {
-  id: string;
-  title: string;
-  type: string;
-  location: string;
-  price: string;
-  area: string;
-  verified: boolean;
-  source: string;
-  time: string;
-  image: string;
-  tags: string[];
-}
+import type { SearchResult } from "@/types";
 
 interface SearchResultCardProps {
   item: SearchResult;

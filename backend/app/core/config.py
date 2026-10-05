@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import  Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev_secret_key_change_in_production"
     
     # CORS Configuration
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:3000",

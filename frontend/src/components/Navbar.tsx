@@ -70,19 +70,6 @@ export default function Navbar({ onOpenFilter }: NavbarProps) {
 
         {/* Right Actions */}
         <div className="flex items-center gap-3">
-          {onOpenFilter && (
-            <button
-              onClick={onOpenFilter}
-              className="lg:hidden relative flex items-center justify-center w-10 h-10 rounded-full border border-[#E8E4DC] bg-white text-[#0F5F4A] hover:bg-[#E9F7F0] transition-all shadow-sm"
-              title="Bộ lọc"
-            >
-              <span className="material-symbols-outlined text-[20px]">tune</span>
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#FF6B4A] text-white text-[10px] font-bold">
-                2
-              </span>
-            </button>
-          )}
-
           <Link
             href="/stitch-preview"
             className="relative flex items-center justify-center w-10 h-10 rounded-full border border-[#E8E4DC] bg-white text-[#3F4944] hover:text-[#0F5F4A] hover:border-[#0F5F4A] hover:bg-[#E6F4EE]/40 transition-all shadow-sm"

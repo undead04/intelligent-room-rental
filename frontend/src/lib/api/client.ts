@@ -2,9 +2,11 @@ import type {
   CityDto,
   DistrictDto,
   ListingDetailDto,
+  ListingCountDto,
   ListingDto,
   ListingQueryDto,
   PriceStatsDto,
+  ResponseDto,
   RoomTypeDto,
   WardDto,
 } from "@shared/dto";
@@ -14,6 +16,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly code?: string,
+    public readonly requestId?: string | null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -43,15 +47,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new ApiError(`API request failed: ${response.status} ${response.statusText}`, response.status);
+    const error = await response.json().catch(() => null) as {
+      message?: string;
+      code?: string;
+      request_id?: string | null;
+    } | null;
+    throw new ApiError(
+      error?.message || `API request failed: ${response.status} ${response.statusText}`,
+      response.status,
+      error?.code,
+      error?.request_id,
+    );
   }
 
-  return response.json() as Promise<T>;
+  const envelope = (await response.json()) as ResponseDto<T>;
+  return envelope.data;
 }
 
 export const listingsApi = {
   list(params: ListingQueryDto = {}) {
     return request<ListingDto[]>(`/listings/${buildQuery(params)}`);
+  },
+
+  count(params: Omit<ListingQueryDto, "limit" | "offset"> = {}) {
+    return request<ListingCountDto>(`/listings/total${buildQuery(params)}`);
   },
 
   getById(listingId: string) {

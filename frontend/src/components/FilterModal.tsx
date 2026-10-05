@@ -1,68 +1,83 @@
 "use client";
 
-import { useState } from "react";
-import AmenityChips from "@/components/AmenityChips";
+import { useEffect, useState } from "react";
 import FilterSelect from "@/components/FilterSelect";
 import PriceRangeFilter from "@/components/PriceRangeFilter";
-
-export interface FilterValues {
-  province: string;
-  district: string;
-  ward: string;
-  roomType: string;
-  listingType: string;
-  publisher: string;
-  minPrice: string;
-  maxPrice: string;
-  source: string;
-  amenities: string[];
-  sort: string;
-}
+import { CityDto, DistrictDto, RoomTypeDto, WardDto } from "@shared/dto/listing";
+import { SortOptions, FilterValues } from "@/types";
+import { locationsApi } from "@/lib/api/client";
+import { DEFAULT_FILTERS } from "@/lib/utils/filter";
 
 interface FilterModalProps {
   isOpen: boolean;
+  provinces: CityDto[];
+  roomTypes: RoomTypeDto[];
+  sortOptions: SortOptions[];
+  initialValues: FilterValues;
   onClose: () => void;
-  onApply?: (filters: FilterValues) => void;
+  onApply: (values: FilterValues) => void;
 }
 
-export default function FilterModal({ isOpen, onClose, onApply }: FilterModalProps) {
-  const [province, setProvince] = useState("TP. Hồ Chí Minh");
-  const [district, setDistrict] = useState("Quận 1");
-  const [ward, setWard] = useState("Tất cả phường/xã");
-  const [roomType, setRoomType] = useState("Tất cả");
-  const [listingType, setListingType] = useState("Tất cả");
-  const [publisher, setPublisher] = useState("Tất cả");
-  const [minPrice, setMinPrice] = useState(0);
-  const [maxPrice, setMaxPrice] = useState(15);
-  const [source, setSource] = useState("Tất cả nguồn");
-  const [sort, setSort] = useState("Tin mới nhất");
+export default function FilterModal({
+  isOpen,
+  provinces,
+  roomTypes,
+  sortOptions,
+  initialValues,
+  onClose,
+  onApply,
+}: FilterModalProps) {
+  const [draft, setDraft] = useState<FilterValues>(initialValues);
+  const [districts, setDistricts] = useState<DistrictDto[]>([]);
+  const [wards, setWards] = useState<WardDto[]>([]);
 
-  const [amenities, setAmenities] = useState<string[]>([
-    "Có máy lạnh",
-    "Không chung chủ",
-  ]);
+  // Mỗi lần mở modal, đồng bộ lại với bộ lọc đã áp dụng
+  useEffect(() => {
+    if (isOpen) setDraft(initialValues);
+  }, [isOpen, initialValues]);
 
-  const toggleAmenity = (name: string) => {
-    if (amenities.includes(name)) {
-      setAmenities(amenities.filter((a) => a !== name));
-    } else {
-      setAmenities([...amenities, name]);
+  // Load quận theo tỉnh đang chọn trong modal
+  useEffect(() => {
+    if (!draft.province) {
+      setDistricts([]);
+      return;
     }
+    let cancelled = false;
+    locationsApi
+      .districts({ city_id: draft.province })
+      .then((data) => !cancelled && setDistricts(data))
+      .catch(() => !cancelled && setDistricts([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.province]);
+
+  // Load phường theo quận đang chọn
+  useEffect(() => {
+    if (!draft.district) {
+      setWards([]);
+      return;
+    }
+    let cancelled = false;
+    locationsApi
+      .wards({ district_id: draft.district })
+      .then((data) => !cancelled && setWards(data))
+      .catch(() => !cancelled && setWards([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.district]);
+
+  const handleReset = () => setDraft(DEFAULT_FILTERS);
+
+  const handleApply = () => {
+    onApply(draft);
+    onClose();
   };
 
-  const amenityOptions = [
-    "Có máy lạnh",
-    "Giờ tự do 24/7",
-    "Không chung chủ",
-    "Gác lửng",
-    "Ban công / Cửa sổ lớn",
-    "Có máy giặt chung",
-    "Cho nuôi thú cưng",
-    "Có thang máy",
-    "Bảo vệ 24/7",
-  ];
-
   if (!isOpen) return null;
+
+  const selectedProvince = provinces.find((p) => p.id === draft.province);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F201C]/60 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200">
@@ -79,87 +94,65 @@ export default function FilterModal({ isOpen, onClose, onApply }: FilterModalPro
           <h2 className="font-['Plus_Jakarta_Sans'] font-extrabold text-xl text-[#14201C] absolute left-1/2 -translate-x-1/2 tracking-tight">
             Bộ lọc tìm kiếm
           </h2>
-          <button
-            onClick={() => {
-              setProvince("TP. Hồ Chí Minh");
-              setDistrict("Quận 1");
-              setWard("Tất cả phường/xã");
-              setRoomType("Tất cả");
-              setListingType("Tất cả");
-              setPublisher("Tất cả");
-              setMinPrice(0);
-              setMaxPrice(15);
-              setSource("Tất cả nguồn");
-              setSort("Tin mới nhất");
-              setAmenities([]);
-            }}
-            className="text-xs text-[#0F5F4A] hover:underline font-semibold"
-          >
+          <button onClick={handleReset} className="text-xs text-[#0F5F4A] hover:underline font-semibold">
             Đặt lại
           </button>
         </div>
 
         {/* Body */}
         <div className="overflow-y-auto px-7 py-6 space-y-6">
-          {/* SECTION 1: Khu vực */}
           <div className="space-y-3.5">
             <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-base text-[#14201C] flex items-center justify-between">
               <span>Khu vực</span>
-              <span className="text-xs text-[#0F5F4A] font-semibold">{province}</span>
+              <span className="text-xs text-[#0F5F4A] font-semibold">{selectedProvince?.name}</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
               <FilterSelect
                 label="Tỉnh / Thành"
-                value={province}
-                onChange={setProvince}
-                options={["TP. Hồ Chí Minh", "Hà Nội", "Đà Nẵng", "Bình Dương"]}
+                value={draft.province}
+                onChange={(v) => setDraft((d) => ({ ...d, province: v, district: null, ward: null }))}
+                options={provinces.map((p) => ({ value: p.id, label: p.name }))}
               />
               <FilterSelect
                 label="Quận / Huyện"
-                value={district}
-                onChange={setDistrict}
-                options={["Quận 1", "Quận 7", "Bình Thạnh", "Gò Vấp", "TP. Thủ Đức", "Tân Bình"]}
+                value={draft.district}
+                onChange={(v) => setDraft((d) => ({ ...d, district: v, ward: null }))}
+                options={districts.map((d) => ({ value: d.id, label: d.name }))}
               />
               <FilterSelect
                 label="Phường / Xã"
-                value={ward}
-                onChange={setWard}
-                options={["Tất cả phường/xã", "Phường Bến Nghé", "Phường Đa Kao", "Phường 5"]}
+                value={draft.ward}
+                onChange={(v) => setDraft((d) => ({ ...d, ward: v }))}
+                options={wards.map((w) => ({ value: w.id, label: w.name }))}
               />
             </div>
           </div>
 
           <div className="border-t border-[#F0ECE4]" />
 
-          {/* SECTION 2: Thuộc tính phòng & Tin đăng */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-            <FilterSelect label="Loại phòng" value={roomType} onChange={setRoomType} options={["Tất cả", "Phòng trọ / KTX", "Căn hộ dịch vụ", "Chung cư mini", "Nhà nguyên căn", "Duplex / Gác lửng"]} />
-            <FilterSelect label="Loại tin" value={listingType} onChange={setListingType} options={["Tất cả", "Cho thuê phòng", "Tìm người ở ghép", "Sang nhượng trọ"]} />
-            <FilterSelect label="Người đăng" value={publisher} onChange={setPublisher} options={["Tất cả", "Chủ nhà trực tiếp", "Môi giới chuyên nghiệp", "Homigo Quản lý"]} />
+            <FilterSelect
+              label="Loại phòng"
+              value={draft.roomType}
+              onChange={(v) => setDraft((d) => ({ ...d, roomType: v }))}
+              options={roomTypes.map((r) => ({ value: r.id, label: r.name }))}
+            />
+            <FilterSelect
+              label="Sắp xếp"
+              value={draft.sort}
+              onChange={(v) => setDraft((d) => ({ ...d, sort: v ?? DEFAULT_FILTERS.sort }))}
+              options={sortOptions.map((o) => ({ value: o.value, label: o.label }))}
+            />
           </div>
 
           <div className="border-t border-[#F0ECE4]" />
 
-          {/* SECTION 3: Giá thuê */}
           <PriceRangeFilter
-            minPrice={minPrice}
-            maxPrice={maxPrice}
-            onMinChange={setMinPrice}
-            onMaxChange={setMaxPrice}
+            minPrice={draft.minPrice}
+            maxPrice={draft.maxPrice}
+            onMinChange={(v: number) => setDraft((d) => ({ ...d, minPrice: v }))}
+            onMaxChange={(v: number) => setDraft((d) => ({ ...d, maxPrice: v }))}
           />
-
-          <div className="border-t border-[#F0ECE4]" />
-
-          {/* SECTION 4: Nguồn tin & Sắp xếp */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <FilterSelect label="Nguồn tin" value={source} onChange={setSource} options={["Tất cả nguồn", "Homigo Verified (Xác thực 100%)", "Chợ Tốt", "Người thuê nhượng lại"]} />
-            <FilterSelect label="Sắp xếp" value={sort} onChange={setSort} options={["Tin mới nhất", "Giá: Thấp đến cao", "Giá: Cao đến thấp", "Gần trường ĐH / Trung tâm nhất"]} />
-          </div>
-
-          <div className="border-t border-[#F0ECE4]" />
-
-          {/* SECTION 5: Tiện ích nổi bật */}
-          <AmenityChips options={amenityOptions} selected={amenities} onToggle={toggleAmenity} />
         </div>
 
         {/* Footer */}
@@ -173,25 +166,10 @@ export default function FilterModal({ isOpen, onClose, onApply }: FilterModalPro
           </button>
           <button
             type="button"
-            onClick={() => {
-              onApply?.({
-                province,
-                district,
-                ward,
-                roomType,
-                listingType,
-                publisher,
-                minPrice: String(minPrice),
-                maxPrice: String(maxPrice),
-                source,
-                amenities,
-                sort,
-              });
-              onClose();
-            }}
+            onClick={handleApply}
             className="px-8 py-3 rounded-full bg-[#0F5F4A] hover:bg-[#004635] text-white text-sm font-bold shadow-md transition-all"
           >
-            Áp dụng bộ lọc (1.240 kết quả)
+            Áp dụng bộ lọc
           </button>
         </div>
       </div>

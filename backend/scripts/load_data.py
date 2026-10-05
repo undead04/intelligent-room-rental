@@ -11,11 +11,14 @@ import ast
 import hashlib
 import csv
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
 from sqlalchemy.orm import Session
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.database import Base, SessionLocal, engine
 from app.models import City, District, Listing, ListingEmbedding, RoomType, User, Ward
@@ -63,6 +66,13 @@ def _datetime(value: Any) -> datetime | None:
     if text is None:
         return None
     try:
+        timestamp = float(text)
+        if abs(timestamp) > 100_000_000_000:
+            timestamp /= 1000
+        return datetime.fromtimestamp(timestamp)
+    except (ValueError, OverflowError, OSError):
+        pass
+    try:
         return datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
@@ -74,12 +84,13 @@ def _images(value: Any) -> list[str]:
     text = _text(value)
     if not text:
         return []
-    try:
-        parsed = ast.literal_eval(text)
-        if isinstance(parsed, list):
-            return [str(item) for item in parsed if item]
-    except (SyntaxError, ValueError):
-        pass
+    if text.startswith("["):
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed if item]
+        except (SyntaxError, ValueError):
+            pass
     return [item for item in text.split("|") if item]
 
 
@@ -87,49 +98,57 @@ def _upsert_location(session: Session, row: dict[str, Any]) -> tuple[int | None,
     region_id = _int(row.get("region_id"))
     district_id = _int(row.get("district_id"))
     ward_id = _int(row.get("ward_id"))
+    city_name = _text(row.get("city"))
+    district_name = _text(row.get("district"))
+    ward_name = _text(row.get("ward"))
 
     city = None
-    if region_id is not None and _text(row.get("city")):
-        city = session.query(City).filter(City.region_id == region_id).one_or_none()
+    if city_name:
+        city = session.query(City).filter(City.name == city_name).one_or_none()
         if city is None:
-            city = City(region_id=region_id, name=_text(row["city"]) or "Unknown")
+            city = City(name=city_name)
             session.add(city)
             session.flush()
         else:
-            city.name = _text(row["city"]) or city.name
+            city.name = city_name
 
     district = None
-    if district_id is not None and _text(row.get("district")):
-        district = session.query(District).filter(District.district_id == district_id).one_or_none()
+    ward = None
+    if district_name:
+        district_query = session.query(District).filter(District.name == district_name)
+        if city is not None:
+            district_query = district_query.filter(District.city_id == city.id)
+        district = district_query.order_by(District.id).first()
         if district is None:
             if city is None:
                 raise ValueError(f"District {district_id} has no city {region_id}")
             district = District(
-                district_id=district_id,
                 city_id=city.id,
-                name=_text(row["district"]) or "Unknown",
+                name=district_name,
             )
             session.add(district)
             session.flush()
         else:
-            district.name = _text(row["district"]) or district.name
+            district.name = district_name
             if city is not None:
                 district.city_id = city.id
 
-    if ward_id is not None and _text(row.get("ward")):
-        ward = session.query(Ward).filter(Ward.ward_id == ward_id).one_or_none()
+    if ward_name:
+        ward_query = session.query(Ward).filter(Ward.name == ward_name)
+        if district is not None:
+            ward_query = ward_query.filter(Ward.district_id == district.id)
+        ward = ward_query.order_by(Ward.id).first()
         if ward is None:
             if district is None:
                 raise ValueError(f"Ward {ward_id} has no district {district_id}")
             ward = Ward(
-                ward_id=ward_id,
                 district_id=district.id,
-                name=_text(row["ward"]) or "Unknown",
+                name=ward_name,
             )
             session.add(ward)
             session.flush()
         else:
-            ward.name = _text(row["ward"]) or ward.name
+            ward.name = ward_name
             if district is not None:
                 ward.district_id = district.id
 
@@ -152,14 +171,21 @@ def _upsert_room_type(session: Session, value: Any) -> int | None:
     return room_type.id
 
 
-def _upsert_user(session: Session, row: dict[str, Any]) -> str | None:
+def _upsert_user(
+    session: Session,
+    row: dict[str, Any],
+    cache: dict[str, User],
+) -> str | None:
     poster_id = _text(row.get("poster_id"))
     if not poster_id:
         return None
-    user = session.get(User, poster_id)
+    user = cache.get(poster_id)
+    if user is None:
+        user = session.get(User, poster_id)
     if user is None:
         user = User(id=poster_id, name=_text(row.get("poster_name")) or "Người đăng")
         session.add(user)
+    cache[poster_id] = user
     user.name = _text(row.get("poster_name")) or user.name
     user.avatar_url = _text(row.get("poster_avatar"))
     user.live_ads = _int(row.get("poster_live_ads")) or 0
@@ -168,7 +194,11 @@ def _upsert_user(session: Session, row: dict[str, Any]) -> str | None:
     return poster_id
 
 
-def _listing_values(session: Session, row: dict[str, Any]) -> dict[str, Any]:
+def _listing_values(
+    session: Session,
+    row: dict[str, Any],
+    user_cache: dict[str, User],
+) -> dict[str, Any]:
     listing_id = _text(row.get("listing_id"))
     if not listing_id:
         raise ValueError("Missing listing_id")
@@ -194,7 +224,7 @@ def _listing_values(session: Session, row: dict[str, Any]) -> dict[str, Any]:
         "crawled_at": _datetime(row.get("crawled_at")),
         "safety_score": _float(row.get("safety_score")),
         "concept_scores": row.get("concept_scores"),
-        "poster_id": _upsert_user(session, row),
+        "poster_id": _upsert_user(session, row, user_cache),
         "region_id": city_id,
         "district_id": district_id,
         "ward_id": ward_id,
@@ -274,29 +304,22 @@ def _load_embeddings(data_dir: Path, session: Session, model_name: str) -> int:
 
 def load_data(
     data_dir: Path = DEFAULT_DATA_DIR,
-    source: str = "auto",
     embedding_model: str = "precomputed-768",
 ) -> tuple[int, int]:
     """Upsert listings and bundled embeddings; return (listing_count, embedding_count)."""
-    if source == "auto":
-        source = "datas" if (data_dir / "datas.json").exists() else "csv"
-    source_path = (
-        data_dir / "datas.json"
-        if source == "datas"
-        else data_dir / "processed" / "listings_clean.csv"
-        if source == "csv"
-        else data_dir / "raw" / "listings"
-    )
-    rows = _read_datas_json(source_path) if source == "datas" else _read_csv(source_path) if source == "csv" else (
-        row for path in sorted(source_path.glob("*.json")) for row in _read_json(path)
-    )
+    datas_json_path = data_dir / "datas.json"
+    if not datas_json_path.exists():
+        raise FileNotFoundError(f"Data file {datas_json_path} does not exist")
+    
+    rows = _read_datas_json(data_dir / "datas.json")
 
     Base.metadata.create_all(bind=engine)
     session = SessionLocal()
     count = 0
+    user_cache: dict[str, User] = {}
     try:
         for row in rows:
-            values = _listing_values(session, row)
+            values = _listing_values(session, row, user_cache)
             listing = session.get(Listing, values["id"])
             if listing is None:
                 listing = Listing(**values)
@@ -321,13 +344,11 @@ def load_data(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Load crawler data into PostgreSQL")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
-    parser.add_argument("--source", choices=("auto", "datas", "csv", "json"), default="auto")
     parser.add_argument("--embedding-model", default="precomputed-768")
     args = parser.parse_args()
-    listing_count, embedding_count = load_data(args.data_dir, args.source, args.embedding_model)
+    listing_count, embedding_count = load_data(args.data_dir, args.embedding_model)
     print(
         f"Loaded {listing_count} listings and {embedding_count} embeddings "
-        f"from {args.source}."
     )
 
 

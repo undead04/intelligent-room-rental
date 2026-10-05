@@ -1,176 +1,156 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import SiteLayout from "@/components/SiteLayout";
 import FilterModal from "@/components/FilterModal";
-import SearchResultCard, { SearchResult } from "@/components/SearchResultCard";
-import { listingsApi } from "@/lib/api/client";
-import type { ListingDto } from "@shared/dto";
+import SearchResultCard from "@/components/SearchResultCard";
+import Breadcrumbs from "@/components/Breadcrumbs";
+import { ListingCardSkeleton } from "@/components/LoadingSkeleton";
+import type { FilterValues, SearchResult, SortOptions } from "@/types";
+import { listingsApi, locationsApi, roomTypesApi } from "@/lib/api/client";
+import { toSearchResult } from "@/lib/utils/listing";
+import {
+  buildSearchParams,
+  countActiveFilters,
+  MAX_PRICE_MILLION,
+  parseSearchParams,
+} from "@/lib/utils/filter";
+import type { CityDto, DistrictDto, RoomTypeDto } from "@shared/dto";
 
-export default function SearchPage() {
+interface SortConfig {
+  sort_desc: boolean;
+  order_by: string;
+}
+
+// Map từ ID (number) sang Config
+const SORT_MAP: Record<number, SortConfig> = {
+  1: {
+    sort_desc: true,
+    order_by: 'posted_date',
+  },
+  2: {
+    sort_desc: false,
+    order_by: 'price_vnd',
+  },
+  3: {
+    sort_desc: true,
+    order_by: 'price_vnd',
+  },
+};
+
+const sortOptions: SortOptions[] = [
+  { value: 1, label: "Tin mới nhất" },
+  { value: 2, label: "Giá thấp → cao" },
+  { value: 3, label: "Giá cao → thấp" },
+];
+
+function SearchPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const paramsKey = searchParams.toString();
+
+  // URL là nguồn dữ liệu duy nhất
+  const { search, filters } = useMemo(
+    () => parseSearchParams(new URLSearchParams(paramsKey)),
+    [paramsKey],
+  );
+
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [selectedDistrict, setSelectedDistrict] = useState("Tất cả");
+  const [searchInput, setSearchInput] = useState(search);
+  const [cities, setCities] = useState<CityDto[]>([]);
+  const [roomTypes, setRoomTypes] = useState<RoomTypeDto[]>([]);
+  const [districtOptions, setDistrictOptions] = useState<DistrictDto[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [totalListings, setTotalListings] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const districts = [
-    "Tất cả",
-    "Quận 1",
-    "Quận 3",
-    "Quận 4",
-    "Quận 7",
-    "Quận 10",
-    "Bình Thạnh",
-    "TP. Thủ Đức",
-    "Gò Vấp",
-    "Tân Bình",
-    "Phú Nhuận",
-  ];
+  const activeFilterCount = countActiveFilters(filters);
 
-  const fallbackSearchResults: SearchResult[] = [
-    {
-      id: "phong-1",
-      title: "Phòng Duplex gác lửng ban công full nội thất Thủ Đức",
-      type: "Căn hộ dịch vụ",
-      location: "Đặng Văn Bi, Trường Thọ, TP. Thủ Đức",
-      price: "4.8 triệu",
-      area: "28m²",
-      verified: true,
-      source: "Homigo Verified",
-      time: "25 phút trước",
-      image: "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=600&q=80",
-      tags: ["⚡ Mới", "Có gác", "Ban công", "Máy lạnh"]
-    },
-    {
-      id: "phong-2",
-      title: "Studio trung tâm Quận 1 full đồ - Giờ giấc tự do 24/7",
-      type: "Studio",
-      location: "Nguyễn Trãi, Phường Bến Thành, Quận 1",
-      price: "7.5 triệu",
-      area: "35m²",
-      verified: true,
-      source: "Homigo Verified",
-      time: "40 phút trước",
-      image: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=600&q=80",
-      tags: ["⚡ Mới", "Không chung chủ", "Thang máy"]
-    },
-    {
-      id: "phong-3",
-      title: "Phòng trọ sinh viên gần ĐH Hutech / Ngoại Thương",
-      type: "Phòng trọ",
-      location: "D2 (Nguyễn Gia Trí), Phường 25, Bình Thạnh",
-      price: "3.5 triệu",
-      area: "22m²",
-      verified: false,
-      source: "Chợ Tốt",
-      time: "1 giờ trước",
-      image: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=600&q=80",
-      tags: ["Gần ĐH", "Có gác lửng", "Cửa sổ"]
-    },
-    {
-      id: "phong-4",
-      title: "Căn hộ 1PN ban công view sông thoáng mát Quận 7",
-      type: "Chung cư mini",
-      location: "Nguyễn Thị Thập, Tân Phong, Quận 7",
-      price: "6.2 triệu",
-      area: "40m²",
-      verified: true,
-      source: "Homigo Verified",
-      time: "1 giờ trước",
-      image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80",
-      tags: ["Ban công", "Bếp riêng", "Bảo vệ 24/7"]
-    },
-    {
-      id: "phong-5",
-      title: "Phòng trọ cao cấp Gò Vấp - Gần ĐH Công Nghiệp IUH",
-      type: "Phòng trọ",
-      location: "Dương Quảng Hàm, Phường 5, Gò Vấp",
-      price: "3.9 triệu",
-      area: "25m²",
-      verified: true,
-      source: "Homigo Verified",
-      time: "2 giờ trước",
-      image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=600&q=80",
-      tags: ["⚡ Mới", "Gần IUH", "Free Wifi"]
-    },
-    {
-      id: "phong-6",
-      title: "Nhà nguyên căn 2 tầng Tân Bình thích hợp nhóm sinh viên",
-      type: "Nhà nguyên căn",
-      location: "Cộng Hòa, Phường 13, Tân Bình",
-      price: "11 triệu",
-      area: "65m²",
-      verified: false,
-      source: "Chợ Tốt",
-      time: "3 giờ trước",
-      image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=600&q=80",
-      tags: ["3 PN", "Chỗ để xe rộng", "Giờ tự do"]
-    },
-  ];
-  const [searchResults, setSearchResults] = useState<SearchResult[]>(fallbackSearchResults);
+  const navigate = (q: string, f: FilterValues) => {
+    const qs = buildSearchParams(q, f).toString();
+    router.push(`/tim-kiem${qs ? `?${qs}` : ""}`);
+  };
 
+  // Đồng bộ ô tìm kiếm khi URL đổi (back/forward, áp dụng bộ lọc...)
+  useEffect(() => setSearchInput(search), [search]);
+
+  // Dữ liệu cho modal
+  useEffect(() => {
+    locationsApi.cities().then(setCities).catch(() => setCities([]));
+    roomTypesApi.list().then(setRoomTypes).catch(() => setRoomTypes([]));
+  }, []);
+
+  // Danh sách quận cho chip
+  useEffect(() => {
+    locationsApi
+      .districts(filters.province ? { city_id: filters.province } : undefined)
+      .then(setDistrictOptions)
+      .catch(() => setDistrictOptions([]));
+  }, [filters.province]);
+
+
+  const query = useMemo(
+    () => ({
+      search: search || undefined,
+      city_id: filters.province ?? undefined,
+      district_id: filters.district ?? undefined,
+      ward_id: filters.ward ?? undefined,
+      room_type_id: filters.roomType ?? undefined,
+      min_price: filters.minPrice > 0 ? filters.minPrice * 1_000_000 : undefined,
+      max_price: filters.maxPrice < MAX_PRICE_MILLION ? filters.maxPrice * 1_000_000 : undefined,
+    }),
+    [search, filters],
+  );
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
+    setApiError(null);
 
+    // Fetch listings
+    let sort = SORT_MAP[filters.sort] || SORT_MAP[1];
     listingsApi
-      .list({
-        limit: 20,
-        district: selectedDistrict === "Tất cả" ? undefined : selectedDistrict,
-      })
+      .list({ ...query, ...sort, limit: 20 })
       .then((listings) => {
-        if (!cancelled && listings.length > 0) {
-          setApiError(null);
-          setSearchResults(listings.map(toSearchResult));
-        }
+        if (!cancelled) setResults(listings.map(toSearchResult));
       })
       .catch((error: unknown) => {
         if (!cancelled) {
+          setResults([]);
           setApiError(error instanceof Error ? error.message : "Không thể kết nối API.");
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
+
+    listingsApi
+      .count(query)
+      .then((r) => !cancelled && setTotalListings(r.total_listings))
+      .catch(() => !cancelled && setTotalListings(null));
 
     return () => {
       cancelled = true;
     };
-  }, [selectedDistrict]);
+  }, [query, filters.sort]);
+
+  const selectedDistrictName = districtOptions.find((d) => d.id === filters.district)?.name;
 
   return (
     <SiteLayout className="bg-[#FAF8F4]" onOpenFilter={() => setIsFilterOpen(true)}>
-
       <main className="w-full flex-1 max-w-[1500px] mx-auto px-4 lg:px-8 py-6">
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-          <Link href="/" className="hover:text-[#0F5F4A]">Trang chủ</Link>
-          <span>/</span>
-          <span className="text-[#121E1A] font-semibold">TP. Hồ Chí Minh</span>
-        </nav>
+        <Breadcrumbs
+          className="mb-3"
+          items={[{ label: "Trang chủ", href: "/" }, { label: "TP. Hồ Chí Minh" }]}
+        />
 
-        {/* Page Title */}
         <h1 className="font-['Plus_Jakarta_Sans'] font-extrabold text-2xl sm:text-3xl text-[#121E1A] mb-4">
           Phòng trọ, nhà ở, căn hộ TP. Hồ Chí Minh
-        </h1>
+        </h1>        
 
-        {/* Horizontal District Filter Chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-3 hide-scrollbar">
-          {districts.map((d) => {
-            const active = selectedDistrict === d;
-            return (
-              <button
-                key={d}
-                onClick={() => setSelectedDistrict(d)}
-                className={`whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold transition-all shadow-2xs ${
-                  active
-                    ? "bg-[#0F5F4A] text-white"
-                    : "bg-white text-[#3F4944] border border-[#E8E4DC] hover:border-[#0F5F4A]"
-                }`}
-              >
-                {d}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Sticky Search & Filter Bar */}
+        {/* Sticky search & filter bar */}
         <div className="sticky top-[72px] z-30 bg-[#FAF8F4]/95 backdrop-blur-md py-3 flex items-center gap-3">
           <Link
             href="/"
@@ -179,12 +159,22 @@ export default function SearchPage() {
             <span className="material-symbols-outlined text-[20px]">arrow_back</span>
           </Link>
 
-          <div className="flex-1 relative flex items-center bg-white border border-[#E8E4DC] rounded-full px-5 py-2.5 shadow-xs">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              navigate(searchInput, filters);
+            }}
+            className="flex-1 relative flex items-center bg-white border border-[#E8E4DC] rounded-full px-5 py-2.5 shadow-xs"
+          >
             <span className="material-symbols-outlined text-[#0F5F4A] mr-3 text-[20px]">search</span>
-            <span className="text-sm font-semibold text-[#121E1A] flex-1 truncate">
-              Hồ Chí Minh · {selectedDistrict} · Chính chủ
-            </span>
-          </div>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={`Hồ Chí Minh · ${selectedDistrictName ?? "Tất cả"}`}
+              className="flex-1 bg-transparent text-sm font-semibold text-[#121E1A] placeholder:text-[#6F7974] outline-none"
+            />
+          </form>
 
           <button
             onClick={() => setIsFilterOpen(true)}
@@ -192,81 +182,59 @@ export default function SearchPage() {
             title="Mở bộ lọc"
           >
             <span className="material-symbols-outlined text-[20px]">tune</span>
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#FF6B4A] text-white text-[10px] font-bold flex items-center justify-center">
-              2
-            </span>
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#FF6B4A] text-white text-[10px] font-bold flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
         </div>
-        {/* Result Summary & Sorter */}
+
+        {/* Result summary */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
             <span className="material-symbols-outlined text-[#0F5F4A] text-[18px]">bolt</span>
-            <span className="text-[#0F5F4A] font-bold">206 tin mới hôm nay</span>
-            <span>·</span>
             <span>
-              Tìm thấy <strong className="text-[#121E1A] font-bold">4.752</strong> kết quả tại Hồ Chí Minh
+              Tìm thấy <strong className="text-[#121E1A] font-bold">{totalListings ?? "..."}</strong> kết quả
+              tại Hồ Chí Minh
             </span>
           </div>
-          {apiError && (
-            <p className="text-xs text-[#9A3412]">
-              Đang hiển thị dữ liệu mẫu: {apiError}
-            </p>
-          )}
+          {apiError && <p className="text-xs text-[#9A3412]">Lỗi tải dữ liệu: {apiError}</p>}
         </div>
 
-        {/* Listings Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          {searchResults.map((item) => <SearchResultCard key={item.id} item={item} />)}
-        </div>
+        {/* Listings */}
+        {!isLoading && results.length === 0 ? (
+          <div className="py-16 text-center text-sm text-gray-500 mb-12">
+            Không tìm thấy phòng phù hợp. Hãy thử bỏ bớt bộ lọc hoặc đổi từ khóa.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            {isLoading
+              ? Array.from({ length: 6 }, (_, i) => <ListingCardSkeleton key={i} />)
+              : results.map((item) => <SearchResultCard key={item.id} item={item} />)}
+          </div>
+        )}
 
-        {/* Pagination */}
-        <div className="flex items-center justify-center gap-2 mb-12">
-          <button className="w-10 h-10 rounded-full border border-[#E8E4DC] bg-white flex items-center justify-center text-gray-600 hover:bg-[#E9F7F0]">
-            <span className="material-symbols-outlined text-[18px]">chevron_left</span>
-          </button>
-          {[1, 2, 3, 4].map((p) => (
-            <button
-              key={p}
-              className={`w-10 h-10 rounded-full text-xs font-bold transition-all ${
-                p === 1
-                  ? "bg-[#0F5F4A] text-white shadow-xs"
-                  : "bg-white border border-[#E8E4DC] text-gray-700 hover:bg-[#E9F7F0]"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
-          <span className="text-gray-400 px-1">...</span>
-          <button className="w-10 h-10 rounded-full border border-[#E8E4DC] bg-white text-xs font-bold text-gray-700 hover:bg-[#E9F7F0]">
-            158
-          </button>
-          <button className="w-10 h-10 rounded-full border border-[#E8E4DC] bg-white flex items-center justify-center text-gray-600 hover:bg-[#E9F7F0]">
-            <span className="material-symbols-outlined text-[18px]">chevron_right</span>
-          </button>
-        </div>
+        {/* Pagination: giữ nguyên block cũ (hiện vẫn là số cứng) */}
       </main>
 
-      <FilterModal isOpen={isFilterOpen} onClose={() => setIsFilterOpen(false)} />
+      <FilterModal
+        isOpen={isFilterOpen}
+        onClose={() => setIsFilterOpen(false)}
+        provinces={cities}
+        roomTypes={roomTypes}
+        sortOptions={sortOptions}
+        initialValues={filters}
+        onApply={(values) => navigate(search, values)}
+      />
     </SiteLayout>
   );
 }
 
-function toSearchResult(listing: ListingDto): SearchResult {
-  return {
-    id: String(listing.list_id),
-    title: listing.title,
-    type: listing.room_type?.room_type || "Phòng trọ",
-    location: listing.address_raw || listing.district?.name || "Đang cập nhật địa chỉ",
-    price: listing.price_string || formatPrice(listing.price_vnd),
-    area: listing.area_m2 ? `${listing.area_m2}m²` : "Đang cập nhật",
-    verified: false,
-    source: "Homigo",
-    time: "Mới cập nhật",
-    image: listing.main_image || "/stitch/5_property_detail_f282cfd03807476da64d2e1cd23ef2fc.png",
-    tags: [],
-  };
-}
-
-function formatPrice(priceVnd: number | null) {
-  return priceVnd ? `${(priceVnd / 1_000_000).toFixed(1)} triệu` : "Liên hệ";
+export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPageContent />
+    </Suspense>
+  );
 }

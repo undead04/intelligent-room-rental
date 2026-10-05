@@ -100,6 +100,72 @@ To explicitly load the processed CSV or raw crawler JSON files:
 
 Use `--data-dir` when the crawler data is stored elsewhere.
 
+### Backend layers and error responses
+
+The API is organized into:
+
+```text
+controllers -> services -> repositories -> SQLAlchemy models
+```
+
+Controllers only declare HTTP routes and dependencies. Services contain
+business rules and repositories contain database queries. Application errors
+use `ErrorDTO`:
+
+```json
+{
+  "success": false,
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": "Listing with id 'missing-id' not found",
+  "details": null,
+  "request_id": "..."
+}
+```
+
+Successful API responses use the same envelope style:
+
+```json
+{
+  "success": true,
+  "status": 200,
+  "code": "OK",
+  "message": "Request completed successfully",
+  "data": []
+}
+```
+
+The frontend API client unwraps `data` automatically, while direct API
+consumers can use `status`, `code`, and `message` for response handling.
+
+Every response includes `X-Request-ID`. The same ID is included in logs, so a
+frontend error can be searched directly in the backend log.
+
+Unknown routes also use the same error format instead of FastAPI's default
+`{"detail":"Not Found"}` response:
+
+```json
+{
+  "success": false,
+  "status": 404,
+  "code": "NOT_FOUND",
+  "message": "Not Found",
+  "details": null,
+  "request_id": "..."
+}
+```
+
+The listings API also provides `GET /api/v1/listings/total` for counting
+matching listings without loading listing records. It accepts the listing
+filters such as `city_id`, `district_id`, `ward_id`, `room_type_id`,
+`min_price`, `max_price`, `min_area`, `max_area`, and `search`, and returns:
+
+```json
+{
+  "total_listings": 9551
+}
+```
+
 ### 2. Running the Development Server
 
 Navigate to the `backend` folder and run `uvicorn`:

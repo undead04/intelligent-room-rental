@@ -34,7 +34,7 @@ class RoomTypeReference(BaseModel):
 
 
 class ListingResponse(BaseModel):
-    list_id: int
+    id: str
     title: str
     source: Optional[str] = None
     url: Optional[str] = None
@@ -49,7 +49,7 @@ class ListingResponse(BaseModel):
     district: Optional[DistrictReference] = None
     ward: Optional[WardReference] = None
     room_type: Optional[RoomTypeReference] = None
-
+    posted_date: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -59,7 +59,6 @@ class ListingDetailResponse(ListingResponse):
     price_million_per_m2: Optional[float] = None
     deposit: Optional[float] = None
     furnishing_code: Optional[int] = None
-    posted_date: Optional[datetime] = None
     crawled_at: Optional[datetime] = None
     safety_score: Optional[float] = None
     concept_scores: Optional[dict] = None
@@ -67,7 +66,7 @@ class ListingDetailResponse(ListingResponse):
 
 
 class ListingCreate(BaseModel):
-    list_id: int
+    list_id: str
     title: str
     source: Optional[str] = "nhatot"
     url: Optional[str] = None

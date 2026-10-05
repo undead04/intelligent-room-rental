@@ -39,6 +39,14 @@
     font-family: 'Be Vietnam Pro', sans-serif;
   }
 
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
   ::-webkit-scrollbar {
     display: none;
   }

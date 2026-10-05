@@ -1,34 +1,84 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import SiteLayout from "@/components/SiteLayout";
+import { locationsApi, priceStatsApi } from "@/lib/api/client";
+import type { CityDto, DistrictDto, PriceStatsDto } from "@shared/dto";
+import { PriceStatsSkeleton } from "@/components/LoadingSkeleton";
+import Breadcrumbs from "@/components/Breadcrumbs";
+import { formatPrice } from "@/lib/utils/listing";
 
 export default function PriceAnalyticsPage() {
   const [selectedCity, setSelectedCity] = useState("Hồ Chí Minh");
   const [selectedType, setSelectedType] = useState("Tất cả");
+  const [cities, setCities] = useState<CityDto[]>([]);
+  const [cityId, setCityId] = useState<number | undefined>();
+  const [districtId, setDistrictId] = useState<number | undefined>();
+  const [districts, setDistricts] = useState<DistrictDto[]>([]);
+  const [stats, setStats] = useState<PriceStatsDto | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const districtData = [
-    { name: "Quận 1", avgPrice: "8.5 triệu", range: "6.0 - 15.0 tr", trend: "+3.2%", status: "up", total: 420 },
-    { name: "Bình Thạnh", avgPrice: "5.2 triệu", range: "3.5 - 8.0 tr", trend: "+1.8%", status: "up", total: 680 },
-    { name: "TP. Thủ Đức", avgPrice: "4.2 triệu", range: "2.8 - 6.5 tr", trend: "+4.5%", status: "up", total: 850 },
-    { name: "Quận 7", avgPrice: "6.8 triệu", range: "4.5 - 12.0 tr", trend: "-0.5%", status: "down", total: 540 },
-    { name: "Gò Vấp", avgPrice: "3.9 triệu", range: "2.5 - 5.5 tr", trend: "+2.1%", status: "up", total: 610 },
-    { name: "Quận 10", avgPrice: "5.8 triệu", range: "4.0 - 9.0 tr", trend: "+0.8%", status: "up", total: 390 },
-    { name: "Tân Bình", avgPrice: "4.5 triệu", range: "3.2 - 7.0 tr", trend: "-1.2%", status: "down", total: 460 },
-  ];
+  useEffect(() => {
+    locationsApi.cities().then((result) => {
+      setCities(result);
+      const city = result.find((item) => item.name.includes("Hồ Chí Minh")) || result[0];
+      if (city) {
+        setSelectedCity(city.name);
+        setCityId(city.id);
+      }
+    }).catch(() => setApiError("Không thể tải danh sách thành phố."));
+  }, []);
+
+  useEffect(() => {
+    if (cityId === undefined) return;
+    setDistrictId(undefined);
+    setDistricts([]);
+    locationsApi.districts({ city_id: cityId })
+      .then(setDistricts)
+      .catch(() => setApiError("Không thể tải danh sách quận/huyện."));
+  }, [cityId]);
+
+  useEffect(() => {
+    if (cityId === undefined) return;
+    setIsLoading(true);
+    priceStatsApi.get({ city_id: cityId, district_id: districtId })
+      .then(setStats)
+      .catch(() => {
+        setApiError("Không thể tải thống kê giá từ máy chủ.");
+        setStats(null);
+      })
+      .finally(() => setIsLoading(false));
+  }, [cityId, districtId]);
+
+  const districtData = (stats?.price_stats_by_area || []).map((item) => ({
+    id: item.area_id,
+    name: item.area,
+    avgPrice: formatPrice(item.average_price_vnd),
+    range: `${formatPrice(item.minimum_price_vnd)} - ${formatPrice(item.maximum_price_vnd)}`,
+    trend: item.fluctuation_month === null ? "--" : `${item.fluctuation_month > 0 ? "+" : ""}${item.fluctuation_month}%`,
+    status: (item.fluctuation_month || 0) >= 0 ? "up" : "down",
+    total: item.total_listings,
+  }));
 
   return (
     <SiteLayout className="bg-[#FAF8F4]">
 
       <main className="max-w-[1500px] mx-auto px-4 lg:px-8 pt-6 pb-16 w-full flex-1">
+        {apiError && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {apiError}
+          </div>
+        )}
         {/* Breadcrumb */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <nav className="flex items-center gap-2 text-xs text-gray-500">
-            <Link href="/" className="hover:text-[#0F5F4A]">Trang chủ</Link>
-            <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-            <span className="text-[#121E1A] font-semibold">Tra cứu giá trọ thị trường</span>
-          </nav>
+          <Breadcrumbs
+            items={[
+              { label: "Trang chủ", href: "/" },
+              { label: "Tra cứu giá trọ thị trường" },
+            ]}
+          />
           <Link
             href="/tim-kiem"
             className="inline-flex items-center gap-1.5 text-xs text-[#0F5F4A] font-semibold hover:underline"
@@ -70,7 +120,7 @@ export default function PriceAnalyticsPage() {
               <div>
                 <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">Giá trung bình</span>
                 <div className="flex items-baseline gap-1 mt-1">
-                  <span className="font-['Plus_Jakarta_Sans'] text-3xl font-extrabold text-[#0F5F4A]">6.4tr</span>
+                  <span className="font-['Plus_Jakarta_Sans'] text-3xl font-extrabold text-[#0F5F4A]">{formatPrice(stats?.price_stats_general.average_price_vnd, "...")}</span>
                   <span className="text-xs text-gray-500">/tháng</span>
                 </div>
               </div>
@@ -93,7 +143,7 @@ export default function PriceAnalyticsPage() {
               <div>
                 <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">Tổng tin phân tích</span>
                 <div className="flex items-baseline gap-1 mt-1">
-                  <span className="font-['Plus_Jakarta_Sans'] text-3xl font-extrabold text-[#121E1A]">2.302</span>
+                  <span className="font-['Plus_Jakarta_Sans'] text-3xl font-extrabold text-[#121E1A]">{stats?.price_stats_general.total_listings ?? "..."}</span>
                   <span className="text-xs text-gray-500">căn</span>
                 </div>
               </div>
@@ -113,7 +163,7 @@ export default function PriceAnalyticsPage() {
               <div>
                 <span className="text-xs uppercase font-bold text-gray-400 tracking-wider">Khu vực sôi động nhất</span>
                 <div className="flex items-baseline gap-1 mt-1">
-                  <span className="font-['Plus_Jakarta_Sans'] text-2xl font-extrabold text-[#FF6B4A]">Phường 5</span>
+                  <span className="font-['Plus_Jakarta_Sans'] text-2xl font-extrabold text-[#FF6B4A]">{stats?.price_stats_general.area_hotspot || "Đang cập nhật"}</span>
                   <span className="text-xs text-gray-500 font-semibold">(Gò Vấp)</span>
                 </div>
               </div>
@@ -136,12 +186,16 @@ export default function PriceAnalyticsPage() {
             <div className="relative">
               <select
                 value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
+                onChange={(e) => {
+                  const city = cities.find((item) => item.name === e.target.value);
+                  setSelectedCity(e.target.value);
+                  setCityId(city?.id);
+                }}
                 className="custom-select px-4 py-2.5 pr-10 rounded-full bg-[#FAF8F4] border border-[#E8E4DC] text-xs font-bold text-[#0F5F4A] outline-none"
               >
-                <option>TP. Hồ Chí Minh</option>
-                <option>Hà Nội</option>
-                <option>Đà Nẵng</option>
+                {cities.length > 0
+                  ? cities.map((city) => <option key={city.id}>{city.name}</option>)
+                  : <option>Đang tải...</option>}
               </select>
               <span className="material-symbols-outlined pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[18px] text-[#0F5F4A]">
                 expand_more
@@ -174,17 +228,31 @@ export default function PriceAnalyticsPage() {
         {/* District Price Comparison Table */}
         <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-xs overflow-hidden mb-10">
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="font-['Plus_Jakarta_Sans'] font-bold text-lg text-[#121E1A]">
-              Bảng giá thuê bình quân theo từng Quận / Khu vực
-            </h2>
+            <div>
+              <h2 className="font-['Plus_Jakarta_Sans'] font-bold text-lg text-[#121E1A]">
+                Bảng giá thuê bình quân theo từng {districtId ? "Phường / Xã" : "Quận / Khu vực"}
+              </h2>
+              {districtId && (
+                <button
+                  type="button"
+                  onClick={() => setDistrictId(undefined)}
+                  className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#0F5F4A] hover:underline"
+                >
+                  <span className="material-symbols-outlined text-[14px]">arrow_back</span>
+                  Quay lại danh sách quận
+                </button>
+              )}
+            </div>
             <span className="text-xs text-gray-500">Đơn vị: VNĐ / tháng</span>
           </div>
 
-          <div className="overflow-x-auto">
+          {isLoading ? (
+            <PriceStatsSkeleton />
+          ) : <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#FAF8F4] border-b border-[#E8E4DC] text-gray-600 font-bold uppercase tracking-wider">
                 <tr>
-                  <th className="py-3.5 px-6">Quận / Huyện</th>
+                  <th className="py-3.5 px-6">{districtId ? "Phường / Xã" : "Quận / Huyện"}</th>
                   <th className="py-3.5 px-6">Giá trung bình</th>
                   <th className="py-3.5 px-6">Khoảng giá phổ biến</th>
                   <th className="py-3.5 px-6">Biến động (Tháng)</th>
@@ -209,18 +277,28 @@ export default function PriceAnalyticsPage() {
                     </td>
                     <td className="py-4 px-6 text-gray-600">{d.total} phòng</td>
                     <td className="py-4 px-6 text-right">
-                      <Link
-                        href={`/tim-kiem?district=${encodeURIComponent(d.name)}`}
-                        className="px-3.5 py-1.5 rounded-full bg-[#E6F4EE] hover:bg-[#0F5F4A] hover:text-white text-[#0F5F4A] font-semibold transition-all inline-block"
-                      >
-                        Tìm phòng
-                      </Link>
+                      {districtId ? (
+                        <Link
+                          href={`/tim-kiem?district_id=${districtId}&ward_id=${d.id}`}
+                          className="px-3.5 py-1.5 rounded-full bg-[#E6F4EE] hover:bg-[#0F5F4A] hover:text-white text-[#0F5F4A] font-semibold transition-all inline-block"
+                        >
+                          Tìm phòng
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setDistrictId(d.id)}
+                          className="px-3.5 py-1.5 rounded-full bg-[#E6F4EE] hover:bg-[#0F5F4A] hover:text-white text-[#0F5F4A] font-semibold transition-all"
+                        >
+                          Xem phường
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       </main>
 
