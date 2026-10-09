@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CityDto, PriceStatsDto } from "@shared/dto";
+import type { CityDto, PriceStatsDto } from "@/types/dto";
 import { locationsApi, priceStatsApi } from "@/lib/api/client";
 import { toPriceStatRows } from "@/lib/utils/priceStats";
 

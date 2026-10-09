@@ -42,6 +42,13 @@ export function buildSearchParams(
   return params;
 }
 
+export const SEARCH_PATH = "/tim-kiem";
+
+export function buildSearchUrl(search: string, f: FilterValues, page = 1): string {
+  const qs = buildSearchParams(search, f, page).toString();
+  return `${SEARCH_PATH}${qs ? `?${qs}` : ""}`;
+}
+
 const toId = (value: string | null): number | null => {
   const n = Number(value);
   return value && Number.isInteger(n) && n > 0 ? n : null;

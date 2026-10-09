@@ -6,7 +6,9 @@ from pydantic import BaseModel
 class PriceStatsGeneral(BaseModel):
     total_listings: int
     average_price_vnd: Optional[float] = None
+    price_fluctuation_month: Optional[float] = None
     area_hotspot: Optional[str] = None
+    hotspot_posting_growth_month: Optional[float] = None
 
 class PriceStatsByArea(BaseModel):
     area_id: int

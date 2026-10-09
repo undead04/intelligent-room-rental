@@ -1,4 +1,4 @@
-import type { PriceStatsDto } from "@shared/dto";
+import type { PriceStatsDto } from "@/types/dto";
 import { formatPrice } from "./listing";
 
 export interface PriceStatRow {

@@ -1,7 +1,6 @@
 export interface CityDto {
   id: number;
   name: string;
-  region_id: number | null;
 }
 
 export type AmenityKey =
@@ -20,19 +19,17 @@ export interface DistrictDto {
   id: number;
   city_id: number;
   name: string;
-  district_id: number | null;
 }
 
 export interface WardDto {
   id: number;
   district_id: number;
   name: string;
-  ward_id: number | null;
 }
 
 export interface RoomTypeDto {
   id: number;
-  room_type: string;
+  name: string;
 }
 
 export interface ListingDto {
@@ -108,7 +105,9 @@ export interface PriceStatsDto {
   price_stats_general: {
     total_listings: number;
     average_price_vnd: number | null;
+    price_fluctuation_month?: number | null;
     area_hotspot: string | null;
+    hotspot_posting_growth_month?: number | null;
   };
   price_stats_by_area: Array<{
     area_id: number;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CityDto, RoomTypeDto } from "@shared/dto";
+import type { CityDto, RoomTypeDto } from "@/types/dto";
 import { locationsApi, roomTypesApi } from "@/lib/api/client";
 
 export function useFilterOptions() {

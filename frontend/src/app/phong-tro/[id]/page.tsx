@@ -9,9 +9,11 @@ import DetailBreadcrumb from "./_components/DetailBreadcrumb";
 import LandlordCard from "./_components/LandlordCard";
 import AmenitiesGrid from "./_components/AmenitiesGrid";
 import ListingDescription from "./_components/ListingDescription";
+import SimilarListings from "./_components/SimilarListings";
 import ListingKeyDetails from "./_components/ListingKeyDetails";
 import ListingPriceHeader from "./_components/ListingPriceHeader";
 import { useListingDetail } from "./_hooks/useListingDetail";
+import { useSimilarListings } from "./_hooks/useSimilarListings";
 import {
   FALLBACK_LISTING_AREA,
   FALLBACK_LISTING_LOCATION,
@@ -30,6 +32,7 @@ export default function PropertyDetailPage() {
   const [selectedImgIdx, setSelectedImgIdx] = useState(0);
 
   const { listing, apiError, isLoading } = useListingDetail(params.id);
+  const { listings: similarListings } = useSimilarListings(listing);
 
   const images = resolveListingImages(listing?.images);
   const title = listing?.title || FALLBACK_LISTING_TITLE;
@@ -102,6 +105,8 @@ export default function PropertyDetailPage() {
             onTogglePhone={() => setShowPhone(!showPhone)}
           />
         </div>
+
+        <SimilarListings listings={similarListings} />
       </main>
 
     </SiteLayout>

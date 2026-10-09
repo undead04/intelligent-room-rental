@@ -1,4 +1,5 @@
 export type {
+  AmenityKey,
   CityDto,
   DistrictDto,
   ListingDetailDto,
@@ -10,5 +11,4 @@ export type {
   RoomTypeDto,
   UserDto,
   WardDto,
-  AmenityKey,
 } from "./listing";

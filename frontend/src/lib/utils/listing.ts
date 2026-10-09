@@ -1,4 +1,4 @@
-import type { ListingDto } from "@shared/dto";
+import type { ListingDto } from "@/types/dto";
 import type { ListingCardData } from "@/types";
 import { DEFAULT_PROPERTY_IMAGE } from "@/lib/constants/property";
 

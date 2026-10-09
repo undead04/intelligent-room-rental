@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FilterValues, ListingCardData } from "@/types";
-import type { ListingQueryDto } from "@shared/dto";
+import type { ListingQueryDto } from "@/types/dto";
 import { listingsApi } from "@/lib/api/client";
 import { toListingCard } from "@/lib/utils/listing";
 import { MAX_PRICE_MILLION } from "@/lib/utils/filter";

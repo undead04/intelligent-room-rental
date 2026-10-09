@@ -3,7 +3,7 @@
 import { useState } from "react";
 import FilterSelect from "@/components/FilterSelect";
 import PriceRangeFilter from "@/components/PriceRangeFilter";
-import { CityDto, RoomTypeDto } from "@shared/dto/listing";
+import { CityDto, RoomTypeDto } from "@/types/dto";
 import { SortOptions, FilterValues } from "@/types";
 import { useCascadingLocations } from "@/hooks/useLocations";
 import { DEFAULT_FILTERS } from "@/lib/utils/filter";
@@ -95,7 +95,7 @@ export default function FilterModalBody({
               label="Loại phòng"
               value={draft.roomType}
               onChange={(v) => setDraft((d) => ({ ...d, roomType: v }))}
-              options={roomTypes.map((r) => ({ value: r.id, label: r.room_type }))}
+              options={roomTypes.map((r) => ({ value: r.id, label: r.name }))}
             />
             <FilterSelect
               label="Sắp xếp"

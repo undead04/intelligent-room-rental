@@ -1,4 +1,4 @@
-import type { CityDto } from "@shared/dto";
+import type { CityDto } from "@/types/dto";
 import FilterSelect from "@/components/FilterSelect";
 
 interface PriceStatsFilterBarProps {

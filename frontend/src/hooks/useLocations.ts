@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { DistrictDto, WardDto } from "@shared/dto";
+import type { DistrictDto, WardDto } from "@/types/dto";
 import { locationsApi } from "@/lib/api/client";
 
 const NO_DISTRICTS: DistrictDto[] = [];

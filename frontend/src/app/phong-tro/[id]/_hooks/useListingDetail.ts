@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ListingDetailDto } from "@shared/dto";
+import type { ListingDetailDto } from "@/types/dto";
 import { listingsApi } from "@/lib/api/client";
 
 const MISSING_LISTING_ID_ERROR = "Không tìm thấy mã tin đăng.";

@@ -60,6 +60,21 @@ class ListingService:
         total, average = self.repository.count_and_average(filters)
         current_start, previous_start = month_boundaries()
         date_column = func.coalesce(Listing.posted_date, Listing.crawled_at)
+
+        # 1. Tính biến động tăng/giảm giá trung bình của toàn thành phố / phạm vi query
+        general_month_stats = self.db.query(
+            func.avg(case((date_column >= current_start, Listing.price_vnd))).label("current_average"),
+            func.avg(case(((date_column >= previous_start) & (date_column < current_start), Listing.price_vnd))).label("previous_average"),
+        ).filter(*filters).one()
+
+        price_fluctuation_month = None
+        if general_month_stats.current_average is not None and general_month_stats.previous_average not in (None, 0):
+            price_fluctuation_month = round(
+                (general_month_stats.current_average - general_month_stats.previous_average)
+                / general_month_stats.previous_average * 100,
+                2
+            )
+
         if district_id is None:
             area_model, area_column, area_name = District, Listing.district_id, District.name
             area_filter = District.id == Listing.district_id
@@ -67,6 +82,7 @@ class ListingService:
             area_model, area_column, area_name = Ward, Listing.ward_id, Ward.name
             area_filter = Ward.id == Listing.ward_id
 
+        # 2. Thống kê theo từng khu vực con, đồng thời đếm số lượng tin đăng tháng này và tháng trước
         area_query = (
             self.db.query(
                 area_model.id.label("area_id"),
@@ -77,6 +93,8 @@ class ListingService:
                 func.max(Listing.price_vnd).label("maximum_price"),
                 func.avg(case((date_column >= current_start, Listing.price_vnd))).label("current_average"),
                 func.avg(case(((date_column >= previous_start) & (date_column < current_start), Listing.price_vnd))).label("previous_average"),
+                func.count(case((date_column >= current_start, Listing.id))).label("current_listings_count"),
+                func.count(case(((date_column >= previous_start) & (date_column < current_start), Listing.id))).label("previous_listings_count"),
             )
             .join(area_model, area_filter)
             .filter(*filters)
@@ -100,11 +118,25 @@ class ListingService:
                 minimum_price_vnd=round(row.minimum_price, 2) if row.minimum_price is not None else None,
                 maximum_price_vnd=round(row.maximum_price, 2) if row.maximum_price is not None else None,
             ))
+
+        # 3. Tính tỉ lệ phần trăm số tin đăng tuyển của khu vực hot nhất tăng so với tháng trước
+        hotspot_posting_growth = None
+        if rows:
+            hotspot_row = rows[0]
+            cur_count = hotspot_row.current_listings_count or 0
+            prev_count = hotspot_row.previous_listings_count or 0
+            if prev_count > 0:
+                hotspot_posting_growth = round((cur_count - prev_count) / prev_count * 100, 2)
+            elif cur_count > 0:
+                hotspot_posting_growth = 100.0
+
         return PriceStatsResponse(
             price_stats_general=PriceStatsGeneral(
                 total_listings=total or 0,
                 average_price_vnd=round(average, 2) if average is not None else None,
+                price_fluctuation_month=price_fluctuation_month,
                 area_hotspot=areas[0].area if areas else None,
+                hotspot_posting_growth_month=hotspot_posting_growth,
             ),
             price_stats_by_area=areas,
         )

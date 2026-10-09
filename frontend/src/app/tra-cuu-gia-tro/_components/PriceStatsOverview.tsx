@@ -1,5 +1,5 @@
 import KpiCard from "@/components/KpiCard";
-import type { PriceStatsDto } from "@shared/dto";
+import type { PriceStatsDto } from "@/types/dto";
 import { formatPrice } from "@/lib/utils/listing";
 
 interface PriceStatsOverviewProps {
@@ -7,19 +7,38 @@ interface PriceStatsOverviewProps {
 }
 
 export default function PriceStatsOverview({ stats }: PriceStatsOverviewProps) {
+  const general = stats?.price_stats_general;
+  const priceFluctuation = general?.price_fluctuation_month ?? null;
+  const isPriceUp = (priceFluctuation ?? 0) >= 0;
+
+  const postingGrowth = general?.hotspot_posting_growth_month ?? null;
+  const isGrowthUp = (postingGrowth ?? 0) >= 0;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
       <KpiCard
         label="Giá trung bình"
-        value={formatPrice(stats?.price_stats_general.average_price_vnd, "...")}
+        value={formatPrice(general?.average_price_vnd, "...")}
         unit="/tháng"
         icon="payments"
         footer={
           <>
-            <span className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-[#E6F4EE] text-[#0F5F4A] text-xs font-bold">
-              <span className="material-symbols-outlined text-[14px]">trending_up</span>
-              +2.4%
-            </span>
+            {priceFluctuation !== null ? (
+              <span
+                className={`inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                  isPriceUp
+                    ? "bg-[#E6F4EE] text-[#0F5F4A]"
+                    : "bg-[#FEECEC] text-[#D32F2F]"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">
+                  {isPriceUp ? "trending_up" : "trending_down"}
+                </span>
+                {priceFluctuation > 0 ? `+${priceFluctuation}%` : `${priceFluctuation}%`}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-400 font-medium">--</span>
+            )}
             <span className="text-xs text-gray-500">so với tháng trước</span>
           </>
         }
@@ -27,7 +46,7 @@ export default function PriceStatsOverview({ stats }: PriceStatsOverviewProps) {
 
       <KpiCard
         label="Tổng tin phân tích"
-        value={`${stats?.price_stats_general.total_listings ?? "..."}`}
+        value={`${general?.total_listings ?? "..."}`}
         unit="căn"
         icon="bar_chart"
         tone="neutral"
@@ -41,16 +60,30 @@ export default function PriceStatsOverview({ stats }: PriceStatsOverviewProps) {
 
       <KpiCard
         label="Khu vực sôi động nhất"
-        value={stats?.price_stats_general.area_hotspot || "Đang cập nhật"}
-        unit="(Gò Vấp)"
+        value={general?.area_hotspot || "Đang cập nhật"}
+        unit=""
         icon="local_fire_department"
         tone="coral"
         compactValue
         footer={
-          <span className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-[#FFF0ED] text-[#FF6B4A] text-xs font-bold">
-            <span className="material-symbols-outlined text-[14px]">whatshot</span>
-            Lượt tìm tăng 38%
-          </span>
+          postingGrowth !== null ? (
+            <span
+              className={`inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                isGrowthUp ? "bg-[#FFF0ED] text-[#FF6B4A]" : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px]">whatshot</span>
+              {postingGrowth > 0
+                ? `Tin đăng tăng +${postingGrowth}%`
+                : `Tin đăng giảm ${postingGrowth}%`}{" "}
+              <span className="text-gray-400 font-normal">sv tháng trước</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-[#FFF0ED] text-[#FF6B4A] text-xs font-bold">
+              <span className="material-symbols-outlined text-[14px]">whatshot</span>
+              Khu vực có nhiều tin nhất
+            </span>
+          )
         }
       />
     </div>

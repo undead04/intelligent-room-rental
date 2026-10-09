@@ -1,7 +1,7 @@
 "use client";
 
 import FilterModalBody from "@/components/FilterModalBody";
-import { CityDto, RoomTypeDto } from "@shared/dto/listing";
+import { CityDto, RoomTypeDto } from "@/types/dto";
 import { SortOptions, FilterValues } from "@/types";
 
 interface FilterModalProps {

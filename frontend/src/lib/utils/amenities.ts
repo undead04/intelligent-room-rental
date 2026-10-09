@@ -1,4 +1,4 @@
-import type { AmenityKey } from "@shared/dto";
+import type { AmenityKey } from "@/types/dto";
 
 export interface AmenityDisplay {
   icon: string;
