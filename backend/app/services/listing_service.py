@@ -108,3 +108,41 @@ class ListingService:
             ),
             price_stats_by_area=areas,
         )
+
+    def get_listings_by_ids(self, ids: list[str], preserve_order: bool = True) -> list[Listing]:
+        """
+        Lấy danh sách tin đăng theo danh sách IDs.
+        """
+        cleaned_ids = [str(item).strip() for item in ids if str(item).strip()]
+        if not cleaned_ids:
+            return []
+        return self.repository.get_by_ids(cleaned_ids, preserve_order=preserve_order)
+
+    def vector_search(
+        self,
+        query_vector: list[float],
+        model_name: Optional[str] = None,
+        limit: int = 20,
+        similarity_threshold: Optional[float] = None,
+        city_id: Optional[int] = None,
+        district_id: Optional[int] = None,
+        ward_id: Optional[int] = None,
+        room_type_id: Optional[int] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+    ) -> list[dict]:
+        """
+        Tìm kiếm tin đăng theo vector embedding và trả về kết quả kèm similarity_score và distance.
+        """
+        return self.repository.vector_search(
+            query_vector=query_vector,
+            model_name=model_name,
+            limit=limit,
+            similarity_threshold=similarity_threshold,
+            city_id=city_id,
+            district_id=district_id,
+            ward_id=ward_id,
+            room_type_id=room_type_id,
+            min_price=min_price,
+            max_price=max_price,
+        )

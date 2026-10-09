@@ -78,3 +78,10 @@ class ListingCreate(BaseModel):
     district_id: Optional[int] = None
     ward_id: Optional[int] = None
     room_type_id: Optional[int] = None
+
+
+class VectorSearchResult(BaseModel):
+    listing: ListingResponse
+    distance: float
+    similarity_score: float
+    model_config = ConfigDict(from_attributes=True)
