@@ -166,6 +166,82 @@ filters such as `city_id`, `district_id`, `ward_id`, `room_type_id`,
 }
 ```
 
+#### Vector Search API (`POST /api/v1/listings/vector-search`)
+
+Thực hiện tìm kiếm ngữ nghĩa (Semantic Search) bằng PostgreSQL `pgvector`:
+
+* **Request Body**:
+  ```json
+  {
+    "vector": [0.012, -0.045, ...]
+  }
+  ```
+* **Query Parameters**:
+  * `limit` (int, default: 20): Số lượng kết quả tối đa
+  * `similarity_threshold` (float 0.0 - 1.0): Ngưỡng tương đồng tối thiểu
+  * `model_name` (string, optional): Tên mô hình embedding
+  * `city_id`, `district_id`, `ward_id`, `room_type_id`, `min_price`, `max_price`: Bộ lọc metadata kết hợp (Hybrid Search)
+* **Response**:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "listing": { "id": "nhatot_123", "title": "Phòng trọ..." },
+        "distance": 0.1824,
+        "similarity_score": 0.8176
+      }
+    ]
+  }
+  ```
+
+#### Batch Query By IDs (`POST /api/v1/listings/by-ids`)
+
+Lấy thông tin danh sách tin đăng theo mảng ID và **giữ nguyên thứ tự** của mảng đầu vào:
+
+* **Request Body**:
+  ```json
+  {
+    "ids": ["nhatot_123", "nhatot_456"]
+  }
+  ```
+* **Response**:
+  ```json
+  {
+    "success": true,
+    "data": [ { "id": "nhatot_123", ... }, { "id": "nhatot_456", ... } ]
+  }
+  ```
+
+#### Market Price Statistics (`GET /api/v1/listings/price-stats`)
+
+Thống kê phân tích giá phòng trọ theo thành phố/quận/phường trong thời gian thực:
+
+* **Query Parameters**: `city_id` (bắt buộc), `district_id`, `room_type_id`.
+* **Response Data**:
+  ```json
+  {
+    "price_stats_general": {
+      "total_listings": 9550,
+      "average_price_vnd": 4500000.0,
+      "price_fluctuation_month": 2.45,
+      "area_hotspot": "Quận Gò Vấp",
+      "hotspot_posting_growth_month": 15.3
+    },
+    "price_stats_by_area": [
+      {
+        "area_id": 1,
+        "area": "Quận Gò Vấp",
+        "total_listings": 1250,
+        "fluctuation_month": 1.8,
+        "average_price_vnd": 4200000.0,
+        "minimum_price_vnd": 2000000.0,
+        "maximum_price_vnd": 9000000.0
+      }
+    ]
+  }
+  ```
+
 ### 2. Running the Development Server
 
 Navigate to the `backend` folder and run `uvicorn`:
@@ -188,3 +264,5 @@ Once the server is running, visit:
 - **ReDoc Documentation**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 - **Health Check**: [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
 - **Listings API**: [http://localhost:8000/api/v1/listings?limit=10](http://localhost:8000/api/v1/listings?limit=10)
+- **Vector Search API**: `POST http://localhost:8000/api/v1/listings/vector-search`
+- **Price Stats API**: [http://localhost:8000/api/v1/listings/price-stats?city_id=1](http://localhost:8000/api/v1/listings/price-stats?city_id=1)
