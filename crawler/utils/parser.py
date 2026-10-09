@@ -44,6 +44,8 @@ def parse_chotot_item(item):
     address_parts = [p for p in [street_name, ward_name, area_name, region_name] if p]
     address_raw = item.get('address') or ", ".join(address_parts)
 
+    now_iso = datetime.now().isoformat()
+
     return {
         # --- THÔNG TIN ĐỊNH DANH BÀI ĐĂNG ---
         "listing_id": f"nhatot_{list_id}",
@@ -51,6 +53,11 @@ def parse_chotot_item(item):
         "list_id": list_id,
         "source": "nhatot",
         "url": f"https://www.nhatot.com/phong-tro/{list_id}.htm",
+        
+        # --- TRẠNG THÁI HOẠT ĐỘNG (ACTIVE/EXPIRED) ---
+        "is_active": True,
+        "status": item.get('status', 'active'),
+        "last_checked_at": now_iso,
         
         # --- THÔNG TIN GIAO DIỆN HIỂN THỊ (UI/WEBSITE) ---
         "title": item.get('subject', ''),
@@ -60,10 +67,11 @@ def parse_chotot_item(item):
         "description": item.get('body', ''),
         "address_raw": address_raw,
         
-        # --- THÔNG TIN NGƯỜI ĐĂNG ---
+        # --- THÔNG TIN NGƯỜI ĐĂNG & LIÊN HỆ ---
         "poster_id": item.get('account_id'),
         "poster_name": poster_name,
         "poster_avatar": poster_avatar,
+        "phone": item.get('phone', ''), # Số điện thoại (nếu có, thường ở dạng masked 081701**** trên Chợ Tốt)
         "poster_live_ads": seller_info.get('live_ads', 0),
         "poster_sold_ads": seller_info.get('sold_ads', 0),
         "is_company_ad": bool(item.get('company_ad', False)),
@@ -89,5 +97,5 @@ def parse_chotot_item(item):
         
         # --- METADATA ---
         "posted_date": posted_date,
-        "crawled_at": datetime.now().isoformat()
+        "crawled_at": now_iso
     }
