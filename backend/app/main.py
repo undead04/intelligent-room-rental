@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import logging
 import uuid
 
@@ -6,9 +7,9 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from app.services.embedding import EmbeddingModel
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
@@ -18,15 +19,31 @@ from app.schemas.response import ErrorDTO
 configure_logging()
 logger = logging.getLogger(__name__)
 
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Gán trực tiếp vào app.state khi Server START
+    app.state.embedding_model = EmbeddingModel(
+        model_name="keepitreal/vietnamese-sbert", batch_size=32
+    )
+
+    yield
+
+    # Cleanup khi Server STOP (nếu cần)
+    if hasattr(app.state, "embedding_model"):
+        del app.state.embedding_model
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
-
-
+    
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
@@ -151,3 +168,7 @@ def root():
         "docs": "/docs",
         "health": f"{settings.API_V1_STR}/health"
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="", port=8000)

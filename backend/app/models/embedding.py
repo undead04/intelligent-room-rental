@@ -2,7 +2,6 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
 from app.core.database import Base
 
 
@@ -23,7 +22,7 @@ class ListingEmbedding(Base):
     dimension = Column(Integer, nullable=False)
     # Keep the dimension open so different embedding models can coexist.
     # The dimension column remains the source of truth for validation.
-    vector = Column(Vector(), nullable=False)
+    vector = Column(Vector(dimension), nullable=False)
     content_hash = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(

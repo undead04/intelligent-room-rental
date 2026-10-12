@@ -5,6 +5,6 @@ from pydantic import BaseModel, ConfigDict
 
 class RoomTypeResponse(BaseModel):
     id: int
-    room_type: Optional[str] = None
+    name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

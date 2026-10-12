@@ -1,4 +1,4 @@
-import FilterButton from "@/components/FilterButton";
+import SearchBar from "@/components/SearchBar";
 
 interface HeroSearchProps {
   query: string;
@@ -25,21 +25,15 @@ export default function HeroSearch({
           Hàng ngàn tin đăng được xác thực mỗi ngày từ các nguồn uy tín
         </p>
 
-        {/* Pill Search Bar */}
-        <form onSubmit={onSubmit} className="w-full relative flex items-center bg-white rounded-full h-14 border border-[#E8E4DC] shadow-[0_4px_20px_rgba(15,95,74,0.06)] px-5 gap-3 transition-shadow focus-within:shadow-[0_6px_24px_rgba(15,95,74,0.12)]">
-          <span className="material-symbols-outlined text-[#6F7974] text-[22px] shrink-0">search</span>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Bạn muốn tìm phòng ở đâu? (vd: gần ĐH Bách Khoa, dưới 4 triệu...)"
-            className="w-full h-full bg-transparent text-sm text-[#121E1A] placeholder:text-[#6F7974] outline-none"
-          />
-          <FilterButton activeFilterCount={activeFilterCount} onClick={onOpenFilter} variant="hero" />
-          <button type="submit" className="px-5 py-2 rounded-full bg-[#0F5F4A] hover:bg-[#004635] text-white text-sm font-semibold transition-all shrink-0 hidden sm:inline-flex items-center gap-1.5">
-            <span>Tìm</span>
-          </button>
-        </form>
+        <SearchBar
+          query={query}
+          placeholder="Bạn muốn tìm phòng ở đâu? (vd: gần ĐH Bách Khoa, dưới 4 triệu...)"
+          activeFilterCount={activeFilterCount}
+          onQueryChange={onQueryChange}
+          onSubmit={onSubmit}
+          onOpenFilter={onOpenFilter}
+          size="hero"
+        />
       </div>
     </section>
   );

@@ -12,7 +12,7 @@ import { useDistrictOptions } from "@/hooks/useLocations";
 import { useFilterOptions } from "@/hooks/useFilterOptions";
 import { useSearchResults } from "@/app/tim-kiem/_hooks/useSearchResults";
 import type { FilterValues } from "@/types";
-import { buildSearchParams, countActiveFilters, parseSearchParams } from "@/lib/utils/filter";
+import { buildSearchUrl, countActiveFilters, parseSearchParams } from "@/lib/utils/filter";
 import { SORT_OPTIONS } from "@/lib/constants/search";
 import { Pagination } from "@/components/pagination/Pagination";
 
@@ -44,8 +44,7 @@ function SearchPageContent() {
 
   // Đổi từ khóa/bộ lọc thì về trang 1, chỉ đổi trang thì giữ nguyên bộ lọc
   const navigate = (query: string, values: FilterValues, nextPage = 1) => {
-    const qs = buildSearchParams(query, values, nextPage).toString();
-    router.push(`/tim-kiem${qs ? `?${qs}` : ""}`);
+    router.push(buildSearchUrl(query, values, nextPage));
   };
 
   const selectedDistrictName = districtOptions.find((d) => d.id === filters.district)?.name;

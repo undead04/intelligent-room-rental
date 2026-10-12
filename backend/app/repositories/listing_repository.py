@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional,Any
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Query, Session, joinedload
@@ -146,72 +146,65 @@ class ListingRepository:
         return query.all()
 
     def vector_search(
-        self,
-        query_vector: list[float],
-        model_name: Optional[str] = None,
-        limit: int = 20,
-        similarity_threshold: Optional[float] = None,
-        city_id: Optional[int] = None,
-        district_id: Optional[int] = None,
-        ward_id: Optional[int] = None,
-        room_type_id: Optional[int] = None,
-        min_price: Optional[float] = None,
-        max_price: Optional[float] = None,
-    ) -> list[dict]:
-        """
-        Tìm kiếm tin đăng theo vector embedding bằng khoảng cách Cosine,
-        trả về đầy đủ Listing kèm điểm khoảng cách (distance) và độ tương đồng (similarity_score).
-        """
-        # Cosine distance: d = 1 - cosine_similarity
-        distance_col = ListingEmbedding.vector.cosine_distance(query_vector).label("distance")
+            self,
+            query_vector: list[float],  # Đảm bảo nhận vào list[float]
+            city_id: int | None = None,
+            district_id: int | None = None,
+            ward_id: int | None = None,
+            min_price: float | None = None,
+            max_price: float | None = None,
+            min_area: float | None = None,
+            max_area: float | None = None,
+            limit: int = 50,
+        ) -> list[dict[str, Any]]:
+            """Tìm kiếm tin đăng theo vector embedding bằng khoảng cách Cosine."""
+            # Biến đổi cosine distance sang column expression
+            distance_col = ListingEmbedding.vector.cosine_distance(
+                query_vector
+            ).label("distance")
 
-        query = (
-            self.db.query(Listing, distance_col)
-            .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
-            .options(
-                joinedload(Listing.city),
-                joinedload(Listing.district),
-                joinedload(Listing.ward),
-                joinedload(Listing.room_type),
+            query = (
+                self.db.query(Listing, distance_col)
+                .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
+                .options(
+                    joinedload(Listing.city),
+                    joinedload(Listing.district),
+                    joinedload(Listing.ward),
+                    joinedload(Listing.room_type),
+                )
             )
-        )
 
-        if model_name:
-            query = query.filter(ListingEmbedding.model_name == model_name)
+            # Filters
+            if city_id is not None:
+                query = query.filter(Listing.region_id == city_id)
+            if district_id is not None:
+                query = query.filter(Listing.district_id == district_id)
+            if ward_id is not None:
+                query = query.filter(Listing.ward_id == ward_id)
 
-        if similarity_threshold is not None:
-            # similarity_score >= threshold  <=>  1 - distance >= threshold  <=>  distance <= 1 - threshold
-            max_distance = 1.0 - similarity_threshold
-            query = query.filter(distance_col <= max_distance)
+            if min_price is not None:
+                query = query.filter(Listing.price_vnd >= min_price)
+            if max_price is not None:
+                query = query.filter(Listing.price_vnd <= max_price)
 
-        # Bộ lọc metadata
-        for column, value in (
-            (Listing.region_id, city_id),
-            (Listing.district_id, district_id),
-            (Listing.ward_id, ward_id),
-            (Listing.room_type_id, room_type_id),
-        ):
-            if value is not None:
-                query = query.filter(column == value)
+            if min_area is not None:
+                query = query.filter(Listing.area_m2 >= min_area)
+            if max_area is not None:
+                query = query.filter(Listing.area_m2 <= max_area)
 
-        if min_price is not None:
-            query = query.filter(Listing.price_vnd >= min_price)
-        if max_price is not None:
-            query = query.filter(Listing.price_vnd <= max_price)
+            rows = query.order_by(distance_col.asc()).limit(limit).all()
 
-        rows = query.order_by(distance_col.asc()).limit(limit).all()
+            results = []
+            for listing, dist in rows:
+                dist_val = float(dist) if dist is not None else 1.0
+                # Normalize Cosine Distance [0..2] -> Similarity [0..1]
+                similarity_score = max(0.0, min(1.0, 1.0 - dist_val))
 
-        results = []
-        for listing, dist in rows:
-            dist_val = float(dist)
-            # cosine_distance thuộc [0, 2] -> similarity_score = 1 - distance
-            # Giới hạn similarity trong khoảng [0.0, 1.0] cho an toàn
-            similarity_score = max(0.0, min(1.0, 1.0 - dist_val))
+                results.append(
+                    {
+                        "listing": listing,
+                        "similarity_score": similarity_score,
+                    }
+                )
 
-            results.append({
-                "listing": listing,
-                "distance": round(dist_val, 4),
-                "similarity_score": round(similarity_score, 4),
-            })
-
-        return results
+            return results
