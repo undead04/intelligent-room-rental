@@ -1,5 +1,5 @@
 import Link from "next/link";
-import FilterButton from "@/components/FilterButton";
+import SearchBar from "@/components/SearchBar";
 
 interface SearchToolbarProps {
   query: string;
@@ -27,30 +27,15 @@ export default function SearchToolbar({
         <span className="material-symbols-outlined text-[20px]">arrow_back</span>
       </Link>
 
-      <form
+      <SearchBar
+        query={query}
+        placeholder={placeholder}
+        activeFilterCount={activeFilterCount}
+        onQueryChange={onQueryChange}
         onSubmit={onSubmit}
-        className="flex-1 relative flex items-center gap-2 bg-white border border-[#E8E4DC] rounded-full pl-4 pr-1.5 sm:pl-5 py-1.5 sm:py-2 shadow-xs"
-      >
-        <span className="material-symbols-outlined text-[#0F5F4A] text-[20px]">search</span>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder={placeholder}
-          aria-label="Từ khóa tìm kiếm"
-          className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-[#121E1A] placeholder:text-[#6F7974] outline-none"
-        />
-        <button
-          type="submit"
-          aria-label="Tìm"
-          title="Tìm"
-          className="shrink-0 px-3 sm:px-5 py-1.5 sm:py-2 rounded-full bg-[#0F5F4A] hover:bg-[#004635] text-white text-xs sm:text-sm font-semibold transition-colors"
-        >
-          <span className="material-symbols-outlined text-[18px] sm:hidden">search</span>
-        </button>
-      </form>
-
-      <FilterButton activeFilterCount={activeFilterCount} onClick={onOpenFilter} variant="toolbar" />
+        onOpenFilter={onOpenFilter}
+        size="compact"
+      />
     </div>
   );
 }

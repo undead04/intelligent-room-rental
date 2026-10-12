@@ -106,7 +106,7 @@ def _upsert_location(session: Session, row: dict[str, Any]) -> tuple[int | None,
     if city_name:
         city = session.query(City).filter(City.name == city_name).one_or_none()
         if city is None:
-            city = City(name=city_name)
+            city = City(name=city_name,id=region_id)
             session.add(city)
             session.flush()
         else:
@@ -125,6 +125,7 @@ def _upsert_location(session: Session, row: dict[str, Any]) -> tuple[int | None,
             district = District(
                 city_id=city.id,
                 name=district_name,
+                id=district_id
             )
             session.add(district)
             session.flush()
@@ -143,6 +144,7 @@ def _upsert_location(session: Session, row: dict[str, Any]) -> tuple[int | None,
                 raise ValueError(f"Ward {ward_id} has no district {district_id}")
             ward = Ward(
                 district_id=district.id,
+                id=ward_id,
                 name=ward_name,
             )
             session.add(ward)
@@ -159,15 +161,19 @@ def _upsert_location(session: Session, row: dict[str, Any]) -> tuple[int | None,
     )
 
 
-def _upsert_room_type(session: Session, value: Any) -> int | None:
-    name = _text(value)
+
+def _upsert_room_type(session: Session, row: dict[str, Any]) -> int | None:
+    name = _text(row.get("room_type"))
+    id = _int(row.get("category_id"))
     if not name:
         return None
-    room_type = session.query(RoomType).filter(RoomType.room_type == name).one_or_none()
+    room_type = session.query(RoomType).filter(RoomType.id == id).one_or_none()
     if room_type is None:
-        room_type = RoomType(room_type=name)
+        room_type = RoomType(name=name, id=id)
         session.add(room_type)
         session.flush()
+    else:
+        room_type.name = name
     return room_type.id
 
 
@@ -228,7 +234,7 @@ def _listing_values(
         "region_id": city_id,
         "district_id": district_id,
         "ward_id": ward_id,
-        "room_type_id": _upsert_room_type(session, row.get("room_type")),
+        "room_type_id": _upsert_room_type(session, row),
     }
 
 

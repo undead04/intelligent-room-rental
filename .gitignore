@@ -34,5 +34,12 @@ crawler/data/processed/*.csv
 .DS_Store
 Thumbs.db
 
+# Agent folders
+ai-agent/fixtures/data/*
+ai-agent/traces/*
+ai-agent/workspace/data/*
+ai-agent/workspace/output/*
+ai-agent/explainer.html
+
 
 Plan_Module_ML_PriceModel_MatchScore.md

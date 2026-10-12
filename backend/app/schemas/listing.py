@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.user import UserResponse
 
@@ -55,7 +55,7 @@ class ListingResponse(BaseModel):
 
 class ListingDetailResponse(ListingResponse):
     description: Optional[str] = None
-    images: Optional[List[str]] = None
+    images: Optional[list[str]] = None
     price_million_per_m2: Optional[float] = None
     deposit: Optional[float] = None
     furnishing_code: Optional[int] = None
@@ -82,6 +82,31 @@ class ListingCreate(BaseModel):
 
 class VectorSearchResult(BaseModel):
     listing: ListingResponse
-    distance: float
-    similarity_score: float
+    match_score: float
+    explain_match: Optional[dict] = None
     model_config = ConfigDict(from_attributes=True)
+
+class VectorSearchRequest(BaseModel):
+    lat: Optional[float] = Field(None, description="Vĩ độ người dùng")
+    lng: Optional[float] = Field(None, description="Kinh độ người dùng")
+    city_id: Optional[int] = Field(None, ge=1)
+    district_id: Optional[int] = Field(None, ge=1)
+    ward_id: Optional[int] = Field(None, ge=1)
+    min_price: Optional[float] = Field(None, ge=0)
+    max_price: Optional[float] = Field(None, ge=0)
+    min_area: Optional[float] = Field(None, ge=0)
+    max_area: Optional[float] = Field(None, ge=0)
+    limit: int = Field(5, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def validate_ranges(self) -> "VectorSearchRequest":
+        if self.min_price is not None and self.max_price is not None:
+            if self.min_price > self.max_price:
+                raise ValueError("min_price không được lớn hơn max_price")
+        if self.min_area is not None and self.max_area is not None:
+            if self.min_area > self.max_area:
+                raise ValueError("min_area không được lớn hơn max_area")
+        return self

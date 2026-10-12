@@ -1,12 +1,12 @@
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.services.listing_service import ListingService
 from app.schemas.analytics import PriceStatsResponse
-from app.schemas.listing import ListingDetailResponse, ListingResponse, VectorSearchResult
+from app.schemas.listing import ListingDetailResponse, ListingResponse, VectorSearchResult, VectorSearchRequest
 from app.schemas.listing_count import ListingCountResponse
 from app.schemas.response import ErrorDTO, ResponseDTO
 
@@ -127,29 +127,32 @@ def get_listings_by_ids(
     summary="Tìm kiếm tin đăng theo vector embedding (kèm similarity_score)",
 )
 def vector_search_listings(
-    vector: list[float] = Body(..., embed=True, description="Query vector embedding"),
-    limit: int = Query(20, ge=1, le=100),
-    similarity_threshold: Optional[float] = Query(None, ge=0.0, le=1.0, description="Ngưỡng điểm tương đồng tối thiểu (0 đến 1)"),
-    model_name: Optional[str] = Query(None, description="Tên embedding model"),
-    city_id: Optional[int] = Query(None, ge=1),
-    district_id: Optional[int] = Query(None, ge=1),
-    ward_id: Optional[int] = Query(None, ge=1),
-    room_type_id: Optional[int] = Query(None, ge=1),
-    min_price: Optional[float] = Query(None, ge=0),
-    max_price: Optional[float] = Query(None, ge=0),
+    request: Request,
+    query: str = Body(..., description="Query vector embedding"),
+    amenities: Optional[list[str]] = Body(
+        default=None, 
+        description="Danh sách tiện ích (VD: ?amenities=wifi&amenities=parking)"
+    ),
+    filters: VectorSearchRequest = Depends(),
     service: ListingService = Depends(get_listing_service),
 ):
+    """Tìm kiếm tin đăng theo vector embedding."""
+    embedding_model = request.app.state.embedding_model
     results = service.vector_search(
-        query_vector=vector,
-        model_name=model_name,
-        limit=limit,
-        similarity_threshold=similarity_threshold,
-        city_id=city_id,
-        district_id=district_id,
-        ward_id=ward_id,
-        room_type_id=room_type_id,
-        min_price=min_price,
-        max_price=max_price,
+        query=query,
+        amenities=amenities,
+        model_embedding=embedding_model,
+        city_id=filters.city_id,
+        district_id=filters.district_id,
+        ward_id=filters.ward_id,
+        min_price=filters.min_price,
+        max_price=filters.max_price,
+        max_area=filters.max_area,
+        min_area=filters.min_area,
+        limit=filters.limit,
+        lat=filters.lat,
+        lng=filters.lng,
+        offset=filters.offset
     )
     return ResponseDTO[list[VectorSearchResult]](data=results)
 

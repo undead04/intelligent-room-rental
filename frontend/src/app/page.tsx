@@ -12,7 +12,7 @@ import { useHomeListings } from "@/app/_hooks/useHomeListings";
 import { useFilterOptions } from "@/hooks/useFilterOptions";
 import type { FilterValues } from "@/types";
 import ListingSectionSkeleton from "@/components/skeleton/ListingSectionSkeleton";
-import { buildSearchParams, countActiveFilters, DEFAULT_FILTERS } from "@/lib/utils/filter";
+import { buildSearchUrl, countActiveFilters, DEFAULT_FILTERS } from "@/lib/utils/filter";
 import { SORT_OPTIONS } from "@/lib/constants/search";
 
 export default function HomePage() {
@@ -27,8 +27,7 @@ export default function HomePage() {
   const activeFilterCount = countActiveFilters(filters);
 
   const goToSearch = (query: string, values: FilterValues) => {
-    const qs = buildSearchParams(query, values).toString();
-    router.push(`/tim-kiem${qs ? `?${qs}` : ""}`);
+    router.push(buildSearchUrl(query, values));
   };
 
   const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {

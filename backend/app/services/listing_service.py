@@ -1,14 +1,17 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.models.listing import Listing
-from app.models.location import City, District, Ward
+from app.models.location import District, Ward
 from app.repositories.listing_repository import ListingRepository
 from app.schemas.analytics import PriceStatsByArea, PriceStatsGeneral, PriceStatsResponse
+from app.schemas.listing import ListingResponse, VectorSearchResult
+from app.utils.utils import explain_match, rerank
+from app.services.embedding import EmbeddingModel
 
 
 def month_boundaries(reference: Optional[datetime] = None) -> tuple[datetime, datetime]:
@@ -152,29 +155,60 @@ class ListingService:
 
     def vector_search(
         self,
-        query_vector: list[float],
-        model_name: Optional[str] = None,
-        limit: int = 20,
-        similarity_threshold: Optional[float] = None,
-        city_id: Optional[int] = None,
-        district_id: Optional[int] = None,
-        ward_id: Optional[int] = None,
-        room_type_id: Optional[int] = None,
-        min_price: Optional[float] = None,
-        max_price: Optional[float] = None,
-    ) -> list[dict]:
-        """
-        Tìm kiếm tin đăng theo vector embedding và trả về kết quả kèm similarity_score và distance.
-        """
-        return self.repository.vector_search(
+        query: str,
+        model_embedding: Any,
+        lat: float | None = None,
+        lng: float | None = None,
+        amenities: list[str] | None = None,
+        city_id: int | None = None,
+        district_id: int | None = None,
+        ward_id: int | None = None,
+        min_price: float | None = None,
+        max_price: float | None = None,
+        min_area: float | None = None,
+        max_area: float | None = None,
+        limit: int = 5,
+        offset: int = 0,
+    ) -> VectorSearchResult:
+        raw_vector = model_embedding.encode([query])[0]
+        query_vector = raw_vector.tolist() if hasattr(raw_vector, "tolist") else list(raw_vector)
+
+        candidates = self.repository.vector_search(
             query_vector=query_vector,
-            model_name=model_name,
-            limit=limit,
-            similarity_threshold=similarity_threshold,
             city_id=city_id,
             district_id=district_id,
             ward_id=ward_id,
-            room_type_id=room_type_id,
             min_price=min_price,
             max_price=max_price,
+            min_area=min_area,
+            max_area=max_area,
+            limit=50,
         )
+
+        if not candidates:
+            return VectorSearchResult(
+                listings=[],
+                reranked=[],
+                match_scores=[],
+                explain_match=None,
+            )
+
+        user_pref = {"lat": lat, "lng": lng, "amenities": amenities, "query": query}
+
+        reranked = rerank(
+            candidates=candidates,
+            user_pref=user_pref,
+            limit=limit,
+            offset=offset,
+        )
+        def _unwrap(candidate):
+            """Candidate từ repository có thể là dict {'listing': ORM, ...scores} hoặc ORM thuần."""
+            return candidate["listing"] if isinstance(candidate, dict) and "listing" in candidate else candidate
+        return [
+            VectorSearchResult(
+                listing=ListingResponse.model_validate(_unwrap(listing)),
+                match_score=breakdown["score"],
+                explain_match=explain_match(breakdown),
+            )
+            for breakdown, listing in reranked
+        ]
