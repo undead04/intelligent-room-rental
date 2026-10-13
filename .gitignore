@@ -41,5 +41,8 @@ ai-agent/workspace/data/*
 ai-agent/workspace/output/*
 ai-agent/explainer.html
 
+# Backend
+backend/models_cache/*
+
 
 Plan_Module_ML_PriceModel_MatchScore.md
