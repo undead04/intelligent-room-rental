@@ -90,7 +90,8 @@ def _dynamic_weights(user_pref: Any, base: Mapping[str, float]) -> dict[str, flo
 
 # --- Scoring ---
 def _location_part(listing: Any, user_pref: Any) -> float:
-    lat, lng = _get(listing, "lat"), _get(listing, "lng")
+    orm = _get(listing, "listing", listing)
+    lat, lng = _get(orm, "lat"), _get(orm, "lng")
     pref_lat, pref_lng = _get(user_pref, "lat"), _get(user_pref, "lng")
 
     if lat is None or lng is None or pref_lat is None or pref_lng is None:
@@ -105,12 +106,13 @@ def _match_breakdown(
     weights: dict[str, float],
 ) -> dict:
     """Tính điểm từng thành phần dựa trên weights đã pre-computed."""
+    orm = _get(listing, "listing", listing)
     scorers = {
-        "price": lambda: _score_or_unknown(listing["listing"], "price_score"),
-        "safety": lambda: _score_or_unknown(listing["listing"], "safety_score"),
+        "price": lambda: _score_or_unknown(orm, "price_score"),
+        "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
-        "amenity": lambda: _amenity_fit(_get(user_pref, "amenities"), _get(listing, "concept_scores")),
-        "semantic": lambda: _score_or_unknown(listing, "similarity_score"),
+        "amenity": lambda: _amenity_fit(_get(user_pref, "amenities"), _get(orm, "concept_scores")),
+        "semantic": lambda: _score_or_unknown(listing, "similarity_score") if isinstance(listing, Mapping) and "similarity_score" in listing else _score_or_unknown(orm, "similarity_score"),
     }
     parts = {k: scorers[k]() for k in weights}
     contributions = {k: weights[k] * parts[k] for k in parts}
