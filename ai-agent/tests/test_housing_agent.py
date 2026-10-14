@@ -266,3 +266,38 @@ def test_langgraph_clarification_branch():
     assert "Chào bạn!" in result["final_text"]
     assert result["final_response"].need_clarification is True
 
+
+def test_list_and_consult_housing_skills():
+    import json
+    from tools import consult_housing_skill, list_housing_skills
+
+    # 1. Liệt kê skills
+    skills_json = list_housing_skills.invoke({})
+    skills_data = json.loads(skills_json)
+    assert skills_data["ok"] is True
+    skill_names = [s["name"] for s in skills_data["skills"]]
+    assert "rental-contract-advisor" in skill_names
+
+    # 2. Tham vấn skill rental-contract-advisor
+    consult_json = consult_housing_skill.invoke({"skill_name": "rental-contract-advisor"})
+    consult_data = json.loads(consult_json)
+    assert consult_data["ok"] is True
+    assert "rental-contract-advisor" in consult_data["skill_name"]
+    assert "Bẫy Tiền Cọc" in consult_data["instructions"]
+    assert "contract-checklist.md" in consult_data["references"]
+
+
+def test_langgraph_rental_contract_skill_advisory():
+    from graph import housing_graph
+
+    state = {
+        "user_message": "Chủ nhà bắt đặt cọc 2 tháng và không cho ghi điều kiện hoàn cọc, có bẫy hợp đồng không bạn?",
+        "session_id": "test_graph_contract_skill",
+    }
+    result = housing_graph.invoke(state)
+    assert result["is_contract_query"] is True
+    assert result["needs_clarification"] is False
+    assert "rental-contract-advisor" in result["final_text"]
+    assert "Tiền đặt cọc" in result["final_text"]
+
+

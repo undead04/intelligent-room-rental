@@ -14,9 +14,11 @@ from observer import ObserverMiddleware
 from prompts import build_system_prompt
 from skill_catalog import Catalog, scan_skills
 from tools import (
+    consult_housing_skill,
     geocode_location,
     get_listing_detail,
     get_location_hierarchy,
+    list_housing_skills,
     read_file,
     search_rooms,
     write_file,
@@ -27,6 +29,8 @@ TOOLS = [
     get_location_hierarchy,
     search_rooms,
     get_listing_detail,
+    list_housing_skills,
+    consult_housing_skill,
     read_file,
     write_file,
 ]

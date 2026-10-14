@@ -26,7 +26,12 @@ from schemas import (
     TradeOffAnalysis,
     UserPreferenceState,
 )
-from tools import geocode_location, search_rooms
+from tools import (
+    consult_housing_skill,
+    geocode_location,
+    list_housing_skills,
+    search_rooms,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,9 @@ class HousingAgentState(TypedDict, total=False):
 
     # Cờ đánh dấu có cần hỏi làm rõ hay không
     needs_clarification: bool
+
+    # Cờ đánh dấu yêu cầu tư vấn hợp đồng / pháp lý (kích hoạt rental-contract-advisor skill)
+    is_contract_query: Optional[bool]
 
     # Danh sách phòng sau khi Hybrid Search & Rerank từ Backend
     retrieved_rooms: list[RoomItem]
@@ -186,8 +194,15 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
     has_budget = bool(updated_pref.max_price or updated_pref.min_price)
     has_amenity = bool(updated_pref.amenities)
 
-    # Nếu câu quá ngắn và không có bất kỳ thông tin vị trí / giá / tiện ích nào
-    needs_clarification = (not has_loc and not has_budget and not has_amenity and len(words) <= 4)
+    # Kiểm tra truy vấn có liên quan đến hợp đồng / tiền cọc / pháp lý (kích hoạt rental-contract-advisor skill)
+    contract_keywords = ["hợp đồng", "tiền cọc", "đặt cọc", "mất cọc", "pháp lý", "bẫy", "ký hợp đồng", "trả phòng"]
+    is_contract = any(k in user_text.lower() for k in contract_keywords)
+
+    # Nếu câu quá ngắn và không có bất kỳ thông tin vị trí / giá / tiện ích nào (và không phải hỏi hợp đồng)
+    if is_contract:
+        needs_clarification = False
+    else:
+        needs_clarification = (not has_loc and not has_budget and not has_amenity and len(words) <= 4)
 
     return {
         "preferences": updated_pref,
@@ -195,6 +210,7 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         "computed_weights": computed_weights,
         "weight_explanations": explanations,
         "needs_clarification": needs_clarification,
+        "is_contract_query": is_contract,
     }
 
 
@@ -266,13 +282,34 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
 
 
 def decision_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 5: Phân tích Hỗ trợ Ra quyết định (Decision Support & Trade-offs)."""
+    """Node 5: Phân tích Hỗ trợ Ra quyết định (Decision Support & Trade-offs & Skill Advisory)."""
     rooms = state.get("retrieved_rooms", [])
     weights = state.get("computed_weights", {})
     explanations = state.get("weight_explanations", [])
     pref = state.get("preferences") or UserPreferenceState()
 
     insights = build_decision_insights(rooms, weights=weights, weight_explanations=explanations)
+
+    # Nếu người dùng hỏi về hợp đồng / pháp lý / tiền cọc -> Kích hoạt kỹ năng rental-contract-advisor
+    if state.get("is_contract_query"):
+        skill_res = consult_housing_skill.invoke({"skill_name": "rental-contract-advisor"})
+        reply_lines = [
+            "🛡️ **Homigo AI - Tư Vấn Hợp Đồng Thuê Trọ & Phòng Ngừa Rủi Ro (Tham vấn Skill `rental-contract-advisor`):**",
+            "",
+            "Khi xem xét hợp đồng thuê phòng trọ hoặc căn hộ, bạn cần đặc biệt lưu ý 5 điểm mấu chốt sau để bảo vệ quyền lợi:",
+            "- **1. Tiền đặt cọc & Hoàn cọc:** Bắt buộc có điều khoản cam kết: *'Bên A hoàn trả 100% tiền cọc cho Bên B trong vòng 03 ngày làm việc kể từ ngày trả phòng và thanh toán xong điện nước'*. Tránh điều khoản ép phải tìm người thay thế mới được trả cọc.",
+            "- **2. Cố định giá thuê:** Yêu cầu cam kết không tự ý tăng giá thuê trong suốt thời hạn hợp đồng.",
+            "- **3. Minh bạch đơn giá điện nước & phí dịch vụ:** Ghi rõ số tiền cụ thể trên mỗi kWh điện và m³ nước (hoặc đầu người). Cam kết không phát sinh phụ phí ẩn.",
+            "- **4. Biên bản hiện trạng bàn giao:** Chụp ảnh/quay video tình trạng phòng và số đo công tơ điện nước ngay ngày nhận phòng, ký xác nhận vào phụ lục.",
+            "- **5. Thời hạn báo trước:** Ghi rõ hai bên có quyền chấm dứt hợp đồng nếu báo trước tối thiểu 30 ngày mà không bị phạt cọc.",
+            "",
+            "📋 **Khuyến nghị tiếp theo:** Bạn có thể gửi điều khoản cụ thể của chủ nhà đưa ra để Homigo thẩm định chi tiết hơn nhé!",
+        ]
+        if rooms:
+            reply_lines.append("")
+            reply_lines.append(f"*(Đồng thời, Homigo đã gợi ý danh sách {len(rooms)} phòng phù hợp theo nhu cầu của bạn ở danh sách bên)*")
+        final_text = "\n".join(reply_lines)
+        return {"insights": insights, "final_text": final_text}
 
     if not rooms:
         reply = (
