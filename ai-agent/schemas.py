@@ -110,11 +110,43 @@ class DecisionInsight(BaseModel):
     )
 
 
+class UserPreferenceState(BaseModel):
+    """Trạng thái nhu cầu người dùng được tích lũy xuyên suốt nhiều lượt chat (Memory & State Management)."""
+
+    location_text: Optional[str] = Field(None, description="Địa điểm hoặc khu vực (ví dụ: 'Linh Xuân, Thủ Đức')")
+    lat: Optional[float] = Field(None, description="Vĩ độ mục tiêu")
+    lng: Optional[float] = Field(None, description="Kinh độ mục tiêu")
+    min_price: Optional[float] = Field(None, description="Ngân sách tối thiểu (VNĐ)")
+    max_price: Optional[float] = Field(None, description="Ngân sách tối đa (VNĐ)")
+    min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m2)")
+    max_area: Optional[float] = Field(None, description="Diện tích tối đa (m2)")
+    amenities: list[str] = Field(default_factory=list, description="Danh sách tiện ích yêu cầu")
+    special_requirements: list[str] = Field(default_factory=list, description="Nhu cầu mềm (yên tĩnh, nuôi thú cưng, ban công...)")
+
+    def to_context_string(self) -> str:
+        parts = []
+        if self.location_text:
+            coords = f" (Toạ độ: {self.lat:.4f}, {self.lng:.4f})" if self.lat and self.lng else ""
+            parts.append(f"- Vị trí mục tiêu: {self.location_text}{coords}")
+        if self.max_price:
+            price_str = f"{self.max_price / 1_000_000:.1f} tr/tháng".replace(".0", "")
+            parts.append(f"- Ngân sách tối đa: {price_str} ({self.max_price:,.0f} VNĐ)")
+        if self.min_price:
+            price_str = f"{self.min_price / 1_000_000:.1f} tr/tháng".replace(".0", "")
+            parts.append(f"- Ngân sách tối thiểu: {price_str} ({self.min_price:,.0f} VNĐ)")
+        if self.amenities:
+            parts.append(f"- Tiện ích mong muốn: {', '.join(self.amenities)}")
+        if self.special_requirements:
+            parts.append(f"- Yêu cầu đặc thù: {', '.join(self.special_requirements)}")
+        return "\n".join(parts) if parts else "Chưa có tiêu chí nào được thiết lập."
+
+
 class AgentResponse(BaseModel):
     """Toàn bộ phản hồi chuẩn hoá của AI Agent gửi về cho Client/UI."""
 
     text_reply: str = Field(..., description="Văn bản tư vấn bằng ngôn ngữ tự nhiên gửi người dùng")
     rooms: list[RoomItem] = Field(default_factory=list, description="Danh sách các phòng phù hợp nhất")
     insights: Optional[DecisionInsight] = Field(None, description="Bảng phân tích hỗ trợ ra quyết định")
+    current_preferences: Optional[UserPreferenceState] = Field(None, description="Trạng thái tiêu chí đã ghi nhận hiện tại")
     need_clarification: bool = Field(False, description="True nếu yêu cầu của người dùng quá mơ hồ cần hỏi lại")
     follow_up_questions: list[str] = Field(default_factory=list, description="Gợi ý 1-2 câu hỏi làm rõ tiếp theo")
