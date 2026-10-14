@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any, Optional
 import httpx
 from langchain_core.tools import tool
@@ -236,3 +237,96 @@ def get_listing_detail(listing_id: str) -> str:
             "ok": False,
             "error": f"Không thể lấy thông tin chi tiết phòng ({listing_id}): {str(e)}"
         }, ensure_ascii=False)
+
+
+@tool
+def list_housing_skills() -> str:
+    """Liệt kê danh sách các Kỹ năng chuyên sâu (Housing Skills) hiện có trong hệ thống Homigo.
+    Hệ thống hỗ trợ nạp thêm kỹ năng động bất cứ lúc nào (ví dụ: 'rental-contract-advisor').
+
+    Returns:
+        JSON danh sách các kỹ năng kèm mô tả công dụng.
+    """
+    base_dirs = [
+        Path(__file__).resolve().parent.parent / "workspace" / "skills",
+        Path(__file__).resolve().parent.parent / "fixtures" / "skills",
+    ]
+
+    seen = set()
+    available = []
+    for b in base_dirs:
+        if b.exists():
+            for skill_path in sorted(b.glob("*/SKILL.md")):
+                name = skill_path.parent.name
+                if name in seen:
+                    continue
+                seen.add(name)
+                desc = ""
+                try:
+                    content = skill_path.read_text(encoding="utf-8")
+                    for line in content.splitlines():
+                        if line.startswith("description:"):
+                            desc = line.replace("description:", "").strip()
+                            break
+                except Exception:
+                    pass
+                available.append({
+                    "name": name,
+                    "description": desc,
+                    "path": f"skills/{name}/SKILL.md",
+                })
+
+    return json.dumps({"ok": True, "skills": available}, ensure_ascii=False)
+
+
+@tool
+def consult_housing_skill(
+    skill_name: str,
+    query: Optional[str] = None,
+) -> str:
+    """Tra cứu và tham vấn tài liệu hướng dẫn chuyên sâu từ một Housing Skill (ví dụ: 'rental-contract-advisor').
+    Dùng khi người dùng cần hỗ trợ về pháp lý, kiểm tra hợp đồng thuê trọ, bẫy tiền cọc hoặc các kỹ năng khác.
+
+    Args:
+        skill_name: Tên của kỹ năng muốn tham vấn (ví dụ: 'rental-contract-advisor').
+        query: Câu hỏi hoặc nội dung điều khoản cụ thể cần tư vấn.
+
+    Returns:
+        JSON chứa toàn bộ nội dung hướng dẫn, checklist và lưu ý từ kỹ năng tương ứng.
+    """
+    base_dirs = [
+        Path(__file__).resolve().parent.parent / "workspace" / "skills",
+        Path(__file__).resolve().parent.parent / "fixtures" / "skills",
+    ]
+
+    skill_folder = None
+    for b in base_dirs:
+        cand = b / skill_name
+        if cand.is_dir():
+            skill_folder = cand
+            break
+
+    if not skill_folder:
+        return json.dumps({
+            "ok": False,
+            "error": f"Không tìm thấy kỹ năng '{skill_name}'. Hãy gọi list_housing_skills để xem danh sách kỹ năng khả dụng."
+        }, ensure_ascii=False)
+
+    try:
+        skill_file = skill_folder / "SKILL.md"
+        skill_md = skill_file.read_text(encoding="utf-8") if skill_file.exists() else ""
+        references = {}
+        ref_dir = skill_folder / "references"
+        if ref_dir.is_dir():
+            for ref_file in ref_dir.glob("*.md"):
+                references[ref_file.name] = ref_file.read_text(encoding="utf-8")
+
+        return json.dumps({
+            "ok": True,
+            "skill_name": skill_name,
+            "instructions": skill_md,
+            "references": references,
+        }, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"ok": False, "error": f"Lỗi đọc nội dung kỹ năng: {str(e)}"}, ensure_ascii=False)
+

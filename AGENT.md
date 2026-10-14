@@ -114,11 +114,11 @@ $$w_i = \frac{w_{base, i} \cdot m_i}{\sum_{k \in \text{active}} (w_{base, k} \cd
 * **[`ai-agent/service.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/service.py)**: `HousingAgentService` điều phối qua `housing_graph.invoke()`.
 * **[`ai-agent/memory.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/memory.py)**: Multi-turn session state management & Context window compaction.
 * **[`ai-agent/guardrails.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/guardrails.py)**: 2-layer defense (Prompt Injection & Off-topic filtering).
-* **[`ai-agent/schemas.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/schemas.py)**: Pydantic models (`RoomItem`, `DecisionInsight`, `AgentResponse`).
-* **[`ai-agent/tools/housing_tools.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/housing_tools.py)**: Native LangChain tools (`search_rooms`, `geocode_location`, `get_location_hierarchy`, `get_listing_detail`).
+* **[`ai-agent/tools/housing_tools.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/housing_tools.py)**: Native LangChain tools (`search_rooms`, `geocode_location`, `get_location_hierarchy`, `get_listing_detail`, `list_housing_skills`, `consult_housing_skill`).
+* **[`ai-agent/workspace/skills/rental-contract-advisor/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/workspace/skills/rental-contract-advisor/)**: Kỹ năng chuyên sâu về thẩm định hợp đồng thuê trọ, bẫy tiền cọc và pháp lý nhà ở sinh viên.
 * **[`ai-agent/prompts.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/prompts.py)**: Persona Homigo Decision Advisor prompt.
 * **[`ai-agent/eval/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/eval/)**: Bộ 30 benchmark test cases và script đánh giá RAG Grounding Triad.
-* **[`ai-agent/tests/test_housing_agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tests/test_housing_agent.py)**: 13 unit tests bao phủ toàn bộ hệ thống (100% Passed).
+* **[`ai-agent/tests/test_housing_agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tests/test_housing_agent.py)**: 15 unit tests bao phủ toàn bộ hệ thống (100% Passed).
 
 ---
 
@@ -128,7 +128,7 @@ $$w_i = \frac{w_{base, i} \cdot m_i}{\sum_{k \in \text{active}} (w_{base, k} \cd
 * Backend: `.venv` tại thư mục gốc
 * AI Agent: `ai-agent/.venv`
 
-### Chạy Unit Test AI Agent (13 tests):
+### Chạy Unit Test AI Agent (15 tests):
 ```powershell
 ai-agent\.venv\Scripts\pytest.exe ai-agent/tests/test_housing_agent.py -v
 ```
