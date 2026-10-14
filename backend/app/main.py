@@ -148,6 +148,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
     return JSONResponse(status_code=500, content=payload.model_dump(), headers={"X-Request-ID": request.state.request_id})
 
+from app.core.security_middleware import RateLimitMiddleware, SQLInjectionMiddleware
+
+# Security & Rate Limiting middlewares
+app.add_middleware(
+    SQLInjectionMiddleware,
+    enabled=settings.SQL_INJECTION_CHECK_ENABLED,
+)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=settings.RATE_LIMIT_PER_MINUTE,
+    enabled=settings.RATE_LIMIT_ENABLED,
+)
+
 # CORS middleware
 if settings.CORS_ORIGINS:
     app.add_middleware(
@@ -171,4 +184,4 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="", port=8000)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
