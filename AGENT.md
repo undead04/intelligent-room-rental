@@ -36,7 +36,7 @@ Tài liệu này được biên soạn để bất kỳ AI Agent hoặc lập tr
 │   • GET  /api/v1/geocode: Chuyển tên địa điểm thành (lat, lng)         │
 │   • GET  /api/v1/locations/*: Tra cứu cây Tỉnh/Thành -> Quận -> Phường │
 │   • POST /api/v1/listings/vector-search:                               │
-│       - Bước 1: pgvector Cosine Search lấy 50 ứng viên (Candidate)     │
+│       - Bước 1: Hybrid Search (70% Dense pgvector + 30% Sparse FTS)    │
 │       - Bước 2: Rerank đa tiêu chí 5 trọng số (utils.py)               │
 │       - Trả về: Listing + match_score + explain_match                  │
 └────────────────────────────────────────────────────────────────────────┘
@@ -68,6 +68,7 @@ Tài liệu này được biên soạn để bất kỳ AI Agent hoặc lập tr
 * **[`ai-agent/eval/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/eval/)**:
   * `dataset.json`: Bộ 30 test cases đa dạng nhóm phục vụ đánh giá định lượng.
   * `run_eval.py`: Script benchmark tự động đo Schema Validity, Task Completion, Hallucination-free, Latency và xuất file `eval_report.md`.
+  * `rag_grounding_eval.py`: Script đo lường bộ ba tiêu chí **RAG Triad & Grounding** (Context Relevance, Groundedness/Faithfulness, Answer Relevance) và xuất báo cáo `rag_grounding_report.md`.
 
 ---
 

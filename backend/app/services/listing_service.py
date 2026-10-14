@@ -175,6 +175,7 @@ class ListingService:
 
         candidates = self.repository.vector_search(
             query_vector=query_vector,
+            query_text=query,
             city_id=city_id,
             district_id=district_id,
             ward_id=ward_id,

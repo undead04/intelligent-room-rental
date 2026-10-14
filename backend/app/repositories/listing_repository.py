@@ -146,23 +146,62 @@ class ListingRepository:
         return query.all()
 
     def vector_search(
-            self,
-            query_vector: list[float],  # Đảm bảo nhận vào list[float]
-            city_id: int | None = None,
-            district_id: int | None = None,
-            ward_id: int | None = None,
-            min_price: float | None = None,
-            max_price: float | None = None,
-            min_area: float | None = None,
-            max_area: float | None = None,
-            limit: int = 50,
-        ) -> list[dict[str, Any]]:
-            """Tìm kiếm tin đăng theo vector embedding bằng khoảng cách Cosine."""
-            # Biến đổi cosine distance sang column expression
-            distance_col = ListingEmbedding.vector.cosine_distance(
-                query_vector
-            ).label("distance")
+        self,
+        query_vector: list[float],  # Đảm bảo nhận vào list[float]
+        query_text: Optional[str] = None,
+        city_id: int | None = None,
+        district_id: int | None = None,
+        ward_id: int | None = None,
+        min_price: float | None = None,
+        max_price: float | None = None,
+        min_area: float | None = None,
+        max_area: float | None = None,
+        limit: int = 50,
+        alpha: float = 0.7,
+    ) -> list[dict[str, Any]]:
+        """Tìm kiếm tin đăng kết hợp Hybrid Search (Dense pgvector + Sparse PostgreSQL Full-Text Search).
 
+        - Dense: Khoảng cách Cosine embedding hiểu ngữ nghĩa sâu
+        - Sparse: ts_rank_cd trên (title, address_raw, description) bắt chính xác tên đường, địa danh, từ khóa
+        - Linear Fusion: alpha * dense + (1 - alpha) * sparse
+        """
+        use_hybrid = bool(query_text and query_text.strip())
+
+        # Biến đổi cosine distance sang column expression
+        distance_col = ListingEmbedding.vector.cosine_distance(
+            query_vector
+        ).label("distance")
+
+        if use_hybrid:
+            clean_query = query_text.strip()
+            text_content = func.concat_ws(
+                " ",
+                func.coalesce(Listing.title, ""),
+                func.coalesce(Listing.address_raw, ""),
+                func.coalesce(Listing.description, ""),
+            )
+            ts_vector = func.to_tsvector("simple", text_content)
+            ts_query = func.plainto_tsquery("simple", clean_query)
+            sparse_score_col = func.ts_rank_cd(ts_vector, ts_query).label("sparse_score")
+
+            # Chuẩn hoá Dense similarity: [0..1]
+            dense_sim = func.greatest(0.0, func.least(1.0, 1.0 - distance_col))
+            # Chuẩn hoá Sparse rank: clamp(rank * 3.0, 0, 1)
+            sparse_norm = func.greatest(0.0, func.least(1.0, sparse_score_col * 3.0))
+            # Điểm tổng hợp Hybrid Fusion
+            hybrid_score_col = (alpha * dense_sim + (1.0 - alpha) * sparse_norm).label("hybrid_score")
+
+            query = (
+                self.db.query(Listing, distance_col, sparse_score_col)
+                .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
+                .options(
+                    joinedload(Listing.city),
+                    joinedload(Listing.district),
+                    joinedload(Listing.ward),
+                    joinedload(Listing.room_type),
+                )
+            )
+        else:
             query = (
                 self.db.query(Listing, distance_col)
                 .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
@@ -174,37 +213,47 @@ class ListingRepository:
                 )
             )
 
-            # Filters
-            if city_id is not None:
-                query = query.filter(Listing.region_id == city_id)
-            if district_id is not None:
-                query = query.filter(Listing.district_id == district_id)
-            if ward_id is not None:
-                query = query.filter(Listing.ward_id == ward_id)
+        # Filters
+        if city_id is not None:
+            query = query.filter(Listing.region_id == city_id)
+        if district_id is not None:
+            query = query.filter(Listing.district_id == district_id)
+        if ward_id is not None:
+            query = query.filter(Listing.ward_id == ward_id)
 
-            if min_price is not None:
-                query = query.filter(Listing.price_vnd >= min_price)
-            if max_price is not None:
-                query = query.filter(Listing.price_vnd <= max_price)
+        if min_price is not None:
+            query = query.filter(Listing.price_vnd >= min_price)
+        if max_price is not None:
+            query = query.filter(Listing.price_vnd <= max_price)
 
-            if min_area is not None:
-                query = query.filter(Listing.area_m2 >= min_area)
-            if max_area is not None:
-                query = query.filter(Listing.area_m2 <= max_area)
+        if min_area is not None:
+            query = query.filter(Listing.area_m2 >= min_area)
+        if max_area is not None:
+            query = query.filter(Listing.area_m2 <= max_area)
 
+        if use_hybrid:
+            rows = query.order_by(hybrid_score_col.desc()).limit(limit).all()
+        else:
             rows = query.order_by(distance_col.asc()).limit(limit).all()
 
-            results = []
-            for listing, dist in rows:
+        results = []
+        for row in rows:
+            if use_hybrid:
+                listing, dist, sparse_val = row
                 dist_val = float(dist) if dist is not None else 1.0
-                # Normalize Cosine Distance [0..2] -> Similarity [0..1]
+                dense_sim = max(0.0, min(1.0, 1.0 - dist_val))
+                sparse_norm = max(0.0, min(1.0, float(sparse_val or 0.0) * 3.0))
+                similarity_score = alpha * dense_sim + (1.0 - alpha) * sparse_norm
+            else:
+                listing, dist = row
+                dist_val = float(dist) if dist is not None else 1.0
                 similarity_score = max(0.0, min(1.0, 1.0 - dist_val))
 
-                results.append(
-                    {
-                        "listing": listing,
-                        "similarity_score": similarity_score,
-                    }
-                )
+            results.append(
+                {
+                    "listing": listing,
+                    "similarity_score": round(similarity_score, 4),
+                }
+            )
 
-            return results
+        return results
