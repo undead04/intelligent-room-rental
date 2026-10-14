@@ -28,9 +28,13 @@ INJECTION_PATTERNS = [
     r"dan\s*mode",
     r"developer\s*mode",
     r"hãy\s*đóng\s*vai\s*(một\s*)?(hacker|tội\s*phạm)",
-    r"act\s*as\s*(a\s*)?(hacker|malicious|dan)",
     r"viết\s*(mã|code)\s*(độc|virus|trojan|exploit)",
     r"hướng\s*dẫn\s*hack",
+    # SQL Injection patterns
+    r"\b(union\s+(all\s+)?select)\b",
+    r"\b(drop\s+(table|database|view))\b",
+    r"(\b(or|and)\b\s+[\'\"]?\w+[\'\"]?\s*=\s*[\'\"]?\w+[\'\"]?)",
+    r";\s*--",
 ]
 
 # Từ khóa đặc thù thuộc miền Phòng trọ & Nhà ở

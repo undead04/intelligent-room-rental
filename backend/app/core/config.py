@@ -17,6 +17,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # Security & Rate Limiting
+    RATE_LIMIT_PER_MINUTE: int = 120
+    RATE_LIMIT_ENABLED: bool = True
+    SQL_INJECTION_CHECK_ENABLED: bool = True
+
     # PostgreSQL Database Configuration
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432
