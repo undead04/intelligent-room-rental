@@ -1,0 +1,272 @@
+[
+  {
+    "id": "TC-01",
+    "category": "specific",
+    "query": "Tìm phòng trọ gần Đại học Công nghệ Thông tin UIT dưới 3 triệu có máy lạnh.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Đại học Công nghệ Thông tin",
+    "budget_max": 3000000
+  },
+  {
+    "id": "TC-02",
+    "category": "specific",
+    "query": "Tìm phòng trọ quanh Ký túc xá khu B Đại học Quốc gia tầm giá 2 đến 3.5 triệu.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Ký túc xá khu B",
+    "budget_max": 3500000
+  },
+  {
+    "id": "TC-03",
+    "category": "specific",
+    "query": "Thuê phòng ở Phường Linh Xuân Thủ Đức giá khoảng 2.5 triệu có gác lửng.",
+    "expected_tools": ["get_location_hierarchy", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Linh Xuân",
+    "budget_max": 2500000
+  },
+  {
+    "id": "TC-04",
+    "category": "specific",
+    "query": "Tìm phòng trọ gần Ngã tư Thủ Đức giá dưới 4 triệu, sạch sẽ thoáng mát.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Ngã tư Thủ Đức",
+    "budget_max": 4000000
+  },
+  {
+    "id": "TC-05",
+    "category": "specific",
+    "query": "Tìm phòng trọ Phường Linh Trung cho 2 người ở, giá dưới 3 triệu.",
+    "expected_tools": ["get_location_hierarchy", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Linh Trung",
+    "budget_max": 3000000
+  },
+  {
+    "id": "TC-06",
+    "category": "specific",
+    "query": "Cần thuê phòng trọ gần ĐH Sư Phạm Kỹ Thuật HCM (HCMUTE) giá 3 đến 4 triệu.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Đại học Sư phạm Kỹ thuật TP.HCM",
+    "budget_max": 4000000
+  },
+  {
+    "id": "TC-07",
+    "category": "specific",
+    "query": "Tìm phòng trọ đường Võ Văn Ngân Thủ Đức khoảng 3.5 triệu có chỗ để xe an toàn.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Võ Văn Ngân",
+    "budget_max": 3500000
+  },
+  {
+    "id": "TC-08",
+    "category": "specific",
+    "query": "Phòng trọ phường Tăng Nhơn Phú A giá dưới 3 triệu gần trường Giao thông Vận tải.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Tăng Nhơn Phú A",
+    "budget_max": 3000000
+  },
+  {
+    "id": "TC-09",
+    "category": "vague_clarification",
+    "query": "Tìm giúp mình một căn phòng trọ với.",
+    "expected_tools": [],
+    "requires_clarification": true,
+    "target_location": null,
+    "budget_max": null
+  },
+  {
+    "id": "TC-10",
+    "category": "vague_clarification",
+    "query": "Có phòng trọ nào ở Thủ Đức không bạn?",
+    "expected_tools": [],
+    "requires_clarification": true,
+    "target_location": "Thủ Đức",
+    "budget_max": null
+  },
+  {
+    "id": "TC-11",
+    "category": "vague_clarification",
+    "query": "Mình muốn thuê phòng khoảng 2 triệu.",
+    "expected_tools": [],
+    "requires_clarification": true,
+    "target_location": null,
+    "budget_max": 2000000
+  },
+  {
+    "id": "TC-12",
+    "category": "vague_clarification",
+    "query": "Tìm phòng trọ sinh viên giá rẻ.",
+    "expected_tools": [],
+    "requires_clarification": true,
+    "target_location": null,
+    "budget_max": null
+  },
+  {
+    "id": "TC-13",
+    "category": "vague_clarification",
+    "query": "Tư vấn chỗ ở khu vực Làng Đại học.",
+    "expected_tools": [],
+    "requires_clarification": true,
+    "target_location": "Làng Đại học",
+    "budget_max": null
+  },
+  {
+    "id": "TC-14",
+    "category": "semantic_complex",
+    "query": "Tìm phòng trọ gần UIT yên tĩnh làm việc ban đêm, có ban công thoáng mát và cho phép nuôi mèo.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Đại học Công nghệ Thông tin",
+    "budget_max": null
+  },
+  {
+    "id": "TC-15",
+    "category": "semantic_complex",
+    "query": "Cần phòng trọ gần KTX khu A giờ giấc tự do không chung chủ, có gác cao không đụng đầu.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Ký túc xá khu A",
+    "budget_max": null
+  },
+  {
+    "id": "TC-16",
+    "category": "semantic_complex",
+    "query": "Tìm căn hộ mini gần Suối Tiên full nội thất, máy giặt riêng, an ninh camera 24/7.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Suối Tiên",
+    "budget_max": null
+  },
+  {
+    "id": "TC-17",
+    "category": "semantic_complex",
+    "query": "Tìm phòng trọ khu Linh Trung có wifi mạnh để học online, đường không ngập nước mùa mưa.",
+    "expected_tools": ["get_location_hierarchy", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Linh Trung",
+    "budget_max": null
+  },
+  {
+    "id": "TC-18",
+    "category": "semantic_complex",
+    "query": "Phòng trọ gần Bến xe Miền Đông mới có gác lửng rộng, sạch sẽ, khu dân cư văn minh.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Bến xe Miền Đông mới",
+    "budget_max": null
+  },
+  {
+    "id": "TC-19",
+    "category": "semantic_complex",
+    "query": "Cần thuê phòng trọ gần Chợ Đêm Đại học Nông Lâm có toilet riêng và kệ bếp nấu ăn.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Đại học Nông Lâm",
+    "budget_max": null
+  },
+  {
+    "id": "TC-20",
+    "category": "semantic_complex",
+    "query": "Tìm phòng gần Khu Công nghệ cao Thủ Đức có bảo vệ, ra vào khoá vân tay, giá dưới 4.5 triệu.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Khu Công nghệ cao",
+    "budget_max": 4500000
+  },
+  {
+    "id": "TC-21",
+    "category": "boundary_low_budget",
+    "query": "Tìm phòng trọ gần UIT giá 1 triệu/tháng đầy đủ nội thất máy lạnh.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Đại học Công nghệ Thông tin",
+    "budget_max": 1000000
+  },
+  {
+    "id": "TC-22",
+    "category": "boundary_low_budget",
+    "query": "Có phòng trọ nào ở Phường Linh Chiểu giá dưới 1.2 triệu không?",
+    "expected_tools": ["get_location_hierarchy", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Linh Chiểu",
+    "budget_max": 1200000
+  },
+  {
+    "id": "TC-23",
+    "category": "boundary_low_budget",
+    "query": "Cần tìm căn hộ 3 phòng ngủ ở Làng Đại học ngân sách dưới 2 triệu.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Làng Đại học",
+    "budget_max": 2000000
+  },
+  {
+    "id": "TC-24",
+    "category": "boundary_low_budget",
+    "query": "Tìm phòng trọ gần ngã 4 Bình Thái giá 500k/tháng.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Ngã tư Bình Thái",
+    "budget_max": 500000
+  },
+  {
+    "id": "TC-25",
+    "category": "tradeoff_comparison",
+    "query": "So sánh giúp mình các phòng trọ gần Ga Metro Suối Tiên dưới 3.5 triệu xem nên chọn căn nào.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Ga Metro Suối Tiên",
+    "budget_max": 3500000
+  },
+  {
+    "id": "TC-26",
+    "category": "tradeoff_comparison",
+    "query": "Tìm 3 phòng tốt nhất ở Phường Hiệp Phú và giải thích lý do vì sao căn top 1 hơn các căn khác.",
+    "expected_tools": ["get_location_hierarchy", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Hiệp Phú",
+    "budget_max": null
+  },
+  {
+    "id": "TC-27",
+    "category": "tradeoff_comparison",
+    "query": "Tư vấn chọn phòng giữa căn gần trường UIT và căn ở Linh Tây giá 2.8 triệu.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Linh Tây",
+    "budget_max": 2800000
+  },
+  {
+    "id": "TC-28",
+    "category": "specific",
+    "query": "Tìm phòng trọ Phường Bình Thọ Thủ Đức có ban công, diện tích trên 20m2 giá dưới 4 triệu.",
+    "expected_tools": ["get_location_hierarchy", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Bình Thọ",
+    "budget_max": 4000000
+  },
+  {
+    "id": "TC-29",
+    "category": "specific",
+    "query": "Tìm phòng trọ gần trường ĐH Khoa học Tự nhiên cơ sở Linh Trung giá 2.5 - 3.2 triệu.",
+    "expected_tools": ["geocode_location", "search_rooms"],
+    "requires_clarification": false,
+    "target_location": "Đại học Khoa học Tự nhiên Linh Trung",
+    "budget_max": 3200000
+  },
+  {
+    "id": "TC-30",
+    "category": "vague_clarification",
+    "query": "Bạn ơi tư vấn phòng trọ.",
+    "expected_tools": [],
+    "requires_clarification": true,
+    "target_location": null,
+    "budget_max": null
+  }
+]

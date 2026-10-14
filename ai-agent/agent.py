@@ -1,4 +1,8 @@
-"""LangChain agent của stage 04: read_file, write_file, bash + skill catalog trong system prompt."""
+"""LangChain agent cho Smart Housing Decision Support System:
+Native housing tools + structured decision support.
+"""
+
+from __future__ import annotations
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
@@ -8,10 +12,24 @@ import paths
 from config import MODEL_CALL_LIMIT, TOOL_CALL_LIMIT, Settings
 from observer import ObserverMiddleware
 from prompts import build_system_prompt
-from skill_catalog import Catalog, render_catalog, scan_skills
-from tools import bash, read_file, write_file
+from skill_catalog import Catalog, scan_skills
+from tools import (
+    geocode_location,
+    get_listing_detail,
+    get_location_hierarchy,
+    read_file,
+    search_rooms,
+    write_file,
+)
 
-TOOLS = [read_file, write_file, bash]
+TOOLS = [
+    geocode_location,
+    get_location_hierarchy,
+    search_rooms,
+    get_listing_detail,
+    read_file,
+    write_file,
+]
 
 
 def build_model(settings: Settings) -> ChatOpenAI:
@@ -21,17 +39,22 @@ def build_model(settings: Settings) -> ChatOpenAI:
     return ChatOpenAI(**kwargs)
 
 
+def system_prompt() -> str:
+    return build_system_prompt()
+
+
 def load_catalog() -> Catalog:
     return scan_skills(paths.WORKSPACE_DIR)
 
 
-def system_prompt() -> str:
-    return build_system_prompt(render_catalog(load_catalog()))
-
-
 def capabilities() -> dict:
     catalog = load_catalog()
-    return {"tools": [t.name for t in TOOLS], "skills": catalog.metadata(), "skill_diagnostics": catalog.diagnostics}
+    return {
+        "tools": [t.name for t in TOOLS],
+        "skills": catalog.metadata(),
+        "skill_diagnostics": catalog.diagnostics,
+        "system": "Homigo Smart Housing Decision Support Agent",
+    }
 
 
 def build_agent(model):
@@ -42,6 +65,6 @@ def build_agent(model):
         middleware=[
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_LIMIT, exit_behavior="end"),
             ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT),
-            ObserverMiddleware(),  # cuối danh sách = sát model/tool invocation nhất
+            ObserverMiddleware(),
         ],
     )
