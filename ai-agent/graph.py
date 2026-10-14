@@ -1,5 +1,5 @@
 """LangGraph State Machine cho Smart Housing Decision Support System (Homigo).
-Quy trình gồm 6 node với Intent-Aware Dynamic Weighting và Guardrails.
+Quy trình gồm 7 node với Intent-Aware Dynamic Weighting, Tool Partitioning và Dynamic Skill Discovery.
 """
 
 from __future__ import annotations
@@ -26,9 +26,14 @@ from schemas import (
     TradeOffAnalysis,
     UserPreferenceState,
 )
+from skills_discovery import match_skill_by_query
 from tools import (
+    ADVISORY_TOOLS,
+    DETAIL_TOOLS,
+    RETRIEVAL_TOOLS,
     consult_housing_skill,
     geocode_location,
+    get_listing_detail,
     list_housing_skills,
     search_rooms,
 )
@@ -61,7 +66,10 @@ class HousingAgentState(TypedDict, total=False):
     # Cờ đánh dấu có cần hỏi làm rõ hay không
     needs_clarification: bool
 
-    # Cờ đánh dấu yêu cầu tư vấn hợp đồng / pháp lý (kích hoạt rental-contract-advisor skill)
+    # Kỹ năng phù hợp được phát hiện qua Dynamic Skill Discovery
+    matched_skill: Optional[str]
+
+    # Cờ đánh dấu yêu cầu tư vấn hợp đồng / pháp lý (tương thích ngược)
     is_contract_query: Optional[bool]
 
     # Danh sách phòng sau khi Hybrid Search & Rerank từ Backend
@@ -152,11 +160,13 @@ def build_decision_insights(
 
 
 # ---------------------------------------------------------
-# Graph Nodes
+# Graph Nodes (Partitioned Tools Scoping)
 # ---------------------------------------------------------
 
 def guardrail_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 1: Kiểm tra an toàn người dùng (Prompt Injection & Off-topic defense)."""
+    """Node 1: Kiểm tra an toàn người dùng (Prompt Injection & Off-topic defense).
+    Scope: 0 Tools (Tiết kiệm 100% token overhead).
+    """
     user_text = state.get("user_message", "")
     guard = check_guardrails(user_text)
 
@@ -173,7 +183,9 @@ def guardrail_node(state: HousingAgentState) -> dict[str, Any]:
 
 
 def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 2: Bóc tách nhu cầu tích lũy (Memory) & Tính toán Trọng số Động (Intent-Aware Dynamic MCDM)."""
+    """Node 2: Bóc tách nhu cầu tích lũy (Memory), Tính Trọng số Động & Dynamic Skill Discovery.
+    Scope: 0 Tools (Chỉ xử lý logic nội bộ và so khớp trigger).
+    """
     user_text = state.get("user_message", "")
     session_id = state.get("session_id", "default_session")
     session = memory_manager.get_or_create_session(session_id)
@@ -188,18 +200,26 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
     # Tính toán vector trọng số chuẩn hóa
     computed_weights = compute_normalized_weights(updated_pref, multipliers)
 
-    # Kiểm tra truy vấn có quá mơ hồ cần hỏi làm rõ hay không
+    # 1. Tự động phát hiện Kỹ năng qua Dynamic Skill Discovery
+    matched_meta = match_skill_by_query(user_text)
+    matched_skill = matched_meta.name if matched_meta else None
+
+    # Tương thích ngược với các từ khóa hợp đồng
+    is_contract = (matched_skill == "rental-contract-advisor") or any(
+        k in user_text.lower()
+        for k in ["hợp đồng", "tiền cọc", "đặt cọc", "mất cọc", "pháp lý", "bẫy", "ký hợp đồng", "trả phòng"]
+    )
+    if is_contract and not matched_skill:
+        matched_skill = "rental-contract-advisor"
+
+    # 2. Kiểm tra truy vấn có quá mơ hồ cần hỏi làm rõ hay không
     words = user_text.strip().split()
     has_loc = bool(updated_pref.location_text or (updated_pref.lat and updated_pref.lng))
     has_budget = bool(updated_pref.max_price or updated_pref.min_price)
     has_amenity = bool(updated_pref.amenities)
 
-    # Kiểm tra truy vấn có liên quan đến hợp đồng / tiền cọc / pháp lý (kích hoạt rental-contract-advisor skill)
-    contract_keywords = ["hợp đồng", "tiền cọc", "đặt cọc", "mất cọc", "pháp lý", "bẫy", "ký hợp đồng", "trả phòng"]
-    is_contract = any(k in user_text.lower() for k in contract_keywords)
-
-    # Nếu câu quá ngắn và không có bất kỳ thông tin vị trí / giá / tiện ích nào (và không phải hỏi hợp đồng)
-    if is_contract:
+    # Nếu câu hỏi khớp kỹ năng chuyên sâu -> Không hỏi làm rõ mà chuyển ngay sang advisory_node
+    if matched_skill:
         needs_clarification = False
     else:
         needs_clarification = (not has_loc and not has_budget and not has_amenity and len(words) <= 4)
@@ -210,12 +230,15 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         "computed_weights": computed_weights,
         "weight_explanations": explanations,
         "needs_clarification": needs_clarification,
+        "matched_skill": matched_skill,
         "is_contract_query": is_contract,
     }
 
 
 def clarification_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 3: Hỏi làm rõ khi truy vấn người dùng chưa đủ tiêu chí lọc cơ bản."""
+    """Node 3: Hỏi làm rõ khi truy vấn người dùng chưa đủ tiêu chí lọc cơ bản.
+    Scope: 0 Tools.
+    """
     clarification_text = (
         "Chào bạn! Để Homigo có thể lọc và gợi ý những phòng trọ phù hợp nhất cho bạn, "
         "bạn có thể chia sẻ thêm một vài thông tin như:\n"
@@ -232,8 +255,67 @@ def clarification_node(state: HousingAgentState) -> dict[str, Any]:
     }
 
 
+def advisory_node(state: HousingAgentState) -> dict[str, Any]:
+    """Node 4: Tham vấn Kỹ năng chuyên sâu độc lập (Dynamic Skill Advisory).
+    Scope: ADVISORY_TOOLS [list_housing_skills, consult_housing_skill].
+    Hoàn toàn không tốn token của các công cụ tìm kiếm phòng trọ!
+    """
+    skill_name = state.get("matched_skill") or "rental-contract-advisor"
+    user_text = state.get("user_message", "")
+
+    # Gọi công cụ consult_housing_skill để nạp nội dung hướng dẫn nghiệp vụ
+    skill_res_raw = consult_housing_skill.invoke({
+        "skill_name": skill_name,
+        "query": user_text,
+    })
+    try:
+        skill_res = json.loads(skill_res_raw)
+    except Exception:
+        skill_res = {}
+
+    if skill_name == "rental-contract-advisor":
+        reply_lines = [
+            "🛡️ **Homigo AI - Tư Vấn Hợp Đồng Thuê Trọ & Phòng Ngừa Rủi Ro (Tham vấn Skill `rental-contract-advisor`):**",
+            "",
+            "Khi xem xét hợp đồng thuê phòng trọ hoặc căn hộ, bạn cần đặc biệt lưu ý 5 điểm mấu chốt sau để bảo vệ quyền lợi:",
+            "- **1. Tiền đặt cọc & Hoàn cọc:** Bắt buộc có điều khoản cam kết: *'Bên A hoàn trả 100% tiền cọc cho Bên B trong vòng 03 ngày làm việc kể từ ngày trả phòng và thanh toán xong điện nước'*. Tránh điều khoản ép phải tìm người thay thế mới được trả cọc.",
+            "- **2. Cố định giá thuê:** Yêu cầu cam kết không tự ý tăng giá thuê trong suốt thời hạn hợp đồng.",
+            "- **3. Minh bạch đơn giá điện nước & phí dịch vụ:** Ghi rõ số tiền cụ thể trên mỗi kWh điện và m³ nước (hoặc đầu người). Cam kết không phát sinh phụ phí ẩn.",
+            "- **4. Biên bản hiện trạng bàn giao:** Chụp ảnh/quay video tình trạng phòng và số đo công tơ điện nước ngay ngày nhận phòng, ký xác nhận vào phụ lục.",
+            "- **5. Thời hạn báo trước:** Ghi rõ hai bên có quyền chấm dứt hợp đồng nếu báo trước tối thiểu 30 ngày mà không bị phạt cọc.",
+            "",
+            "📋 **Khuyến nghị tiếp theo:** Bạn có thể gửi điều khoản cụ thể của chủ nhà đưa ra để Homigo thẩm định chi tiết hơn nhé!",
+        ]
+    else:
+        # Trường hợp mở rộng cho bất kỳ kỹ năng mới nào trong tương lai
+        instructions = skill_res.get("instructions", "")
+        reply_lines = [
+            f"💡 **Homigo AI - Tư Vấn Chuyên Sâu (Kỹ Năng `{skill_name}`):**",
+            "",
+            "Dựa trên cẩm nang chuyên môn nhà ở của Homigo:",
+        ]
+        non_empty = [
+            line.strip()
+            for line in instructions.splitlines()
+            if line.strip() and not line.startswith("---") and not line.startswith("#")
+        ]
+        reply_lines.extend(non_empty[:8] if non_empty else ["Đã tham vấn thành công tài liệu chuyên môn."])
+        reply_lines.append("")
+        reply_lines.append("Bạn cần Homigo phân tích sâu hơn về điều khoản hoặc tiêu chí cụ thể nào không?")
+
+    final_text = "\n".join(reply_lines)
+    return {
+        "final_text": final_text,
+        "retrieved_rooms": [],
+        "insights": None,
+        "needs_clarification": False,
+    }
+
+
 def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 4: Truy vấn dữ liệu kết hợp Geocoding, Hybrid Search và Rerank với Trọng số Động."""
+    """Node 5: Truy vấn dữ liệu kết hợp Geocoding, Hybrid Search và Rerank với Trọng số Động.
+    Scope: RETRIEVAL_TOOLS [geocode_location, get_location_hierarchy, search_rooms].
+    """
     user_text = state.get("user_message", "")
     pref = state.get("preferences") or UserPreferenceState()
     weights = state.get("computed_weights") or {}
@@ -282,34 +364,14 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
 
 
 def decision_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 5: Phân tích Hỗ trợ Ra quyết định (Decision Support & Trade-offs & Skill Advisory)."""
+    """Node 6: Phân tích Hỗ trợ Ra quyết định (Decision Support & Trade-offs).
+    Scope: DETAIL_TOOLS [get_listing_detail].
+    """
     rooms = state.get("retrieved_rooms", [])
     weights = state.get("computed_weights", {})
     explanations = state.get("weight_explanations", [])
-    pref = state.get("preferences") or UserPreferenceState()
 
     insights = build_decision_insights(rooms, weights=weights, weight_explanations=explanations)
-
-    # Nếu người dùng hỏi về hợp đồng / pháp lý / tiền cọc -> Kích hoạt kỹ năng rental-contract-advisor
-    if state.get("is_contract_query"):
-        skill_res = consult_housing_skill.invoke({"skill_name": "rental-contract-advisor"})
-        reply_lines = [
-            "🛡️ **Homigo AI - Tư Vấn Hợp Đồng Thuê Trọ & Phòng Ngừa Rủi Ro (Tham vấn Skill `rental-contract-advisor`):**",
-            "",
-            "Khi xem xét hợp đồng thuê phòng trọ hoặc căn hộ, bạn cần đặc biệt lưu ý 5 điểm mấu chốt sau để bảo vệ quyền lợi:",
-            "- **1. Tiền đặt cọc & Hoàn cọc:** Bắt buộc có điều khoản cam kết: *'Bên A hoàn trả 100% tiền cọc cho Bên B trong vòng 03 ngày làm việc kể từ ngày trả phòng và thanh toán xong điện nước'*. Tránh điều khoản ép phải tìm người thay thế mới được trả cọc.",
-            "- **2. Cố định giá thuê:** Yêu cầu cam kết không tự ý tăng giá thuê trong suốt thời hạn hợp đồng.",
-            "- **3. Minh bạch đơn giá điện nước & phí dịch vụ:** Ghi rõ số tiền cụ thể trên mỗi kWh điện và m³ nước (hoặc đầu người). Cam kết không phát sinh phụ phí ẩn.",
-            "- **4. Biên bản hiện trạng bàn giao:** Chụp ảnh/quay video tình trạng phòng và số đo công tơ điện nước ngay ngày nhận phòng, ký xác nhận vào phụ lục.",
-            "- **5. Thời hạn báo trước:** Ghi rõ hai bên có quyền chấm dứt hợp đồng nếu báo trước tối thiểu 30 ngày mà không bị phạt cọc.",
-            "",
-            "📋 **Khuyến nghị tiếp theo:** Bạn có thể gửi điều khoản cụ thể của chủ nhà đưa ra để Homigo thẩm định chi tiết hơn nhé!",
-        ]
-        if rooms:
-            reply_lines.append("")
-            reply_lines.append(f"*(Đồng thời, Homigo đã gợi ý danh sách {len(rooms)} phòng phù hợp theo nhu cầu của bạn ở danh sách bên)*")
-        final_text = "\n".join(reply_lines)
-        return {"insights": insights, "final_text": final_text}
 
     if not rooms:
         reply = (
@@ -353,7 +415,9 @@ def decision_node(state: HousingAgentState) -> dict[str, Any]:
 
 
 def formatter_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 6: Đóng gói AgentResponse chuẩn cho Frontend và cập nhật Memory Session."""
+    """Node 7: Đóng gói AgentResponse chuẩn cho Frontend và cập nhật Memory Session.
+    Scope: 0 Tools.
+    """
     final_text = state.get("final_text", "")
     rooms = state.get("retrieved_rooms", [])
     insights = state.get("insights")
@@ -409,7 +473,13 @@ def route_after_guardrail(state: HousingAgentState) -> str:
 
 
 def route_after_preference(state: HousingAgentState) -> str:
-    """Rẽ nhánh sau Preference: Nếu quá mơ hồ thì hỏi làm rõ, nếu đủ thông tin thì truy vấn."""
+    """Rẽ nhánh sau Preference:
+    - Nếu khớp Kỹ năng chuyên sâu -> Chuyển thẳng tới advisory_node.
+    - Nếu quá mơ hồ -> Chuyển tới clarification_node.
+    - Nếu đủ thông tin tìm phòng -> Chuyển tới retrieval_node.
+    """
+    if state.get("matched_skill") or state.get("is_contract_query"):
+        return "advisory_node"
     if state.get("needs_clarification"):
         return "clarification_node"
     return "retrieval_node"
@@ -419,10 +489,11 @@ def build_housing_graph() -> StateGraph:
     """Khởi tạo và biên dịch StateGraph cho Housing Decision Support Agent."""
     workflow = StateGraph(HousingAgentState)
 
-    # Đăng ký 6 Node
+    # Đăng ký 7 Node chức năng
     workflow.add_node("guardrail_node", guardrail_node)
     workflow.add_node("preference_intent_node", preference_intent_node)
     workflow.add_node("clarification_node", clarification_node)
+    workflow.add_node("advisory_node", advisory_node)
     workflow.add_node("retrieval_node", retrieval_node)
     workflow.add_node("decision_node", decision_node)
     workflow.add_node("formatter_node", formatter_node)
@@ -439,9 +510,14 @@ def build_housing_graph() -> StateGraph:
     workflow.add_conditional_edges(
         "preference_intent_node",
         route_after_preference,
-        {"clarification_node": "clarification_node", "retrieval_node": "retrieval_node"},
+        {
+            "advisory_node": "advisory_node",
+            "clarification_node": "clarification_node",
+            "retrieval_node": "retrieval_node",
+        },
     )
 
+    workflow.add_edge("advisory_node", "formatter_node")
     workflow.add_edge("clarification_node", "formatter_node")
     workflow.add_edge("retrieval_node", "decision_node")
     workflow.add_edge("decision_node", "formatter_node")
