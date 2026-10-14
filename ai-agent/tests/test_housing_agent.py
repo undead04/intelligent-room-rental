@@ -301,3 +301,71 @@ def test_langgraph_rental_contract_skill_advisory():
     assert "Tiền đặt cọc" in result["final_text"]
 
 
+def test_tool_partitioning_scopes():
+    from tools.registry import (
+        ADVISORY_TOOLS,
+        ALL_TOOLS,
+        DETAIL_TOOLS,
+        RETRIEVAL_TOOLS,
+        SYSTEM_TOOLS,
+        get_tools_for_scope,
+    )
+
+    retrieval_names = [t.name for t in RETRIEVAL_TOOLS]
+    assert "geocode_location" in retrieval_names
+    assert "get_location_hierarchy" in retrieval_names
+    assert "search_rooms" in retrieval_names
+    assert "get_listing_detail" not in retrieval_names
+
+    detail_names = [t.name for t in DETAIL_TOOLS]
+    assert detail_names == ["get_listing_detail"]
+
+    advisory_names = [t.name for t in ADVISORY_TOOLS]
+    assert "list_housing_skills" in advisory_names
+    assert "consult_housing_skill" in advisory_names
+    assert "search_rooms" not in advisory_names
+
+    system_names = [t.name for t in SYSTEM_TOOLS]
+    assert "read_file" in system_names
+    assert "write_file" in system_names
+
+    assert len(ALL_TOOLS) == len(retrieval_names) + len(detail_names) + len(advisory_names) + len(system_names)
+    assert get_tools_for_scope("retrieval") == RETRIEVAL_TOOLS
+    assert get_tools_for_scope("advisory") == ADVISORY_TOOLS
+    assert get_tools_for_scope("unknown") == []
+
+
+def test_dynamic_skill_discovery():
+    from skills_discovery import discover_housing_skills, match_skill_by_query
+
+    skills = discover_housing_skills(force_reload=True)
+    assert "rental-contract-advisor" in skills
+    skill_meta = skills["rental-contract-advisor"]
+    assert "hợp đồng" in skill_meta.triggers
+    assert "tiền cọc" in skill_meta.triggers
+
+    # Match test: trigger có trong câu hỏi
+    matched = match_skill_by_query("Hợp đồng thuê nhà có điều khoản phạt tiền cọc vô lý")
+    assert matched is not None
+    assert matched.name == "rental-contract-advisor"
+
+    # Non-match test: câu hỏi tìm phòng thông thường
+    matched_search = match_skill_by_query("Tìm phòng trọ 3 triệu gần đại học Bách Khoa")
+    assert matched_search is None
+
+
+def test_langgraph_advisory_node_bypasses_retrieval():
+    from graph import housing_graph
+
+    state = {
+        "user_message": "Cho mình hỏi về bẫy tiền cọc và điều khoản hoàn cọc khi thuê trọ",
+        "session_id": "test_advisory_bypass",
+    }
+    result = housing_graph.invoke(state)
+    assert result["matched_skill"] == "rental-contract-advisor"
+    assert result["needs_clarification"] is False
+    assert result["retrieved_rooms"] == []  # Không tốn thời gian truy vấn phòng
+    assert "rental-contract-advisor" in result["final_text"]
+    assert "Tiền đặt cọc" in result["final_text"]
+
+

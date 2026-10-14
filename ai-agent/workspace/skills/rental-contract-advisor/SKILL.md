@@ -1,6 +1,18 @@
 ---
 name: rental-contract-advisor
 description: Kỹ năng thẩm định hợp đồng thuê phòng trọ, cảnh báo rủi ro tiền cọc, phát hiện bẫy điều khoản bất lợi và tư vấn pháp lý nhà ở cho sinh viên.
+triggers:
+  - hợp đồng
+  - tiền cọc
+  - đặt cọc
+  - mất cọc
+  - pháp lý
+  - bẫy
+  - ký hợp đồng
+  - trả phòng
+  - trả cọc
+  - đền bù
+  - điều khoản
 ---
 
 # Kỹ Năng: Tư Vấn & Thẩm Định Hợp Đồng Thuê Trọ (Rental Contract Advisor)

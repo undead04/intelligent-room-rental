@@ -49,42 +49,64 @@ Tài liệu này được biên soạn để bất kỳ AI Agent hoặc lập tr
 
 ## 🔄 3. Luồng Điều Phối LangGraph State Machine (`ai-agent/graph.py`)
 
-Hệ thống AI Agent được tổ chức dưới dạng một đồ thị máy trạng thái khép kín (LangGraph StateGraph) gồm 6 Node:
+Hệ thống AI Agent được tổ chức dưới dạng một đồ thị máy trạng thái khép kín (LangGraph StateGraph) gồm 7 Node với cơ chế Phân Vùng Công Cụ (Tool Partitioning):
 
 ```mermaid
 flowchart TD
-    START([START]) --> GuardrailNode["1. Guardrail Node\n(Kiểm tra An toàn & Chặn Injection)"]
+    START([START]) --> GuardrailNode["1. Guardrail Node\n(0 Tools - Regex / Heuristics)"]
     
-    GuardrailNode -->|Phát hiện vi phạm| FormatterNode["6. Formatter Node\n(Đóng gói Safe Response)"]
-    GuardrailNode -->|Hợp lệ| PreferenceIntentNode["2. Preference & Intent Node\n(Bóc tách Nhu cầu & Tính Trọng số Động)"]
+    GuardrailNode -->|Phát hiện vi phạm| FormatterNode["7. Formatter Node\n(0 Tools - Đóng gói Response)"]
+    GuardrailNode -->|Hợp lệ| PreferenceIntentNode["2. Preference & Intent Node\n(0 Tools - Dynamic MCDM & Dynamic Skill Discovery)"]
     
-    PreferenceIntentNode -->|Truy vấn quá mơ hồ| ClarificationNode["3. Clarification Node\n(Hỏi làm rõ: ngân sách, vị trí)"]
+    PreferenceIntentNode -->|Khớp trigger Kỹ năng| AdvisoryNode["4. Advisory Skill Node\n(Scope: ADVISORY_TOOLS)"]
+    AdvisoryNode --> FormatterNode
+    
+    PreferenceIntentNode -->|Truy vấn quá mơ hồ| ClarificationNode["3. Clarification Node\n(0 Tools - Gợi ý làm rõ tiêu chí)"]
     ClarificationNode --> FormatterNode
     
-    PreferenceIntentNode -->|Đủ thông tin| RetrievalNode["4. Hybrid Retrieval & Rerank Node\n(Geocode + Hybrid Search + Custom Weights)"]
+    PreferenceIntentNode -->|Đủ thông tin tìm phòng| RetrievalNode["5. Hybrid Retrieval & Rerank Node\n(Scope: RETRIEVAL_TOOLS)"]
     
-    RetrievalNode --> DecisionNode["5. Decision Support Node\n(Giải thích Top 1 dựa trên Trọng số & Trade-offs)"]
+    RetrievalNode --> DecisionNode["6. Decision Support Node\n(Scope: DETAIL_TOOLS)"]
     
     DecisionNode --> FormatterNode
     
     FormatterNode --> END([END: Hoàn tất lượt])
 ```
 
-### Chi tiết 6 Node:
-1. **`guardrail_node`**: Kiểm tra câu hỏi của người dùng. Nếu phát hiện Prompt Injection hoặc nội dung ngoài luồng $\rightarrow$ ngắt luồng và trả về câu trả lời an toàn lập tức (0 token cost).
-2. **`preference_intent_node`**: Tích lũy các tiêu chí vào `UserPreferenceState` qua các lượt chat; quét từ khoá ý định để phát hiện hệ số nhân ưu tiên (`multipliers`) và tính vector trọng số chuẩn hoá `computed_weights`. Nếu người dùng chỉ nói câu quá ngắn/mơ hồ $\rightarrow$ bật cờ `needs_clarification`.
-3. **`clarification_node`**: Sinh câu hỏi gợi mở thân thiện hướng dẫn người dùng cung cấp thêm ngân sách và khu vực mong muốn.
-4. **`retrieval_node`**: Tự động gọi Geocoding để lấy `(lat, lng)`, gửi yêu cầu đến Backend `/listings/vector-search` kèm vector `custom_weights` vừa tính toán.
-5. **`decision_node`**: Đọc `explain_match` của Top 1, tạo lý do lựa chọn minh bạch dựa trên đúng trọng số người dùng ưu tiên, lập bảng so sánh đối kháng Trade-off với Top 2 và đưa ra checklist khi đi xem phòng.
-6. **`formatter_node`**: Đóng gói thành Pydantic `AgentResponse`, cập nhật Memory Session và trả về cho Client.
+### Chi tiết 7 Node & Phân Vùng Công Cụ (Tool Scopes):
+1. **`guardrail_node`** *(0 Tools)*: Kiểm tra an toàn người dùng. Nếu phát hiện Prompt Injection hoặc nội dung ngoài luồng $\rightarrow$ ngắt luồng và trả về câu trả lời an toàn lập tức (0 token cost).
+2. **`preference_intent_node`** *(0 Tools)*: Bóc tách nhu cầu tích lũy qua các lượt chat; phát hiện hệ số nhân ưu tiên (`multipliers`) và tính trọng số chuẩn hoá `computed_weights`; quét `triggers` từ `SKILL.md` để tự động định tuyến.
+3. **`clarification_node`** *(0 Tools)*: Sinh câu hỏi gợi mở thân thiện hướng dẫn người dùng cung cấp thêm ngân sách và khu vực mong muốn.
+4. **`advisory_node`** *(Scope: `ADVISORY_TOOLS`)*: Chuyên trách tham vấn các Kỹ năng chuyên sâu (`rental-contract-advisor`...). Tự động gọi `consult_housing_skill` để nạp tri thức nghiệp vụ, không tốn token của các công cụ tìm kiếm phòng.
+5. **`retrieval_node`** *(Scope: `RETRIEVAL_TOOLS`)*: Geocoding địa điểm văn bản sang toạ độ và gửi yêu cầu đến Backend `/listings/vector-search` kèm vector trọng số động.
+6. **`decision_node`** *(Scope: `DETAIL_TOOLS`)*: Đọc `explain_match` của Top 1, tạo lý do lựa chọn minh bạch dựa trên trọng số, lập bảng so sánh đối kháng Trade-off với Top 2 và đưa ra checklist khi đi xem phòng.
+7. **`formatter_node`** *(0 Tools)*: Đóng gói thành Pydantic `AgentResponse`, cập nhật Memory Session và trả về cho Client.
 
 ---
 
-## 🎯 4. Cơ Chế Trọng Số Thích Ứng Theo Ý Định (`ai-agent/intent_weights.py`)
+## 🧩 4. Cơ Chế Phân Vùng Công Cụ & Khám Phá Kỹ Năng Động
+
+### 4.1 Phân vùng công cụ (`ai-agent/tools/registry.py`)
+Ngăn ngừa hiện tượng **Context Bloat** (tiết kiệm ~65-80% tokens so với monolithic toolset) và **Tool Hallucination**:
+* `RETRIEVAL_TOOLS`: `geocode_location`, `get_location_hierarchy`, `search_rooms` (cấp cho `retrieval_node`).
+* `DETAIL_TOOLS`: `get_listing_detail` (cấp cho `decision_node`).
+* `ADVISORY_TOOLS`: `list_housing_skills`, `consult_housing_skill` (cấp cho `advisory_node`).
+* `SYSTEM_TOOLS`: `read_file`, `write_file`.
+
+### 4.2 Dynamic Skill Discovery (`ai-agent/skills_discovery.py`)
+Mỗi kỹ năng trong `ai-agent/workspace/skills/<tên-kỹ-năng>/SKILL.md` khai báo danh sách `triggers` trong YAML frontmatter. Hệ thống tự động quét và kích hoạt mà không cần sửa code trong `graph.py`.
+
+### 4.3 Quy trình mở rộng Kỹ năng mới trong tương lai:
+* **Kỹ năng Tri thức / Cẩm nang (Knowledge Skill):** Chỉ cần tạo thư mục `ai-agent/workspace/skills/<tên-kỹ-năng>/SKILL.md` với các từ khóa `triggers: [...]`. **0 dòng code cần sửa**!
+* **Kỹ năng Hành động / Gọi API ngoài (Action Skill):** Viết hàm `@tool` trong `housing_tools.py` $\rightarrow$ Thêm vào scope phù hợp trong `registry.py` $\rightarrow$ Khai báo `SKILL.md`.
+
+---
+
+## 🎯 5. Cơ Chế Trọng Số Thích Ứng Theo Ý Định (`ai-agent/intent_weights.py`)
 
 Đây là đóng góp cá nhân hoá thông minh quan trọng trong đề tài tốt nghiệp:
 
-### 4.1 Quy tắc kích hoạt tiêu chí (Active Status)
+### 5.1 Quy tắc kích hoạt tiêu chí (Active Status)
 * **Bắt buộc (Luôn bật):**
   * `price`: Giá phòng
   * `safety`: Điểm an ninh
@@ -93,7 +115,7 @@ flowchart TD
   * `location`: Chỉ bật khi xác định được toạ độ `lat, lng` hoặc tên địa điểm
   * `amenity`: Chỉ bật khi người dùng yêu cầu tiện ích cụ thể (máy lạnh, gác, wifi...)
 
-### 4.2 Hệ số nhân ưu tiên theo ý định (Intent Multipliers)
+### 5.2 Hệ số nhân ưu tiên theo ý định (Intent Multipliers)
 | Tiêu chí | Mẫu từ khóa nhận diện ý định ưu tiên | Hệ số nhân ($m_i$) |
 | :--- | :--- | :---: |
 | **Giá cả (`price`)** | `r"rẻ\s*nhất|giá\s*rẻ|tiết\s*kiệm|ngân\s*sách\s*(hẹp|thấp)|hạt\s*dẻ|rẻ\s*nữa"` | $\mathbf{\times 2.0}$ |
@@ -102,14 +124,16 @@ flowchart TD
 | **Tiện nghi (`amenity`)** | `r"full\s*nội\s*thất|đầy\s*đủ\s*đồ|tiện\s*nghi\s*cao|nội\s*thất\s*xịn"` | $\mathbf{\times 1.8}$ |
 | **Mặc định** | Không có từ khóa nhấn mạnh | $\mathbf{\times 1.0}$ |
 
-### 4.3 Công thức chuẩn hoá L1 Normalization:
+### 5.3 Công thức chuẩn hoá L1 Normalization:
 $$w_i = \frac{w_{base, i} \cdot m_i}{\sum_{k \in \text{active}} (w_{base, k} \cdot m_k)}$$
 
 ---
 
-## 🧠 5. Cấu Trúc File Module `ai-agent/`
+## 🧠 6. Cấu Trúc File Module `ai-agent/`
 
-* **[`ai-agent/graph.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph.py)**: Toàn bộ StateGraph 6 node và State TypedDict.
+* **[`ai-agent/graph.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph.py)**: Toàn bộ StateGraph 7 node với Tool Partitioning và Dynamic Skill Routing.
+* **[`ai-agent/tools/registry.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/registry.py)**: Quản lý tập trung các phân vùng công cụ (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`, `SYSTEM_TOOLS`).
+* **[`ai-agent/skills_discovery.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/skills_discovery.py)**: Engine tự động quét và khám phá kỹ năng động qua YAML frontmatter `triggers`.
 * **[`ai-agent/intent_weights.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/intent_weights.py)**: Engine nhận diện Intent Boosters và tính toán L1 Normalized Weights.
 * **[`ai-agent/service.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/service.py)**: `HousingAgentService` điều phối qua `housing_graph.invoke()`.
 * **[`ai-agent/memory.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/memory.py)**: Multi-turn session state management & Context window compaction.
@@ -118,17 +142,17 @@ $$w_i = \frac{w_{base, i} \cdot m_i}{\sum_{k \in \text{active}} (w_{base, k} \cd
 * **[`ai-agent/workspace/skills/rental-contract-advisor/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/workspace/skills/rental-contract-advisor/)**: Kỹ năng chuyên sâu về thẩm định hợp đồng thuê trọ, bẫy tiền cọc và pháp lý nhà ở sinh viên.
 * **[`ai-agent/prompts.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/prompts.py)**: Persona Homigo Decision Advisor prompt.
 * **[`ai-agent/eval/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/eval/)**: Bộ 30 benchmark test cases và script đánh giá RAG Grounding Triad.
-* **[`ai-agent/tests/test_housing_agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tests/test_housing_agent.py)**: 15 unit tests bao phủ toàn bộ hệ thống (100% Passed).
+* **[`ai-agent/tests/test_housing_agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tests/test_housing_agent.py)**: 18 unit tests bao phủ toàn bộ hệ thống (100% Passed).
 
 ---
 
-## 🚀 6. Hướng Dẫn Vận Hành & Lệnh Thường Dùng
+## 🚀 7. Hướng Dẫn Vận Hành & Lệnh Thường Dùng
 
 ### Môi trường ảo Python:
 * Backend: `.venv` tại thư mục gốc
 * AI Agent: `ai-agent/.venv`
 
-### Chạy Unit Test AI Agent (15 tests):
+### Chạy Unit Test AI Agent (18 tests):
 ```powershell
 ai-agent\.venv\Scripts\pytest.exe ai-agent/tests/test_housing_agent.py -v
 ```
