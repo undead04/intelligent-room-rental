@@ -137,6 +137,7 @@ def search_rooms(
     min_area: Optional[float] = None,
     max_area: Optional[float] = None,
     amenities: Optional[list[str]] = None,
+    weights: Optional[dict[str, float]] = None,
     limit: int = 5,
 ) -> str:
     """Tìm kiếm phòng trọ bằng Vector Search kết hợp Rerank đa tiêu chí từ Backend.
@@ -156,6 +157,7 @@ def search_rooms(
         min_area: Diện tích tối thiểu (m²).
         max_area: Diện tích tối đa (m²).
         amenities: Danh sách tiện ích yêu cầu (ví dụ: ['wifi', 'parking', 'ac']).
+        weights: Trọng số động tùy chỉnh (e.g. {'price': 0.35, 'location': 0.35, ...}).
         limit: Số lượng phòng tối đa cần lấy (mặc định 5).
 
     Returns:
@@ -184,6 +186,8 @@ def search_rooms(
     body: dict[str, Any] = {"query": query}
     if amenities:
         body["amenities"] = amenities
+    if weights:
+        body["weights"] = weights
 
     try:
         with _client() as client:

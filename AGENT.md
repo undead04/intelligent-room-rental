@@ -8,9 +8,10 @@ Tài liệu này được biên soạn để bất kỳ AI Agent hoặc lập tr
 * **Tên đề tài:** Hệ thống hỗ trợ ra quyết định tìm kiếm phòng trọ thông minh (Smart Housing Decision Support System).
 * **Đơn vị:** Đồ án tốt nghiệp — Trường Đại học Công nghệ Thông tin (UIT - ĐHQG TP.HCM).
 * **Mục tiêu:** Hỗ trợ sinh viên và người thuê phòng tìm kiếm chỗ ở tối ưu bằng cách kết hợp:
-  1. Tìm kiếm ngữ nghĩa (Semantic Vector Search)
-  2. Xếp hạng đa tiêu chí (Multi-Criteria Reranking 5 trọng số)
-  3. Cố vấn quyết định bằng AI Agent (Giải thích lý do lựa chọn & Phân tích đánh đổi trade-offs)
+  1. **Tìm kiếm lai (Hybrid Search)**: 70% Dense pgvector Embedding + 30% Sparse PostgreSQL Full-Text Search.
+  2. **Trọng số thích ứng theo ý định (Intent-Aware Dynamic MCDM)**: Tự động phát hiện ý định ưu tiên (giá rẻ, gần trường, an ninh, tiện nghi) để boost hệ số nhân trọng số và chuẩn hoá L1.
+  3. **Máy trạng thái điều phối LangGraph (State Machine Workflow)**: Kiểm soát 6 node từ Guardrail an toàn, Bóc tách nhu cầu tích lũy (Memory), Hỏi làm rõ (Clarification), Truy vấn lai & Rerank tuỳ biến, Phân tích ra quyết định (Decision Support & Trade-offs) đến Đóng gói phản hồi (Formatter).
+  4. **Cố vấn quyết định bằng AI Agent**: Giải thích lý do lựa chọn & Phân tích đánh đổi trade-offs minh bạch.
 
 ---
 
@@ -25,9 +26,10 @@ Tài liệu này được biên soạn để bất kỳ AI Agent hoặc lập tr
                     │ (Text stream + RoomItem[])     │ (Direct API calls)
 ┌───────────────────▼────────────────────────┐       │
 │        AI AGENT MODULE (ai-agent/)         │       │
-│   • Persona: Homigo Smart Housing Advisor  │       │
-│   • Engine: LangChain Core + Native Tools  │       │
+│   • State Machine: LangGraph (graph.py)    │       │
+│   • Dynamic MCDM: intent_weights.py        │       │
 │   • Service: HousingAgentService           │       │
+│   • Memory: SessionMemoryManager           │       │
 │   • Schemas: AgentResponse, DecisionInsight│       │
 └───────────────────▲────────────────────────┘       │
                     │ HTTP REST (housing_tools.py)   │
@@ -36,98 +38,122 @@ Tài liệu này được biên soạn để bất kỳ AI Agent hoặc lập tr
 │   • GET  /api/v1/geocode: Chuyển tên địa điểm thành (lat, lng)         │
 │   • GET  /api/v1/locations/*: Tra cứu cây Tỉnh/Thành -> Quận -> Phường │
 │   • POST /api/v1/listings/vector-search:                               │
+│       - Nhận: query, amenities, weights (custom dynamic weights)       │
 │       - Bước 1: Hybrid Search (70% Dense pgvector + 30% Sparse FTS)    │
-│       - Bước 2: Rerank đa tiêu chí 5 trọng số (utils.py)               │
+│       - Bước 2: Rerank đa tiêu chí theo custom_weights (utils.py)      │
 │       - Trả về: Listing + match_score + explain_match                  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🧠 3. Chi Tiết Module `ai-agent/`
+## 🔄 3. Luồng Điều Phối LangGraph State Machine (`ai-agent/graph.py`)
 
-### 3.1 Cấu trúc file cốt lõi
-* **[`ai-agent/tools/housing_tools.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/housing_tools.py)**: Native LangChain tools giao tiếp trực tiếp với FastAPI backend:
-  * `geocode_location`: Tìm toạ độ `(lat, lng)` từ tên trường, toà nhà, đường.
-  * `get_location_hierarchy`: Tra cứu ID thành phố, quận, phường.
-  * `search_rooms`: Tìm phòng qua vector search + rerank của backend.
-  * `get_listing_detail`: Lấy chi tiết bài đăng theo ID.
-* **[`ai-agent/schemas.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/schemas.py)**: Pydantic schemas chuẩn hoá:
-  * `RoomItem`: Định dạng chuẩn khớp 100% với Frontend `tim-kiem-ai/types.ts`.
-  * `DecisionInsight`: Giải thích lý do chọn Top 1, bảng so sánh Trade-off với Top 2/Top 3, checklist lưu ý khi đi xem phòng.
-  * `AgentResponse`: Cấu trúc JSON hoàn chỉnh trả về cho Client.
-* **[`ai-agent/guardrails.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/guardrails.py)**: Lớp phòng thủ Security & Safety:
-  * Phát hiện và chặn đứng Prompt Injection & Jailbreak attempts.
-  * Lọc câu hỏi ngoài luồng (off-topic) không liên quan đến nhà ở / phòng trọ, phản hồi an toàn tức thì với 0 token cost.
-* **[`ai-agent/memory.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/memory.py)**: Quản lý Bộ nhớ & Trạng thái tiêu chí (Memory & State Management):
-  * Theo dõi và tích lũy trạng thái nhu cầu (`UserPreferenceState`: vị trí, ngân sách, tiện ích, yêu cầu mềm) xuyên suốt nhiều lượt chat.
-  * Quản lý cửa sổ ngữ cảnh (Context Window Compaction): Tự động nén tin nhắn cũ và tiêm `[ACCUMULATED PREFERENCE STATE]` vào đầu ngữ cảnh để Agent không bao giờ bị quên tiêu chí cũ.
-* **[`ai-agent/service.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/service.py)**: Lớp `HousingAgentService` điều phối toàn bộ:
-  * Kiểm tra Guardrails trước khi gọi model.
-  * Xây dựng ngữ cảnh từ `memory_manager`.
-  * Chạy LangChain Agent, tự động trích xuất kết quả `search_rooms` từ tool message thành `RoomItem[]`.
-  * Tạo `DecisionInsight` tự động dựa vào `explain_match`.
-  * Lưu trữ lượt chat vào session memory và trả về `AgentResponse` kèm `current_preferences`.
-* **[`ai-agent/prompts.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/prompts.py)**: System prompt chuyên nghiệp:
-  * Persona: Homigo Smart Housing Decision Support Advisor.
-  * Hướng dẫn Agent chủ động hỏi làm rõ (proactive clarification) khi yêu cầu quá mơ hồ.
-  * Tuyệt đối không bịa đặt dữ liệu (hallucination-free).
-* **[`ai-agent/agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/agent.py)**: Khởi tạo Agent với Native Tools và Middleware giới hạn an toàn.
-* **[`ai-agent/eval/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/eval/)**:
-  * `dataset.json`: Bộ 30 test cases đa dạng nhóm phục vụ đánh giá định lượng.
-  * `run_eval.py`: Script benchmark tự động đo Schema Validity, Task Completion, Hallucination-free, Latency và xuất file `eval_report.md`.
-  * `rag_grounding_eval.py`: Script đo lường bộ ba tiêu chí **RAG Triad & Grounding** (Context Relevance, Groundedness/Faithfulness, Answer Relevance) và xuất báo cáo `rag_grounding_report.md`.
+Hệ thống AI Agent được tổ chức dưới dạng một đồ thị máy trạng thái khép kín (LangGraph StateGraph) gồm 6 Node:
+
+```mermaid
+flowchart TD
+    START([START]) --> GuardrailNode["1. Guardrail Node\n(Kiểm tra An toàn & Chặn Injection)"]
+    
+    GuardrailNode -->|Phát hiện vi phạm| FormatterNode["6. Formatter Node\n(Đóng gói Safe Response)"]
+    GuardrailNode -->|Hợp lệ| PreferenceIntentNode["2. Preference & Intent Node\n(Bóc tách Nhu cầu & Tính Trọng số Động)"]
+    
+    PreferenceIntentNode -->|Truy vấn quá mơ hồ| ClarificationNode["3. Clarification Node\n(Hỏi làm rõ: ngân sách, vị trí)"]
+    ClarificationNode --> FormatterNode
+    
+    PreferenceIntentNode -->|Đủ thông tin| RetrievalNode["4. Hybrid Retrieval & Rerank Node\n(Geocode + Hybrid Search + Custom Weights)"]
+    
+    RetrievalNode --> DecisionNode["5. Decision Support Node\n(Giải thích Top 1 dựa trên Trọng số & Trade-offs)"]
+    
+    DecisionNode --> FormatterNode
+    
+    FormatterNode --> END([END: Hoàn tất lượt])
+```
+
+### Chi tiết 6 Node:
+1. **`guardrail_node`**: Kiểm tra câu hỏi của người dùng. Nếu phát hiện Prompt Injection hoặc nội dung ngoài luồng $\rightarrow$ ngắt luồng và trả về câu trả lời an toàn lập tức (0 token cost).
+2. **`preference_intent_node`**: Tích lũy các tiêu chí vào `UserPreferenceState` qua các lượt chat; quét từ khoá ý định để phát hiện hệ số nhân ưu tiên (`multipliers`) và tính vector trọng số chuẩn hoá `computed_weights`. Nếu người dùng chỉ nói câu quá ngắn/mơ hồ $\rightarrow$ bật cờ `needs_clarification`.
+3. **`clarification_node`**: Sinh câu hỏi gợi mở thân thiện hướng dẫn người dùng cung cấp thêm ngân sách và khu vực mong muốn.
+4. **`retrieval_node`**: Tự động gọi Geocoding để lấy `(lat, lng)`, gửi yêu cầu đến Backend `/listings/vector-search` kèm vector `custom_weights` vừa tính toán.
+5. **`decision_node`**: Đọc `explain_match` của Top 1, tạo lý do lựa chọn minh bạch dựa trên đúng trọng số người dùng ưu tiên, lập bảng so sánh đối kháng Trade-off với Top 2 và đưa ra checklist khi đi xem phòng.
+6. **`formatter_node`**: Đóng gói thành Pydantic `AgentResponse`, cập nhật Memory Session và trả về cho Client.
 
 ---
 
-## ⚖️ 4. Cơ Chế Rerank Đa Tiêu Chí (`backend/app/utils/utils.py`)
-Hệ thống backend sử dụng công thức tổng có trọng số động (MCDM Dynamic Weights) với 5 thành phần:
+## 🎯 4. Cơ Chế Trọng Số Thích Ứng Theo Ý Định (`ai-agent/intent_weights.py`)
 
-$$\text{FinalScore} = w_{price} S_{price} + w_{sem} S_{semantic} + w_{loc} S_{location} + w_{amen} S_{amenity} + w_{safe} S_{safety}$$
+Đây là đóng góp cá nhân hoá thông minh quan trọng trong đề tài tốt nghiệp:
 
-1. **`price` ($S_{price}$)**: Điểm giá phòng (`price_score`), dữ liệu được cập nhật từ crawler ETL.
-2. **`semantic` ($S_{semantic}$)**: Điểm độ tương đồng Cosine giữa nhu cầu mô tả và embedding bài đăng.
-3. **`location` ($S_{location}$)**: Tính khoảng cách Haversine từ toạ độ người dùng đến phòng, chuẩn hoá: $\le 1\text{km} \rightarrow 1.0$, $\ge 10\text{km} \rightarrow 0.0$.
-4. **`amenity` ($S_{amenity}$)**: Tỷ lệ khớp các tiện ích yêu cầu (dựa trên `concept_scores` của tin đăng).
-5. **`safety` ($S_{safety}$)**: Điểm an ninh khu vực (`safety_score` từ 0.0 đến 1.0).
+### 4.1 Quy tắc kích hoạt tiêu chí (Active Status)
+* **Bắt buộc (Luôn bật):**
+  * `price`: Giá phòng
+  * `safety`: Điểm an ninh
+  * `semantic`: Khớp ngữ nghĩa bài đăng
+* **Động (Chỉ bật khi người dùng đề cập):**
+  * `location`: Chỉ bật khi xác định được toạ độ `lat, lng` hoặc tên địa điểm
+  * `amenity`: Chỉ bật khi người dùng yêu cầu tiện ích cụ thể (máy lạnh, gác, wifi...)
 
-Backend tự động sinh `explain_match` chứa `top_factors` và `weak_factors` để AI Agent diễn giải cho người dùng.
+### 4.2 Hệ số nhân ưu tiên theo ý định (Intent Multipliers)
+| Tiêu chí | Mẫu từ khóa nhận diện ý định ưu tiên | Hệ số nhân ($m_i$) |
+| :--- | :--- | :---: |
+| **Giá cả (`price`)** | `r"rẻ\s*nhất|giá\s*rẻ|tiết\s*kiệm|ngân\s*sách\s*(hẹp|thấp)|hạt\s*dẻ|rẻ\s*nữa"` | $\mathbf{\times 2.0}$ |
+| **Vị trí (`location`)** | `r"sát\s*(bên|nách)|đi\s*bộ\s*được|ngay\s*cạnh|rất\s*gần|sát\s*trường|gần\s*uit"` | $\mathbf{\times 2.0}$ |
+| **An ninh (`safety`)** | `r"an\s*ninh|an\s*toàn|nữ\s*ở\s*một\s*mình|sợ\s*trộm|khóa\s*vân\s*tay|bảo\s*vệ"` | $\mathbf{\times 2.0}$ |
+| **Tiện nghi (`amenity`)** | `r"full\s*nội\s*thất|đầy\s*đủ\s*đồ|tiện\s*nghi\s*cao|nội\s*thất\s*xịn"` | $\mathbf{\times 1.8}$ |
+| **Mặc định** | Không có từ khóa nhấn mạnh | $\mathbf{\times 1.0}$ |
+
+### 4.3 Công thức chuẩn hoá L1 Normalization:
+$$w_i = \frac{w_{base, i} \cdot m_i}{\sum_{k \in \text{active}} (w_{base, k} \cdot m_k)}$$
 
 ---
 
-## 🚀 5. Hướng Dẫn Vận Hành & Lệnh Thường Dùng
+## 🧠 5. Cấu Trúc File Module `ai-agent/`
 
-### Môi trường ảo Python
-* Backend: `.venv` tại thư mục gốc hoặc `backend/.venv`
+* **[`ai-agent/graph.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph.py)**: Toàn bộ StateGraph 6 node và State TypedDict.
+* **[`ai-agent/intent_weights.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/intent_weights.py)**: Engine nhận diện Intent Boosters và tính toán L1 Normalized Weights.
+* **[`ai-agent/service.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/service.py)**: `HousingAgentService` điều phối qua `housing_graph.invoke()`.
+* **[`ai-agent/memory.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/memory.py)**: Multi-turn session state management & Context window compaction.
+* **[`ai-agent/guardrails.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/guardrails.py)**: 2-layer defense (Prompt Injection & Off-topic filtering).
+* **[`ai-agent/schemas.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/schemas.py)**: Pydantic models (`RoomItem`, `DecisionInsight`, `AgentResponse`).
+* **[`ai-agent/tools/housing_tools.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/housing_tools.py)**: Native LangChain tools (`search_rooms`, `geocode_location`, `get_location_hierarchy`, `get_listing_detail`).
+* **[`ai-agent/prompts.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/prompts.py)**: Persona Homigo Decision Advisor prompt.
+* **[`ai-agent/eval/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/eval/)**: Bộ 30 benchmark test cases và script đánh giá RAG Grounding Triad.
+* **[`ai-agent/tests/test_housing_agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tests/test_housing_agent.py)**: 13 unit tests bao phủ toàn bộ hệ thống (100% Passed).
+
+---
+
+## 🚀 6. Hướng Dẫn Vận Hành & Lệnh Thường Dùng
+
+### Môi trường ảo Python:
+* Backend: `.venv` tại thư mục gốc
 * AI Agent: `ai-agent/.venv`
 
-### Chạy Unit Test AI Agent:
+### Chạy Unit Test AI Agent (13 tests):
 ```powershell
-cd ai-agent
-.\.venv\Scripts\pytest.exe tests/test_housing_agent.py
+ai-agent\.venv\Scripts\pytest.exe ai-agent/tests/test_housing_agent.py -v
 ```
 
-### Chạy Đánh Giá Benchmark:
+### Chạy Đánh Giá RAG Triad Grounding:
 ```powershell
-cd ai-agent
-.\.venv\Scripts\python.exe eval/run_eval.py --limit 5
+ai-agent\.venv\Scripts\python.exe ai-agent/eval/rag_grounding_eval.py --limit 5
 ```
 
-### Sử dụng Agent Service trong Python code:
+### Khởi chạy AI Agent trong mã Python:
 ```python
 from service import HousingAgentService
 
 service = HousingAgentService()
-res = service.run("Tìm phòng trọ gần trường Đại học Công nghệ Thông tin UIT dưới 3 triệu")
+res = service.run("Em là nữ ở một mình, tìm phòng gần trường UIT giá khoảng 3 triệu khu an ninh nhé")
+
 print("Câu trả lời:", res.text_reply)
 print("Số phòng tìm được:", len(res.rooms))
 if res.insights:
     print("Top 1 ID:", res.insights.selected_top_1_id)
-    print("Lý do chọn:", res.insights.top_1_reason)
+    print("Lý do lựa chọn:", res.insights.top_1_reason)
 ```
 
 ---
 
-## 📝 6. Hướng Dẫn Cho Các Session Tiếp Theo
-1. **Frontend Integration**: Khi kết nối giao diện Next.js (`frontend/src/app/tim-kiem-ai`), chỉ cần trỏ API từ `useAiChat.ts` vào backend endpoint gọi `HousingAgentService.run()` và nạp danh sách `res.rooms` vào state `rooms` để render thẻ phòng và bản đồ.
-2. **Crawler ETL**: Khi viết module crawler, chú ý tính toán và lưu thêm giá trị `price_score` (0.0 - 1.0) vào cột `price_score` trong bảng `listings` để tiêu chí giá trong Rerank đạt hiệu quả tối đa.
+## 📝 7. Hướng Dẫn Cho Các Session Tiếp Theo
+1. **Frontend Integration**: Giao diện Next.js (`frontend/src/app/tim-kiem-ai`) kết nối trực tiếp với endpoint gọi `HousingAgentService.run()`. Nhận dữ liệu `AgentResponse` hiển thị `rooms` lên danh sách thẻ và ghim toạ độ lên bản đồ.
+2. **Crawler ETL**: Bổ sung tính toán và lưu `price_score` (0.0 - 1.0) vào cột `price_score` trong bảng `listings` để tiêu chí giá trong Rerank đạt hiệu quả tối ưu nhất.
