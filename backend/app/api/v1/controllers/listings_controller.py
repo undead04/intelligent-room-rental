@@ -133,6 +133,10 @@ def vector_search_listings(
         default=None, 
         description="Danh sách tiện ích (VD: ?amenities=wifi&amenities=parking)"
     ),
+    weights: Optional[dict[str, float]] = Body(
+        default=None,
+        description="Dynamic weights for reranking (e.g. {'price': 0.35, 'location': 0.35, ...})"
+    ),
     filters: VectorSearchRequest = Depends(),
     service: ListingService = Depends(get_listing_service),
 ):
@@ -141,6 +145,7 @@ def vector_search_listings(
     results = service.vector_search(
         query=query,
         amenities=amenities,
+        weights=weights,
         model_embedding=embedding_model,
         city_id=filters.city_id,
         district_id=filters.district_id,

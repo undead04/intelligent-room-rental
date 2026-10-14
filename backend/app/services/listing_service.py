@@ -10,7 +10,7 @@ from app.models.location import District, Ward
 from app.repositories.listing_repository import ListingRepository
 from app.schemas.analytics import PriceStatsByArea, PriceStatsGeneral, PriceStatsResponse
 from app.schemas.listing import ListingResponse, VectorSearchResult
-from app.utils.utils import explain_match, rerank
+from app.utils.utils import DEFAULT_WEIGHTS, explain_match, rerank
 from app.services.embedding import EmbeddingModel
 
 
@@ -160,6 +160,7 @@ class ListingService:
         lat: float | None = None,
         lng: float | None = None,
         amenities: list[str] | None = None,
+        weights: dict[str, float] | None = None,
         city_id: int | None = None,
         district_id: int | None = None,
         ward_id: int | None = None,
@@ -199,6 +200,7 @@ class ListingService:
         reranked = rerank(
             candidates=candidates,
             user_pref=user_pref,
+            base_weights=weights or DEFAULT_WEIGHTS,
             limit=limit,
             offset=offset,
         )
