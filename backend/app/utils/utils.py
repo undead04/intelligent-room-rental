@@ -75,11 +75,11 @@ def _dynamic_weights(user_pref: Any, base: Mapping[str, float]) -> dict[str, flo
     query = _get(user_pref, "query")
 
     active = {
-        "price": True,  # giá/m² luôn tính; budget chỉ dùng ở lọc cứng
-        "safety": True,
-        "location": lat is not None and lng is not None,
-        "amenity": bool(amenities),
-        "semantic": bool(query),
+        "price": True,     # Bắt buộc: luôn đánh giá giá phòng
+        "safety": True,    # Bắt buộc: luôn đánh giá điểm an ninh
+        "semantic": True,  # Bắt buộc: luôn đánh giá độ khớp ngữ nghĩa
+        "location": lat is not None and lng is not None,  # Động: chỉ bật khi có toạ độ
+        "amenity": bool(amenities),                       # Động: chỉ bật khi user yêu cầu tiện ích cụ thể
     }
     w = {k: base[k] for k, on in active.items() if on}
     total = sum(w.values())
