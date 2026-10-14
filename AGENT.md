@@ -56,10 +56,18 @@ Tài liệu này được biên soạn để bất kỳ AI Agent hoặc lập tr
   * `RoomItem`: Định dạng chuẩn khớp 100% với Frontend `tim-kiem-ai/types.ts`.
   * `DecisionInsight`: Giải thích lý do chọn Top 1, bảng so sánh Trade-off với Top 2/Top 3, checklist lưu ý khi đi xem phòng.
   * `AgentResponse`: Cấu trúc JSON hoàn chỉnh trả về cho Client.
-* **[`ai-agent/service.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/service.py)**: Lớp `HousingAgentService` điều phối:
-  * Nhận `user_message` và `conversation_history`.
+* **[`ai-agent/guardrails.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/guardrails.py)**: Lớp phòng thủ Security & Safety:
+  * Phát hiện và chặn đứng Prompt Injection & Jailbreak attempts.
+  * Lọc câu hỏi ngoài luồng (off-topic) không liên quan đến nhà ở / phòng trọ, phản hồi an toàn tức thì với 0 token cost.
+* **[`ai-agent/memory.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/memory.py)**: Quản lý Bộ nhớ & Trạng thái tiêu chí (Memory & State Management):
+  * Theo dõi và tích lũy trạng thái nhu cầu (`UserPreferenceState`: vị trí, ngân sách, tiện ích, yêu cầu mềm) xuyên suốt nhiều lượt chat.
+  * Quản lý cửa sổ ngữ cảnh (Context Window Compaction): Tự động nén tin nhắn cũ và tiêm `[ACCUMULATED PREFERENCE STATE]` vào đầu ngữ cảnh để Agent không bao giờ bị quên tiêu chí cũ.
+* **[`ai-agent/service.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/service.py)**: Lớp `HousingAgentService` điều phối toàn bộ:
+  * Kiểm tra Guardrails trước khi gọi model.
+  * Xây dựng ngữ cảnh từ `memory_manager`.
   * Chạy LangChain Agent, tự động trích xuất kết quả `search_rooms` từ tool message thành `RoomItem[]`.
   * Tạo `DecisionInsight` tự động dựa vào `explain_match`.
+  * Lưu trữ lượt chat vào session memory và trả về `AgentResponse` kèm `current_preferences`.
 * **[`ai-agent/prompts.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/prompts.py)**: System prompt chuyên nghiệp:
   * Persona: Homigo Smart Housing Decision Support Advisor.
   * Hướng dẫn Agent chủ động hỏi làm rõ (proactive clarification) khi yêu cầu quá mơ hồ.

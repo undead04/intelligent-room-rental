@@ -1,5 +1,5 @@
 """HousingAgentService: Service chính cung cấp API interface cho AI Agent,
-hỗ trợ cả chạy đồng bộ (invoke) và streaming sự kiện (SSE) cho Frontend.
+kết hợp Memory & Preference State Management và Guardrails Security.
 """
 
 from __future__ import annotations
@@ -12,6 +12,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 
 from agent import build_agent, build_model
 from config import load_settings
+from guardrails import check_guardrails
+from memory import memory_manager
 from schemas import AgentResponse, DecisionInsight, RoomItem, TradeOffAnalysis
 
 logger = logging.getLogger(__name__)
@@ -106,22 +108,37 @@ class HousingAgentService:
         conversation_history: Optional[list[dict]] = None,
         session_id: Optional[str] = None,
     ) -> AgentResponse:
-        """Thực thi một lượt hội thoại đồng bộ và trả về AgentResponse chuẩn hoá."""
-        messages: list[BaseMessage] = []
+        """Thực thi một lượt hội thoại có bảo vệ Guardrails và duy trì Memory / Preference State."""
 
-        if conversation_history:
+        # 1. BẢO VỆ GUARDRAILS (Prompt Injection & Off-topic defense)
+        guard = check_guardrails(user_message)
+        if not guard.allowed:
+            return AgentResponse(
+                text_reply=guard.safe_response or "Yêu cầu ngoài phạm vi hỗ trợ của Homigo AI.",
+                rooms=[],
+                need_clarification=False,
+                follow_up_questions=["Bạn có muốn tìm phòng trọ gần trường học hoặc công ty nào không?"],
+            )
+
+        # 2. QUẢN LÝ BỘ NHỚ & TÍCH LŨY TIÊU CHÍ (Memory & State Management)
+        session = memory_manager.get_or_create_session(session_id)
+
+        # Nếu client truyền conversation_history riêng, đồng bộ vào session
+        if conversation_history and not session.messages:
             for turn in conversation_history:
                 role = turn.get("role") or turn.get("sender")
                 content = turn.get("content") or turn.get("text", "")
                 if role in ("user", "human"):
-                    messages.append(HumanMessage(content=content))
+                    session.messages.append(HumanMessage(content=content))
                 elif role in ("ai", "assistant"):
-                    messages.append(AIMessage(content=content))
+                    session.messages.append(AIMessage(content=content))
 
-        messages.append(HumanMessage(content=user_message))
+        # Xây dựng danh sách messages có nén context và tiêm Preference State
+        effective_messages = memory_manager.build_effective_messages(session, user_message)
 
+        # 3. THỰC THI QUA LANGCHAIN AGENT
         new_messages: list[BaseMessage] = []
-        for mode, chunk in self.agent.stream({"messages": messages}, stream_mode=["updates"]):
+        for mode, chunk in self.agent.stream({"messages": effective_messages}, stream_mode=["updates"]):
             if mode == "updates":
                 for update in chunk.values():
                     if isinstance(update, dict) and update.get("messages"):
@@ -136,7 +153,10 @@ class HousingAgentService:
         rooms = self._extract_rooms_from_messages(new_messages)
         insights = self._build_decision_insights(rooms) if rooms else None
 
-        # Kiểm tra xem agent có đang hỏi làm rõ không
+        # 4. LƯU LƯỢT CHAT VÀO MEMORY
+        memory_manager.commit_turn(session, user_message, final_text, rooms)
+
+        # 5. ĐÁNH GIÁ CẦN HỎI LÀM RÕ
         has_search_tool = any(
             isinstance(m, ToolMessage) and m.name == "search_rooms" for m in new_messages
         )
@@ -158,6 +178,7 @@ class HousingAgentService:
             text_reply=final_text,
             rooms=rooms,
             insights=insights,
+            current_preferences=session.preferences,
             need_clarification=need_clarification,
             follow_up_questions=follow_up_questions,
         )
