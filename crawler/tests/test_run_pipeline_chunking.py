@@ -2,7 +2,7 @@
 import json
 import pytest
 from pathlib import Path
-from crawler.model.run_pipeline_chunking import (
+from crawler.model.llm import (
     load_checkpoint,
     save_checkpoint,
     process_chunk_result,
