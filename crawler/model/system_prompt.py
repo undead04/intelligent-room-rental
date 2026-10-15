@@ -38,7 +38,6 @@ Nhiệm vụ: đọc tiêu đề và mô tả của MỘT tin, rồi điền đ�
 - furniture: có nội thất, ví dụ "full nội thất", "đầy đủ nội thất", "có giường tủ", "NT cơ bản" → yes.
   "phòng trống", "không nội thất" → no.
 - parking: "chỗ để xe", "giữ xe", "hầm xe", "sân để xe" → yes (kể cả tính phí). "không để xe" → no.
-- water_heater: "máy nước nóng", "bình nóng lạnh", "nóng lạnh" → yes.
 - elevator: "thang máy", "có thang máy" → yes.
 
 ## rules
@@ -55,14 +54,26 @@ Nhiệm vụ: đọc tiêu đề và mô tả của MỘT tin, rồi điền đ�
 - safe_area: tin nói rõ khu vực an ninh tốt/an toàn ("khu an ninh", "khu dân cư an toàn") → yes.
   Chỉ ghi "yên tĩnh" thì unknown.
 
+## room_type (Phân loại phòng chính xác)
+- ROOM: Phòng trọ truyền thống, phòng thuê trong dãy trọ hoặc nhà riêng.
+- STUDIO: Căn hộ studio, căn hộ mini, phòng khép kín không ngăn phòng ngủ.
+- APARTMENT: Căn hộ chung cư, chung cư dịch vụ, condotel.
+- SLEEPBOX: Giường tầng, sleepbox, ký túc xá dịch vụ / dorm.
+- WHOLE_HOUSE: Nhà nguyên căn, cho thuê toàn bộ ngôi nhà.
+
 ## numeric (số thuần, null nếu tin không ghi hoặc không rõ)
-- area_m2: diện tích phòng bằng mét vuông. "25m2", "25 m²", "rộng 25m" → 25. Nếu mục "Thông tin có sẵn" đã cho diện tích
-  thì dùng giá trị đó. Không lấy diện tích của cả căn nhà/đất.
+- bedrooms: số phòng ngủ (ví dụ "2PN", "2 phòng ngủ" → 2). Không rõ thì null.
+- bathrooms: số phòng tắm/toilet (ví dụ "1WC", "2WC" → 1 hoặc 2). Không rõ thì null.
 - electricity_vnd_per_kwh: đồng/kWh (số điện). "3k5/số", "3.500đ/kWh" → 3500. "3k" → 3000.
 - water_vnd: số tiền nước theo đồng như tin ghi ("100k/người" → 100000, "20k/khối" → 20000). Không rõ thì null.
 
+## danh sách bổ trợ (mảng chuỗi, mảng rỗng [] nếu không có)
+- landmarks_nearby: trường đại học, bệnh viện, chợ, trạm metro lân cận được nhắc tới (ví dụ: ["ĐH Bách Khoa", "Chợ Bến Thành"]).
+- rules_and_lifestyle: các quy định & môi trường sống (ví dụ: ["giờ tự do", "không chung chủ"]).
+- extra_amenities: các tiện ích đặc thù khác không nằm trong enum (ví dụ: ["view Landmark 81", "cửa sổ trời"]).
+
 # QUY TẮC CHUNK & OUTPUT
-1. Trích xuất đầy đủ TẤT CẢ các `article_id` có trong input, giữ nguyên chính xác ID.
+1. Trích xuất đầy đủ TẤT CẢ các `id` có trong input, giữ nguyên chính xác ID.
 """
 
 def _y(ev):
@@ -76,16 +87,16 @@ FEW_SHOTS = [
             {
                 "id": 1,
                 "text": (
-                    "Phòng trọ Q10 full nội thất, có gác, giờ giấc tự do. "
-                    "Phòng 25m2 có máy lạnh, WC riêng khép kín, tủ lạnh, "
-                    "cửa sổ thoáng. Cho nuôi thú cưng. Camera an ninh 24/7, chỗ để xe rộng. "
+                    "Phòng trọ Q10 gần ĐH Bách Khoa full nội thất, có gác, giờ giấc tự do. "
+                    "Phòng 25m2 có máy lạnh, 1 phòng ngủ, 1 WC riêng khép kín, tủ lạnh, "
+                    "cửa sổ thoáng view Landmark 81. Cho nuôi thú cưng. Camera an ninh 24/7, chỗ để xe rộng. "
                     "Điện 3k5/số, nước 100k/người. Không chung chủ."
                 )
             },
             {
                 "id": 2,
                 "text": (
-                    "Cho thuê phòng gần ĐH Bách Khoa 2tr8. "
+                    "Cho thuê phòng gần ĐH Kinh Tế 2tr8. "
                     "Phòng 18m2, chưa có máy lạnh, WC chung, không có gác. "
                     "Cấm nuôi chó mèo. Có chỗ để xe. Giờ giấc 23h, chung chủ. Không nấu ăn."
                 )
@@ -94,8 +105,9 @@ FEW_SHOTS = [
         "output": {
             "reports": [
                 {
-                    "id": 1,
+                    "id": "1",
                     "report": {
+                        "room_type": "ROOM",
                         "amenities": {
                             "furniture": _y("full nội thất"),
                             "mezzanine": _y("có gác"),
@@ -114,16 +126,21 @@ FEW_SHOTS = [
                             "camera": _y("Camera an ninh 24/7"),
                         },
                         "numeric": {
-                            "area_m2": 25,
+                            "bedrooms": 1,
+                            "bathrooms": 1,
                             "electricity_vnd_per_kwh": 3500,
                             "water_vnd": 100000,
                         },
+                        "landmarks_nearby": ["ĐH Bách Khoa"],
+                        "rules_and_lifestyle": ["giờ giấc tự do", "không chung chủ"],
+                        "extra_amenities": ["view Landmark 81"],
                     }
 
                 },
                 {
-                    "id": 2,
+                    "id": "2",
                     "report": {
+                        "room_type": "ROOM",
                         "amenities": {
                             "aircon": _n("chưa có máy lạnh"),
                             "private_wc": _n("WC chung"),
@@ -137,8 +154,12 @@ FEW_SHOTS = [
                             "pet_allowed": _n("Cấm nuôi chó mèo"),
                         },
                         "numeric": {
-                            "area_m2": 18,
+                            "bedrooms": 1,
+                            "bathrooms": None,
                         },
+                        "landmarks_nearby": ["ĐH Kinh Tế"],
+                        "rules_and_lifestyle": ["Giờ giấc 23h", "chung chủ"],
+                        "extra_amenities": [],
                     }
                 }
             ]

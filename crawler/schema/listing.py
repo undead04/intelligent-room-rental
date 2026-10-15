@@ -1,5 +1,6 @@
+from crawler.schema.enum import RoomType
 import re
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 from pydantic import BaseModel, Field, model_validator
 
 STATE_SCORE = {"yes": 1.0, "no": 0.0, "unknown": 0.4}
@@ -69,10 +70,6 @@ class Amenities(BaseModel):
         default_factory=_unknown,
         description="Có chỗ để xe / nhà xe / hầm xe."
     )
-    water_heater: Signal = Field(
-        default_factory=_unknown,
-        description="Có bình nóng lạnh/máy nước nóng."
-    )
     elevator: Signal = Field(
         default_factory=_unknown,
         description="Có thang máy."
@@ -133,9 +130,14 @@ class Safety(BaseModel):
 class Numeric(BaseModel):
     """Số liệu: chỉ điền khi tin ghi rõ, không thì null."""
 
-    area_m2: Optional[float] = Field(
+    bedrooms: Optional[int] = Field(
         None,
-        description="Diện tích phòng (m²). Chỉ điền khi tin ghi rõ."
+        description="Số phòng ngủ. Chỉ điền khi tin ghi rõ."
+    )
+
+    bathrooms: Optional[int] = Field(
+        None,
+        description="Số phòng tắm. Chỉ điền khi tin ghi rõ."
     )
 
     electricity_vnd_per_kwh: Optional[int] = Field(
@@ -153,7 +155,22 @@ class ListingExtraction(BaseModel):
     rules: Rules = Field(default_factory=Rules)
     safety: Safety = Field(default_factory=Safety)
     numeric: Numeric = Field(default_factory=Numeric)
-
+    room_type: RoomType = Field(
+        default=RoomType.ROOM,
+        description="Phân loại loại hình phòng trọ/nhà ở"
+    )
+    landmarks_nearby: List[str] = Field(
+        default_factory=list,
+        description="Các trường đại học, bệnh viện, chợ, trạm metro lân cận được nhắc đến hoặc suy luận được từ vị trí."
+    )
+    rules_and_lifestyle: List[str] = Field(
+        default_factory=list,
+        description="Quy định và môi trường sống: giờ giấc tự do, không chung chủ, cho nấu ăn, yên tĩnh, an ninh..."
+    )
+    extra_amenities: List[str] = Field(
+        default_factory=list,
+        description="Các tiện nghi/đặc điểm khác không nằm trong enum chuẩn (ví dụ: view Landmark 81, cửa sổ trời, full nội thất gỗ)."
+    )
     # ---- Kiểm tra LLM có bịa không ----
     def verify_evidence(self, source_text: str) -> "ListingExtraction":
         """Signal nào có evidence KHÔNG nằm trong text gốc -> hạ về unknown. Trả bản mới."""
@@ -180,7 +197,6 @@ class ListingExtraction(BaseModel):
             "window_balcony": 10,
             "furniture": 5,
             "parking": 5,
-            "water_heater": 5,
             "elevator": 5,
         }
         earned = sum(

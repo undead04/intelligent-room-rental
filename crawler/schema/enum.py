@@ -26,7 +26,6 @@ class AmenityCode(str, Enum):
     WINDOW_BALCONY = "window_balcony"      # Ban công hoặc cửa sổ thoáng
     FURNITURE = "furniture"                # Đầy đủ nội thất (giường, tủ, bàn học...)
     PARKING = "parking"                    # Chỗ để xe trong nhà / hầm xe
-    WATER_HEATER = "water_heater"          # Bình nóng lạnh
     ELEVATOR = "elevator"                  # Thang máy
 
     # 2. Quy định & Lối sống (Rules & Lifestyle)

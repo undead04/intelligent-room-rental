@@ -1,2 +1,5 @@
 ﻿requests
 pandas
+tiktoken
+google-genai
+pydantic
