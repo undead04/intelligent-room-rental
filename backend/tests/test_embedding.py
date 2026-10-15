@@ -3,7 +3,7 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 
 from app.services.embedding import EmbeddingModel
-from backend.scripts.embed_listings import prepare_embedding_text
+from crawler.etl.embed import ListingEmbedder
 
 
 def test_embedding_model_format_prefix():
@@ -50,28 +50,31 @@ def test_embedding_model_encode_query_and_passage():
         )
 
 
-def test_prepare_embedding_text_with_existing_text():
-    sample = {
-        "listing_id": "test_1",
-        "embedding_text": "passage: Vị trí: Quận 1 | Giá: 3,000,000",
-    }
-    res = prepare_embedding_text(sample)
-    assert res == "passage: Vị trí: Quận 1 | Giá: 3,000,000"
+def test_listing_embedder_batch():
+    with patch("crawler.etl.embed.EmbeddingModel") as mock_emb_cls:
+        mock_emb = MagicMock()
+        mock_emb_cls.return_value = mock_emb
+        # Giả lập ma trận 2 vector 768 chiều
+        mock_emb.encode_passages.return_value = np.zeros((2, 768), dtype=np.float32)
 
+        embedder = ListingEmbedder(model_name="intfloat/multilingual-e5-base")
+        records = [
+            {
+                "listing_id": "item_1",
+                "embedding_text": "passage: Vị trí: Quận 10 | Giá: 3,000,000",
+            },
+            {
+                "listing_id": "item_2",
+                "title": "Phòng đẹp quận 1",
+                "description": "Full nội thất",
+            },
+        ]
 
-def test_prepare_embedding_text_fallback_generation():
-    sample = {
-        "listing_id": "test_2",
-        "title": "Phòng đẹp quận 10",
-        "description": "Có ban công thoáng mát",
-        "street_name": "Đường 3/2",
-        "district": "Quận 10",
-        "city": "Tp Hồ Chí Minh",
-        "price_vnd": 3000000,
-        "area_m2": 25,
-    }
-    res = prepare_embedding_text(sample)
-    assert "passage:" in res
-    assert "Quận 10" in res
-    assert "3,000,000 VND/tháng" in res
-    assert "Có ban công thoáng mát" in res
+        embedded = embedder.embed_records(records)
+
+        assert len(embedded) == 2
+        assert "vector" in embedded[0]
+        assert len(embedded[0]["vector"]) == 768
+        assert embedded[0]["embedding_model"] == "intfloat/multilingual-e5-base"
+        assert embedded[0]["embedding_dim"] == 768
+        assert "passage:" in embedded[1]["embedding_text"]
