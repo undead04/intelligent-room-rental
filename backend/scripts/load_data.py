@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.models import City, District, Listing, ListingEmbedding, RoomType, User, Ward
 
@@ -329,7 +330,7 @@ def _load_embeddings(data_dir: Path, session: Session, model_name: str) -> int:
 
 def load_data(
     data_dir: Path = DEFAULT_DATA_DIR,
-    embedding_model: str = "precomputed-768",
+    embedding_model: str = settings.EMBEDDING_MODEL_NAME,
 ) -> tuple[int, int]:
     """Upsert listings and bundled embeddings; return (listing_count, embedding_count)."""
     datas_json_path = data_dir / "datas.json"
@@ -369,7 +370,7 @@ def load_data(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Load crawler data into PostgreSQL")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
-    parser.add_argument("--embedding-model", default="precomputed-768")
+    parser.add_argument("--embedding-model", default=settings.EMBEDDING_MODEL_NAME)
     args = parser.parse_args()
     listing_count, embedding_count = load_data(args.data_dir, args.embedding_model)
     print(

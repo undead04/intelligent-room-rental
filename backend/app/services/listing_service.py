@@ -171,7 +171,10 @@ class ListingService:
         limit: int = 5,
         offset: int = 0,
     ) -> VectorSearchResult:
-        raw_vector = model_embedding.encode([query])[0]
+        if hasattr(model_embedding, "encode_query"):
+            raw_vector = model_embedding.encode_query(query)
+        else:
+            raw_vector = model_embedding.encode([query])[0]
         query_vector = raw_vector.tolist() if hasattr(raw_vector, "tolist") else list(raw_vector)
 
         candidates = self.repository.vector_search(
