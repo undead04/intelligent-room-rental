@@ -17,13 +17,21 @@ if PROJECT_ROOT not in sys.path:
 from crawler.etl.extract import extract_raw_listings
 from crawler.etl.transform import ListingTransformer
 from crawler.etl.load import DataLoader
+from crawler.staging_db import staging_db
 
-def run_pipeline(destinations: list[str] = None, active_only: bool = False, raw_dir: str = None, output_csv: str = None) -> list[dict]:
+def run_pipeline(
+    destinations: list[str] = None,
+    active_only: bool = False,
+    unprocessed_only: bool = False,
+    raw_dir: str = None,
+    output_csv: str = None
+) -> list[dict]:
     """
     Điều phối luồng ETL toàn diện:
-    1. EXTRACT: Đọc toàn bộ file JSON thô
+    1. EXTRACT: Đọc dữ liệu từ SQLite Staging DB (hỗ trợ incremental)
     2. TRANSFORM: Làm sạch, khử trùng lặp, chuẩn hóa kiểu
     3. LOAD: Nạp vào các đích đến (CSV, Parquet, PostgreSQL)
+    4. MARK: Đánh dấu is_processed = 1 trong Staging DB
     
     Returns:
         list[dict]: Danh sách các bản ghi đã làm sạch.
@@ -36,7 +44,10 @@ def run_pipeline(destinations: list[str] = None, active_only: bool = False, raw_
     print("#" * 60 + "\n", flush=True)
 
     # 1. EXTRACT
-    raw_records = extract_raw_listings(raw_dir=raw_dir)
+    raw_records = extract_raw_listings(
+        unprocessed_only=unprocessed_only,
+        raw_dir=raw_dir,
+    )
     if not raw_records:
         print("[ETL] Không có dữ liệu thô để xử lý. Dừng pipeline.", flush=True)
         return []
@@ -59,6 +70,12 @@ def run_pipeline(destinations: list[str] = None, active_only: bool = False, raw_
     if "db" in destinations or "postgres" in destinations:
         loader.load_to_postgres(cleaned_records)
 
+    # 4. MARK PROCESSED IN STAGING DB
+    processed_ids = [r.get("listing_id") for r in cleaned_records if r.get("listing_id")]
+    if processed_ids:
+        updated = staging_db.mark_as_processed(processed_ids)
+        print(f"[ETL] Đã cập nhật trạng thái is_processed = 1 cho {updated} tin trong Staging DB.", flush=True)
+
     # Báo cáo thống kê
     loader.print_summary(cleaned_records)
     return cleaned_records
@@ -78,6 +95,11 @@ if __name__ == "__main__":
         help="Chỉ lấy những tin đang hoạt động (is_active == True)."
     )
     parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Chế độ Incremental: Chỉ xử lý các tin MỚI chưa qua ETL (is_processed == 0)."
+    )
+    parser.add_argument(
         "--raw-dir",
         type=str,
         default=None,
@@ -94,6 +116,7 @@ if __name__ == "__main__":
     run_pipeline(
         destinations=args.dest,
         active_only=args.active_only,
+        unprocessed_only=args.incremental,
         raw_dir=args.raw_dir,
         output_csv=args.output_csv
     )
