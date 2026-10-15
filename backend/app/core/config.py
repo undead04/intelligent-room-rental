@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     SQL_INJECTION_CHECK_ENABLED: bool = True
 
+    # Embedding Configuration
+    EMBEDDING_MODEL_NAME: str = "intfloat/multilingual-e5-base"
+    EMBEDDING_DIMENSION: int = 768
+    EMBEDDING_BATCH_SIZE: int = 32
+
     # PostgreSQL Database Configuration
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432

@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Gán trực tiếp vào app.state khi Server START
     app.state.embedding_model = EmbeddingModel(
-        model_name="keepitreal/vietnamese-sbert", batch_size=32
+        model_name=settings.EMBEDDING_MODEL_NAME,
+        batch_size=settings.EMBEDDING_BATCH_SIZE,
     )
 
     yield
