@@ -9,20 +9,44 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 DEFAULT_PROCESSED_CSV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.csv"))
+DEFAULT_PROCESSED_JSON = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.json"))
 
 class DataLoader:
     """
     [LOAD STAGE]
     Chịu trách nhiệm lưu trữ và nạp dữ liệu sạch vào các đích đến (Destinations):
     1. CSV (`listings_clean.csv`) - Dùng cho phân tích nhanh, báo cáo
-    2. Parquet - Dùng cho huấn luyện mô hình Machine Learning
-    3. PostgreSQL / Database - Nạp vào CSDL hệ thống
-    
-    >>> Bạn có thể dán (paste) thêm code kết nối DB từ Colab vào class này.
+    2. JSON (`datas.json` / `listings_clean.json`) - Dùng cho backend & nạp CSDL
+    3. Parquet - Dùng cho huấn luyện mô hình Machine Learning
+    4. PostgreSQL / Database - Nạp vào CSDL hệ thống
     """
 
     def __init__(self):
         pass
+
+    def load_to_json(self, records: list[dict], output_path: str = None) -> str:
+        """Xuất danh sách records ra file JSON (chuẩn UTF-8, hỗ trợ datetime)"""
+        target_path = output_path or DEFAULT_PROCESSED_JSON
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+
+        if not records:
+            print("[LOAD] Không có bản ghi nào để lưu ra JSON.", flush=True)
+            return target_path
+
+        import json
+
+        def default_serializer(o):
+            if hasattr(o, "isoformat"):
+                return o.isoformat()
+            if hasattr(o, "__dict__"):
+                return o.__dict__
+            return str(o)
+
+        with open(target_path, "w", encoding="utf-8") as f:
+            json.dump(records, f, ensure_ascii=False, indent=2, default=default_serializer)
+
+        print(f"[LOAD] Đã lưu thành công {len(records)} bản ghi vào JSON: {target_path}", flush=True)
+        return target_path
 
     def load_to_csv(self, records: list[dict], output_path: str = None) -> str:
         """Xuất danh sách records ra file CSV (chuẩn UTF-8 BOM để Excel đọc không lỗi font)"""
@@ -33,6 +57,8 @@ class DataLoader:
             print("[LOAD] Không có bản ghi nào để lưu ra CSV.", flush=True)
             return target_path
 
+        import json
+
         # Thu thập đầy đủ các cột dữ liệu
         fieldnames = list(records[0].keys())
         for r in records[1:]:
@@ -40,10 +66,24 @@ class DataLoader:
                 if k not in fieldnames:
                     fieldnames.append(k)
 
+        # Chuẩn hóa dict/list sang JSON string trước khi ghi CSV
+        serialized_records = []
+        for r in records:
+            item = {}
+            for k in fieldnames:
+                val = r.get(k)
+                if isinstance(val, (dict, list)):
+                    item[k] = json.dumps(val, ensure_ascii=False)
+                elif hasattr(val, "isoformat"):
+                    item[k] = val.isoformat()
+                else:
+                    item[k] = val
+            serialized_records.append(item)
+
         with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(records)
+            writer.writerows(serialized_records)
 
         print(f"[LOAD] Đã lưu thành công {len(records)} bản ghi vào CSV: {target_path}", flush=True)
         return target_path

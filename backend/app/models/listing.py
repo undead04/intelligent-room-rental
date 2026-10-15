@@ -36,7 +36,9 @@ class Listing(Base):
     # Safety Score
     safety_score = Column(Float, nullable=True)
     concept_scores = Column(JSON, nullable=True)  # JSON object with concept scores
-
+    amenity_overall = Column(Float, nullable=True)
+    price_score = Column(Float, nullable=True)
+    
     # Poster Foreign Key
     poster_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     ward_id = Column(Integer, ForeignKey("wards.id"),nullable=True,index=True)
