@@ -2,6 +2,7 @@ import os
 import json
 import time
 from abc import ABC, abstractmethod
+from crawler.staging_db import staging_db
 
 class BaseSpider(ABC):
     """
@@ -11,23 +12,17 @@ class BaseSpider(ABC):
     
     def __init__(self, name: str):
         self.name = name
-        self.raw_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'listings'))
+        self.raw_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'raw'))
         os.makedirs(self.raw_dir, exist_ok=True)
+        self.staging_db = staging_db
 
     def log(self, msg: str):
         """In log kèm tiền tố nguồn dữ liệu (ép flush ra terminal)"""
         print(f"[{self.name.upper()}] {msg}", flush=True)
 
     def get_processed_ids(self) -> set:
-        """Lấy danh sách các listing ID đã lưu trong kho của nguồn này"""
-        processed = set()
-        prefix = f"{self.name}_"
-        if os.path.exists(self.raw_dir):
-            for fname in os.listdir(self.raw_dir):
-                if fname.startswith(prefix) and fname.endswith(".json"):
-                    item_id = fname[len(prefix):-5]
-                    processed.add(item_id)
-        return processed
+        """Lấy danh sách các listing ID đã lưu trong kho Staging SQLite của nguồn này."""
+        return self.staging_db.get_processed_ids(self.name)
 
     def get_checkpoint_file(self, region: str = "all") -> str:
         """Tên file checkpoint theo từng nguồn và khu vực"""
@@ -64,12 +59,9 @@ class BaseSpider(ABC):
         self.log(f"Đã lưu checkpoint {region.upper()}: offset {offset}")
 
     def save_listing(self, item: dict) -> str:
-        """Lưu bản ghi listing dạng JSON thô vào thư mục data/raw/listings"""
-        listing_id = item.get("listing_id") or f"{self.name}_{item.get('list_id') or item.get('ad_id')}"
-        file_path = os.path.join(self.raw_dir, f"{listing_id}.json")
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(item, f, ensure_ascii=False, indent=2)
-        return file_path
+        """Lưu bản ghi listing vào SQLite Staging Database (crawler/data/raw/staging.db)."""
+        self.staging_db.save_listing(item, source=self.name)
+        return item.get("listing_id") or f"{self.name}_{item.get('list_id') or item.get('ad_id')}"
 
     @abstractmethod
     def crawl(self, pages: int = 5, mode: str = "resume", region: str = "all") -> int:

@@ -78,19 +78,24 @@
 │   └── package.json
 │
 ├── ai-agent/                      # Module AI Agent Quyết Định (LangGraph)
-│   ├── tools/housing_tools.py     # Native LangChain Tools (search_rooms, geocode, detail)
-│   ├── graph.py                   # Máy trạng thái LangGraph 6 node
+│   ├── tools/                     # Native LangChain Tools & Tool Scoping Registry
+│   │   ├── housing_tools.py       # Tools (search_rooms, geocode, detail, skills)
+│   │   └── registry.py            # Phân vùng công cụ (RETRIEVAL, DETAIL, ADVISORY)
+│   ├── graph.py                   # Máy trạng thái LangGraph 7 node với Tool Partitioning
+│   ├── skills_discovery.py        # Engine khám phá kỹ năng động (Dynamic Skill Discovery)
 │   ├── intent_weights.py          # Engine nhận diện Intent Multipliers & Dynamic Weights
 │   ├── memory.py                  # Bộ nhớ phiên & Tích lũy tiêu chí người dùng
-│   ├── guardrails.py              # Lớp bảo vệ Prompt Injection, SQLi & Off-topic
+│   ├── guardrails.py              # Lớp bảo vệ Prompt Injection & Off-topic
 │   ├── service.py                 # HousingAgentService cung cấp giao diện thực thi
 │   ├── schemas.py                 # Schemas chuẩn (RoomItem, DecisionInsight, AgentResponse)
 │   ├── eval/                      # Bộ 30 benchmark test cases & RAG Triad Grounding
-│   └── tests/                     # 13 unit tests AI Agent (100% Passed)
+│   └── tests/                     # 18 unit tests AI Agent (100% Passed)
 │
 ├── crawler/                       # Module Thu Thập Dữ Liệu Phòng Trọ
-│   ├── spiders/                   # Scrapy crawlers (Nhà Tốt, Phongtro123)
-│   └── etl/                       # Pipeline làm sạch và nạp dữ liệu vào DB
+│   ├── spiders/                   # Spiders cào dữ liệu (Nhà Tốt, Phongtro123)
+│   ├── staging_db.py              # SQLite Staging DB (Kiến trúc Two-Tier Storage)
+│   ├── etl/                       # Pipeline ETL làm sạch & nạp dữ liệu (Incremental ETL)
+│   └── tests/                     # Unit tests Staging DB & Pipeline (100% Passed)
 │
 ├── AGENT.md                       # Tài liệu kỹ thuật chi tiết dành cho AI Agents
 ├── run_backend.bat                # Phím tắt 1-click khởi chạy Backend trên Windows

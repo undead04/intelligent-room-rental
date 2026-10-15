@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,13 +18,18 @@ categories.txt
 crawl-plan.md
 region_test.json
 
-# Crawler Data (Large/Raw datasets & checkpoints)
+# Crawler Data (Large/Raw datasets & checkpoints & SQLite Staging DB)
+crawler/data/raw/*.db
+crawler/data/raw/*.db-wal
+crawler/data/raw/*.db-shm
 crawler/data/raw/listings/*.json
 crawler/data/raw/checkpoint_*.json
 crawler/data/raw/urls_queue.csv
 crawler/data/processed/*.csv
+crawler/data/processed/*.parquet
 
 # Keep folder structure
+!crawler/data/raw/.gitkeep
 !crawler/data/raw/listings/.gitkeep
 !crawler/data/processed/.gitkeep
 
