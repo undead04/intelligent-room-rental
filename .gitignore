@@ -12,6 +12,7 @@ ENV/
 env/
 
 ml/*
+models_cache/
 
 # Scratch & test outputs
 test_output.json

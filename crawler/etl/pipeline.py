@@ -23,6 +23,7 @@ def run_pipeline(
     destinations: list[str] = None,
     active_only: bool = False,
     unprocessed_only: bool = False,
+    embed: bool = False,
     raw_dir: str = None,
     output_csv: str = None,
     output_json: str = None,
@@ -32,8 +33,9 @@ def run_pipeline(
     Điều phối luồng ETL toàn diện:
     1. EXTRACT: Đọc dữ liệu từ SQLite Staging DB (hỗ trợ incremental)
     2. TRANSFORM: Làm sạch, khử trùng lặp, chuẩn hóa kiểu, tích hợp LLM báo cáo & embedding_text
-    3. LOAD: Nạp vào các đích đến (CSV, JSON, Parquet, PostgreSQL)
-    4. MARK: Đánh dấu is_processed = 1 trong Staging DB
+    3. EMBED: Sinh vector offline với intfloat/multilingual-e5-base
+    4. LOAD: Nạp vào các đích đến (CSV, JSON, Parquet, PostgreSQL)
+    5. MARK: Đánh dấu is_processed = 1 trong Staging DB
     
     Returns:
         list[dict]: Danh sách các bản ghi đã làm sạch.
@@ -61,7 +63,13 @@ def run_pipeline(
         print("[ETL] Không có dữ liệu hợp lệ sau khi Transform. Dừng pipeline.", flush=True)
         return []
 
-    # 3. LOAD
+    # 3. EMBED (Sinh vector ngữ nghĩa bằng multilingual-e5-base)
+    if embed or ("db" in destinations or "postgres" in destinations):
+        from crawler.etl.embed import ListingEmbedder
+        embedder = ListingEmbedder()
+        cleaned_records = embedder.embed_records(cleaned_records)
+
+    # 4. LOAD
     loader = DataLoader()
     if "csv" in destinations:
         loader.load_to_csv(cleaned_records, output_path=output_csv)
@@ -105,6 +113,11 @@ if __name__ == "__main__":
         help="Chế độ Incremental: Chỉ xử lý các tin MỚI chưa qua ETL (is_processed == 0)."
     )
     parser.add_argument(
+        "--embed",
+        action="store_true",
+        help="Tự động sinh vector embedding bằng multilingual-e5-base trước khi nạp.",
+    )
+    parser.add_argument(
         "--raw-dir",
         type=str,
         default=None,
@@ -134,6 +147,7 @@ if __name__ == "__main__":
         destinations=args.dest,
         active_only=args.active_only,
         unprocessed_only=args.incremental,
+        embed=args.embed,
         raw_dir=args.raw_dir,
         output_csv=args.output_csv,
         output_json=args.output_json,

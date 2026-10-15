@@ -107,14 +107,207 @@ class DataLoader:
             print(f"[LOAD] Lỗi xuất Parquet: {e}", flush=True)
             return None
 
-    def load_to_postgres(self, records: list[dict], db_url: str = None, table_name: str = "listings"):
+    def load_to_postgres(self, records: list[dict], db_url: str = None) -> tuple[int, int]:
+        """Nạp trực tiếp dữ liệu phòng và vector embedding vào PostgreSQL (pgvector).
+        Tự động upsert City, District, Ward, RoomType, User, Listing, ListingEmbedding.
         """
-        [HOOK / PLACEHOLDER]: Nạp dữ liệu vào PostgreSQL
-        Dùng cho code nạp DB từ Colab / Backend.
-        """
-        print(f"[LOAD] Khung nạp PostgreSQL sẵn sàng (Bảng: {table_name}). Dán code SQLAlchemy/psycopg2 từ Colab vào đây.", flush=True)
-        # TODO: User sẽ bổ sung logic insert DB từ Colab vào đây khi sẵn sàng.
-        pass
+        if not records:
+            print("[LOAD] Không có bản ghi nào để nạp vào PostgreSQL.", flush=True)
+            return 0, 0
+
+        import hashlib
+        import numpy as np
+        try:
+            from app.core.database import SessionLocal, engine, Base
+            from app.models import City, District, Ward, RoomType, User, Listing, ListingEmbedding
+            from app.core.config import settings
+        except ImportError:
+            from backend.app.core.database import SessionLocal, engine, Base
+            from backend.app.models import City, District, Ward, RoomType, User, Listing, ListingEmbedding
+            from backend.app.core.config import settings
+
+        Base.metadata.create_all(bind=engine)
+        session = SessionLocal()
+
+        user_cache: dict[str, User] = {}
+        city_cache: dict[str, City] = {}
+        district_cache: dict[tuple[int, str], District] = {}
+        ward_cache: dict[tuple[int, str], Ward] = {}
+        room_type_cache: dict[int, RoomType] = {}
+
+        listing_count = 0
+        embedding_count = 0
+
+        print(f"\n[LOAD] Bắt đầu nạp {len(records)} bản ghi vào PostgreSQL...", flush=True)
+
+        try:
+            for r in records:
+                lid = str(r.get("listing_id") or r.get("id") or "").strip()
+                if not lid:
+                    continue
+
+                # 1. Location Upsert
+                reg_id = r.get("region_id")
+                dist_id = r.get("district_id")
+                w_id = r.get("ward_id")
+                c_name = r.get("city")
+                d_name = r.get("district")
+                w_name = r.get("ward")
+
+                city_obj = None
+                if c_name:
+                    if c_name not in city_cache:
+                        city_obj = session.query(City).filter(City.name == c_name).first()
+                        if city_obj is None:
+                            city_obj = City(name=c_name, id=reg_id)
+                            session.add(city_obj)
+                            session.flush()
+                        city_cache[c_name] = city_obj
+                    else:
+                        city_obj = city_cache[c_name]
+
+                dist_obj = None
+                if d_name and city_obj:
+                    key = (city_obj.id, d_name)
+                    if key not in district_cache:
+                        dist_obj = session.query(District).filter(District.name == d_name, District.city_id == city_obj.id).first()
+                        if dist_obj is None:
+                            dist_obj = District(name=d_name, city_id=city_obj.id, id=dist_id)
+                            session.add(dist_obj)
+                            session.flush()
+                        district_cache[key] = dist_obj
+                    else:
+                        dist_obj = district_cache[key]
+
+                ward_obj = None
+                if w_name and dist_obj:
+                    key = (dist_obj.id, w_name)
+                    if key not in ward_cache:
+                        ward_obj = session.query(Ward).filter(Ward.name == w_name, Ward.district_id == dist_obj.id).first()
+                        if ward_obj is None:
+                            ward_obj = Ward(name=w_name, district_id=dist_obj.id, id=w_id)
+                            session.add(ward_obj)
+                            session.flush()
+                        ward_cache[key] = ward_obj
+                    else:
+                        ward_obj = ward_cache[key]
+
+                # 2. Room Type Upsert
+                rt_name = r.get("room_type")
+                cat_id = r.get("category_id") or r.get("room_type_id")
+                rt_id = None
+                if cat_id:
+                    if cat_id not in room_type_cache:
+                        rt_obj = session.query(RoomType).filter(RoomType.id == cat_id).first()
+                        if rt_obj is None:
+                            rt_obj = RoomType(id=cat_id, name=str(rt_name or "Phòng trọ"))
+                            session.add(rt_obj)
+                            session.flush()
+                        room_type_cache[cat_id] = rt_obj
+                    rt_id = cat_id
+
+                # 3. User (Poster) Upsert
+                poster_id = r.get("poster_id")
+                if poster_id:
+                    poster_id = str(poster_id)
+                    if poster_id not in user_cache:
+                        user_obj = session.get(User, poster_id)
+                        if user_obj is None:
+                            user_obj = User(
+                                id=poster_id,
+                                name=str(r.get("poster_name") or "Người đăng"),
+                                avatar_url=r.get("poster_avatar"),
+                                live_ads=int(r.get("poster_live_ads") or 0),
+                                sold_ads=int(r.get("poster_sold_ads") or 0),
+                                is_company=bool(r.get("is_company_ad")),
+                            )
+                            session.add(user_obj)
+                            session.flush()
+                        user_cache[poster_id] = user_obj
+
+                # 4. Listing Upsert
+                listing_vals = {
+                    "id": lid,
+                    "source": r.get("source") or "nhatot",
+                    "url": r.get("url"),
+                    "title": r.get("title") or "Untitled",
+                    "description": r.get("description"),
+                    "price_string": r.get("price_string"),
+                    "main_image": r.get("main_image"),
+                    "images": r.get("images") if isinstance(r.get("images"), list) else [],
+                    "price_vnd": r.get("price_vnd"),
+                    "area_m2": r.get("area_m2"),
+                    "price_million_per_m2": r.get("price_million_per_m2"),
+                    "deposit": r.get("deposit"),
+                    "furnishing_code": r.get("furnishing_code"),
+                    "address_raw": r.get("address_raw"),
+                    "lat": r.get("lat"),
+                    "lng": r.get("lng"),
+                    "posted_date": r.get("posted_date"),
+                    "crawled_at": r.get("crawled_at"),
+                    "safety_score": r.get("safety_score"),
+                    "concept_scores": r.get("concept_scores"),
+                    "amenity_overall": r.get("amenity_overall"),
+                    "price_score": r.get("price_score"),
+                    "poster_id": poster_id,
+                    "region_id": city_obj.id if city_obj else None,
+                    "district_id": dist_obj.id if dist_obj else None,
+                    "ward_id": ward_obj.id if ward_obj else None,
+                    "room_type_id": rt_id,
+                }
+
+                existing_listing = session.get(Listing, lid)
+                if existing_listing is None:
+                    session.add(Listing(**listing_vals))
+                else:
+                    for k, v in listing_vals.items():
+                        setattr(existing_listing, k, v)
+                listing_count += 1
+
+                # 5. ListingEmbedding Upsert (nếu có vector)
+                if "vector" in r and r["vector"]:
+                    vec = r["vector"]
+                    model_name = r.get("embedding_model") or settings.EMBEDDING_MODEL_NAME
+                    dim = r.get("embedding_dim") or len(vec)
+                    vec_bytes = np.array(vec, dtype=np.float32).tobytes()
+                    content_hash = hashlib.sha256(vec_bytes).hexdigest()
+
+                    emb_obj = (
+                        session.query(ListingEmbedding)
+                        .filter(
+                            ListingEmbedding.listing_id == lid,
+                            ListingEmbedding.model_name == model_name,
+                        )
+                        .one_or_none()
+                    )
+
+                    if emb_obj is None:
+                        session.add(ListingEmbedding(
+                            listing_id=lid,
+                            model_name=model_name,
+                            dimension=dim,
+                            vector=vec,
+                            content_hash=content_hash,
+                        ))
+                    else:
+                        emb_obj.dimension = dim
+                        emb_obj.vector = vec
+                        emb_obj.content_hash = content_hash
+                    embedding_count += 1
+
+                if listing_count % 500 == 0:
+                    session.commit()
+                    print(f"  -> Đã nạp {listing_count}/{len(records)} tin vào PostgreSQL...", flush=True)
+
+            session.commit()
+            print(f"[LOAD] Nạp thành công: {listing_count} bài đăng và {embedding_count} vector vào PostgreSQL!", flush=True)
+            return listing_count, embedding_count
+        except Exception as e:
+            session.rollback()
+            print(f"[LOAD] Lỗi nạp PostgreSQL: {e}", flush=True)
+            raise
+        finally:
+            session.close()
 
     def print_summary(self, records: list[dict]):
         """In báo cáo thống kê tóm tắt sau khi Load"""
