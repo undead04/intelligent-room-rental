@@ -58,12 +58,74 @@ def _location_fit(dist_km: float, near_km: float = 1.0, far_km: float = 10.0) ->
     return 1.0 - (dist_km - near_km) / (far_km - near_km)
 
 
+try:
+    from crawler.schema.enum import AmenityCode
+    _NORMALIZE_AMENITY = AmenityCode.normalize
+except ImportError:
+    _ALIAS_MAP = {
+        "ac": "aircon",
+        "air_conditioner": "aircon",
+        "may_lanh": "aircon",
+        "dieu_hoa": "aircon",
+        "wc": "private_wc",
+        "ve_sinh_rieng": "private_wc",
+        "gac": "mezzanine",
+        "gac_lung": "mezzanine",
+        "gac_xep": "mezzanine",
+        "bep": "kitchen",
+        "kitchen_shelf": "kitchen",
+        "tu_lanh": "fridge",
+        "may_giat": "washing_machine",
+        "balcony": "window_balcony",
+        "window": "window_balcony",
+        "ban_cong": "window_balcony",
+        "cua_so": "window_balcony",
+        "full_noi_that": "furniture",
+        "noi_that": "furniture",
+        "xe": "parking",
+        "ham_xe": "parking",
+        "pet": "pet_allowed",
+        "cho_nuoi_pet": "pet_allowed",
+        "thu_cung": "pet_allowed",
+        "tu_do": "free_hours",
+        "gio_tu_do": "free_hours",
+        "khong_chung_chu": "no_shared_landlord",
+        "van_tay": "fingerprint_lock",
+        "the_tu": "fingerprint_lock",
+        "khoa_van_tay": "fingerprint_lock",
+        "bao_ve": "guard",
+    }
+
+    def _NORMALIZE_AMENITY(code: str) -> str:
+        if not code:
+            return code
+        c = code.strip().lower()
+        return _ALIAS_MAP.get(c, c)
+
+
+def _normalize_amenity(code: str) -> str:
+    res = _NORMALIZE_AMENITY(code)
+    return res if res else code
+
+
 def _amenity_fit(requested: Sequence[str] | None, concept_scores: Mapping | None) -> float:
-    """Điểm trung bình của các tiện ích user yêu cầu (thiếu dữ liệu -> trung tính)."""
-    if not requested:
-        return 1.0
+    """Điểm trung bình của các tiện ích user yêu cầu (thiếu dữ liệu -> trung tính).
+    Hỗ trợ alias chuẩn hóa về canonical taxonomy.
+    Khi không có tiện ích cụ thể nào được yêu cầu, fallback về amenity_overall nếu có.
+    """
     scores = concept_scores or {}
-    return sum(_clamp01(scores.get(a, UNKNOWN_SCORE)) for a in requested) / len(requested)
+    if not requested:
+        if "amenity_overall" in scores:
+            return _clamp01(scores["amenity_overall"])
+        return 1.0
+
+    normalized_req = [_normalize_amenity(a) for a in requested if a]
+    if not normalized_req:
+        if "amenity_overall" in scores:
+            return _clamp01(scores["amenity_overall"])
+        return 1.0
+
+    return sum(_clamp01(scores.get(a, UNKNOWN_SCORE)) for a in normalized_req) / len(normalized_req)
 
 
 # --- Weights ---
@@ -73,13 +135,14 @@ def _dynamic_weights(user_pref: Any, base: Mapping[str, float]) -> dict[str, flo
     lng = _get(user_pref, "lng")
     amenities = _get(user_pref, "amenities")
     query = _get(user_pref, "query")
+    include_overall = bool(_get(user_pref, "include_amenity_overall", False))
 
     active = {
         "price": True,     # Bắt buộc: luôn đánh giá giá phòng
         "safety": True,    # Bắt buộc: luôn đánh giá điểm an ninh
         "semantic": True,  # Bắt buộc: luôn đánh giá độ khớp ngữ nghĩa
         "location": lat is not None and lng is not None,  # Động: chỉ bật khi có toạ độ
-        "amenity": bool(amenities),                       # Động: chỉ bật khi user yêu cầu tiện ích cụ thể
+        "amenity": bool(amenities) or include_overall,    # Động: bật khi có tiện ích cụ thể hoặc yêu cầu overall
     }
     w = {k: base[k] for k, on in active.items() if on}
     total = sum(w.values())
