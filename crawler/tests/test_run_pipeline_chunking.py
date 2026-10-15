@@ -115,3 +115,25 @@ def test_process_chunk_result_verification():
     assert "concept_scores" in res_report
     # private_wc (20) + aircon (20) = 40 pts -> 0.40
     assert res_report["amenity_overall_score"] == 0.40
+
+
+def test_crawler_model_llm_exports():
+    import crawler.model.llm as llm
+    assert hasattr(llm, "run_pipeline_chunking")
+    assert hasattr(llm, "load_checkpoint")
+    assert hasattr(llm, "save_checkpoint")
+    assert hasattr(llm, "create_dynamic_chunks")
+    assert hasattr(llm, "GeminiRoundRobin")
+    assert hasattr(llm, "SYSTEM_PROMPT")
+
+
+def test_create_dynamic_chunks():
+    from crawler.model.llm import create_dynamic_chunks
+    articles = [
+        {"listing_id": "1", "text": "Phòng trọ 1 giá rẻ"},
+        {"listing_id": "2", "text": "Phòng trọ 2 đầy đủ tiện nghi"},
+    ]
+    chunks = create_dynamic_chunks(articles, max_tokens_per_chunk=1000)
+    assert len(chunks) == 1
+    assert len(chunks[0]) == 2
+
