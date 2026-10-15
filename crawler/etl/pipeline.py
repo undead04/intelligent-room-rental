@@ -24,13 +24,15 @@ def run_pipeline(
     active_only: bool = False,
     unprocessed_only: bool = False,
     raw_dir: str = None,
-    output_csv: str = None
+    output_csv: str = None,
+    output_json: str = None,
+    checkpoint_path: str = None,
 ) -> list[dict]:
     """
     Điều phối luồng ETL toàn diện:
     1. EXTRACT: Đọc dữ liệu từ SQLite Staging DB (hỗ trợ incremental)
-    2. TRANSFORM: Làm sạch, khử trùng lặp, chuẩn hóa kiểu
-    3. LOAD: Nạp vào các đích đến (CSV, Parquet, PostgreSQL)
+    2. TRANSFORM: Làm sạch, khử trùng lặp, chuẩn hóa kiểu, tích hợp LLM báo cáo & embedding_text
+    3. LOAD: Nạp vào các đích đến (CSV, JSON, Parquet, PostgreSQL)
     4. MARK: Đánh dấu is_processed = 1 trong Staging DB
     
     Returns:
@@ -53,7 +55,7 @@ def run_pipeline(
         return []
 
     # 2. TRANSFORM
-    transformer = ListingTransformer()
+    transformer = ListingTransformer(llm_reports=checkpoint_path)
     cleaned_records = transformer.transform(raw_records, active_only=active_only)
     if not cleaned_records:
         print("[ETL] Không có dữ liệu hợp lệ sau khi Transform. Dừng pipeline.", flush=True)
@@ -63,6 +65,9 @@ def run_pipeline(
     loader = DataLoader()
     if "csv" in destinations:
         loader.load_to_csv(cleaned_records, output_path=output_csv)
+
+    if "json" in destinations:
+        loader.load_to_json(cleaned_records, output_path=output_json)
 
     if "parquet" in destinations:
         loader.load_to_parquet(cleaned_records)
@@ -86,8 +91,8 @@ if __name__ == "__main__":
         "--dest",
         nargs="+",
         default=["csv"],
-        choices=["csv", "parquet", "db", "postgres"],
-        help="Các đích đến muốn nạp dữ liệu: 'csv', 'parquet', 'db'."
+        choices=["csv", "json", "parquet", "db", "postgres"],
+        help="Các đích đến muốn nạp dữ liệu: 'csv', 'json', 'parquet', 'db'."
     )
     parser.add_argument(
         "--active-only",
@@ -111,6 +116,18 @@ if __name__ == "__main__":
         default=None,
         help="Đường dẫn file CSV xuất ra (tùy chọn)."
     )
+    parser.add_argument(
+        "--output-json",
+        type=str,
+        default=None,
+        help="Đường dẫn file JSON xuất ra (tùy chọn)."
+    )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Đường dẫn file checkpoint chứa báo cáo trích xuất LLM (tùy chọn)."
+    )
 
     args = parser.parse_args()
     run_pipeline(
@@ -118,5 +135,7 @@ if __name__ == "__main__":
         active_only=args.active_only,
         unprocessed_only=args.incremental,
         raw_dir=args.raw_dir,
-        output_csv=args.output_csv
+        output_csv=args.output_csv,
+        output_json=args.output_json,
+        checkpoint_path=args.checkpoint,
     )

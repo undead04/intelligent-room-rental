@@ -61,6 +61,23 @@ def _bool(value: Any) -> bool | None:
     return text.lower() in {"true", "1", "yes", "y", "t"}
 
 
+def _json_or_dict(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        try:
+            return ast.literal_eval(text)
+        except Exception:
+            return None
+
+
 def _datetime(value: Any) -> datetime | None:
     text = _text(value)
     if text is None:
@@ -229,7 +246,9 @@ def _listing_values(
         "posted_date": _datetime(row.get("posted_date")),
         "crawled_at": _datetime(row.get("crawled_at")),
         "safety_score": _float(row.get("safety_score")),
-        "concept_scores": row.get("concept_scores"),
+        "amenity_overall": _float(row.get("amenity_overall")),
+        "price_score": _float(row.get("price_score")),
+        "concept_scores": _json_or_dict(row.get("concept_scores")),
         "poster_id": _upsert_user(session, row, user_cache),
         "region_id": city_id,
         "district_id": district_id,

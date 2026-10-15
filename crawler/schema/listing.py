@@ -1,6 +1,6 @@
 from crawler.schema.enum import RoomType
 import re
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Any, Union
 from pydantic import BaseModel, Field, model_validator
 
 STATE_SCORE = {"yes": 1.0, "no": 0.0, "unknown": 0.4}
@@ -232,3 +232,19 @@ class ChunkExtractionWrapper(BaseModel):
         default_factory=list,
         description="Danh sách bóc tách về tiện ích trong chunk"
     )
+
+
+class ExtractedRoomData(BaseModel):
+    """Mô hình dữ liệu phòng trọ tổng hợp dùng để sinh văn bản giàu ngữ cảnh cho mô hình Embedding."""
+    street: Optional[str] = Field(None, description="Tên đường hoặc địa chỉ cụ thể")
+    ward: Optional[str] = Field(None, description="Phường / Xã")
+    district: Optional[str] = Field(None, description="Quận / Huyện")
+    city: Optional[str] = Field(None, description="Tỉnh / Thành phố")
+    landmarks_nearby: List[str] = Field(default_factory=list, description="Tiện ích ngoại khu, địa danh gần đó")
+    room_type: Union[RoomType, str] = Field(default=RoomType.ROOM, description="Loại hình phòng trọ")
+    area: Optional[float] = Field(None, description="Diện tích (m2)")
+    price: Optional[float] = Field(None, description="Giá thuê phòng (VNĐ/tháng)")
+    standard_amenities: List[Any] = Field(default_factory=list, description="Tiện ích nội khu chuẩn hóa")
+    extra_amenities: List[str] = Field(default_factory=list, description="Tiện ích bổ sung ngoài danh mục chuẩn")
+    rules_and_lifestyle: List[str] = Field(default_factory=list, description="Quy định và môi trường sống")
+    is_pet_allowed: Optional[bool] = Field(None, description="Cho phép nuôi thú cưng (True: có, False: không, None: chưa rõ)")
