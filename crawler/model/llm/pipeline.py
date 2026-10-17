@@ -28,8 +28,8 @@ except ImportError:
     from prompt import SYSTEM_PROMPT
 
 
-DEFAULT_MODEL = "gemini-2.0-flash-lite"
-DEFAULT_MAX_TOKENS_PER_CHUNK = 2500
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_MAX_TOKENS_PER_CHUNK = 3000
 
 
 def retry_failed_chunks(
@@ -96,6 +96,7 @@ def run_pipeline_chunking(
     system_prompt: str = SYSTEM_PROMPT,
     checkpoint_path: Optional[Path] = None,
     max_tokens_per_chunk: int = DEFAULT_MAX_TOKENS_PER_CHUNK,
+    max_items_per_chunk: int = 15,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Main pipeline trích xuất thông tin qua LLM có hỗ trợ Dynamic Chunking & Checkpoint phục hồi.
@@ -117,6 +118,7 @@ def run_pipeline_chunking(
     chunks = create_dynamic_chunks(
         datas,
         max_tokens_per_chunk=max_tokens_per_chunk,
+        max_items_per_chunk=max_items_per_chunk,
         model_name=model_name,
     )
 
