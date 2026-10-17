@@ -117,6 +117,7 @@ class DataLoader:
 
         import hashlib
         import numpy as np
+        from sqlalchemy import text
         try:
             from app.core.database import SessionLocal, engine, Base
             from app.models import City, District, Ward, RoomType, User, Listing, ListingEmbedding
@@ -126,8 +127,34 @@ class DataLoader:
             from backend.app.models import City, District, Ward, RoomType, User, Listing, ListingEmbedding
             from backend.app.core.config import settings
 
+        # Đảm bảo pgvector extension và bảng dữ liệu được khởi tạo
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            conn.commit()
         Base.metadata.create_all(bind=engine)
         session = SessionLocal()
+
+        # Fallback: Nếu records chưa có inline "vector", tự động kiểm tra file .npy/.parquet trong crawler/data/embeddings
+        precomputed_vectors: dict[str, tuple[list[float], str, int]] = {}
+        has_inline_vector = any("vector" in r and r["vector"] for r in records)
+        if not has_inline_vector:
+            emb_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "embeddings"))
+            npy_path = os.path.join(emb_dir, "listing_embeddings.npy")
+            map_path = os.path.join(emb_dir, "listing_embedding_mapping.parquet")
+            if os.path.exists(npy_path) and os.path.exists(map_path):
+                try:
+                    import pandas as pd
+                    vectors_arr = np.load(npy_path)
+                    mapping_df = pd.read_parquet(map_path)
+                    for _, row in mapping_df.iterrows():
+                        idx = int(row["embedding_index"])
+                        lid_key = str(row["id"]).strip()
+                        m_name = str(row.get("model_name") or settings.EMBEDDING_MODEL_NAME)
+                        dim_val = int(row.get("embedding_dim") or vectors_arr.shape[1])
+                        precomputed_vectors[lid_key] = (vectors_arr[idx].astype(np.float32).tolist(), m_name, dim_val)
+                    print(f"[LOAD] Đã tải {len(precomputed_vectors)} vector từ {emb_dir}", flush=True)
+                except Exception as e:
+                    print(f"[LOAD] Không thể đọc file embedding sẵn có ({e}), bỏ qua fallback.", flush=True)
 
         user_cache: dict[str, User] = {}
         city_cache: dict[str, City] = {}
@@ -264,11 +291,15 @@ class DataLoader:
                         setattr(existing_listing, k, v)
                 listing_count += 1
 
-                # 5. ListingEmbedding Upsert (nếu có vector)
-                if "vector" in r and r["vector"]:
-                    vec = r["vector"]
-                    model_name = r.get("embedding_model") or settings.EMBEDDING_MODEL_NAME
-                    dim = r.get("embedding_dim") or len(vec)
+                # 5. ListingEmbedding Upsert (hỗ trợ cả inline vector từ ETL hoặc file .npy/.parquet từ crawler/data/embeddings)
+                vec = r.get("vector")
+                model_name = r.get("embedding_model") or settings.EMBEDDING_MODEL_NAME
+                dim = r.get("embedding_dim") or (len(vec) if vec else None)
+
+                if not vec and lid in precomputed_vectors:
+                    vec, model_name, dim = precomputed_vectors[lid]
+
+                if vec:
                     vec_bytes = np.array(vec, dtype=np.float32).tobytes()
                     content_hash = hashlib.sha256(vec_bytes).hexdigest()
 
@@ -338,10 +369,35 @@ class DataLoader:
                 print(f"  - {dist}: {count} tin", flush=True)
         print("=" * 55 + "\n", flush=True)
 
+
 if __name__ == "__main__":
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(description="Nạp dữ liệu đã xử lý từ Crawler vào PostgreSQL (pgvector)")
+    parser.add_argument(
+        "--input",
+        type=str,
+        default=None,
+        help="Đường dẫn file JSON đã qua ETL (mặc định: tự động tìm datas.json hoặc listings_clean.json trong crawler/data/processed/)",
+    )
+    args = parser.parse_args()
+
+    processed_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed"))
+    input_path = args.input
+    if not input_path:
+        datas_json = os.path.join(processed_dir, "datas.json")
+        clean_json = os.path.join(processed_dir, "listings_clean.json")
+        input_path = datas_json if os.path.exists(datas_json) else clean_json
+
+    if not os.path.exists(input_path):
+        print(f"[LOAD] Không tìm thấy file dữ liệu tại: {input_path}")
+        sys.exit(1)
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        records_data = json.load(f)
+
     loader = DataLoader()
-    sample_data = [{"listing_id": "test_1", "title": "Phòng trọ test", "price_vnd": 3000000, "is_active": True}]
-    loader.load_to_csv(sample_data, "test_out.csv")
-    loader.print_summary(sample_data)
-    if os.path.exists("test_out.csv"):
-        os.remove("test_out.csv")
+    loader.load_to_postgres(records_data)
+    loader.print_summary(records_data)
+
