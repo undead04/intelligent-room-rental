@@ -24,6 +24,7 @@ def run_pipeline(
     active_only: bool = False,
     unprocessed_only: bool = False,
     embed: bool = False,
+    extract_llm: bool = False,
     raw_dir: str = None,
     output_csv: str = None,
     output_json: str = None,
@@ -34,10 +35,12 @@ def run_pipeline(
     """
     Điều phối luồng ETL toàn diện:
     1. EXTRACT: Đọc dữ liệu từ SQLite Staging DB (hỗ trợ incremental)
-    2. TRANSFORM: Làm sạch, khử trùng lặp, chuẩn hóa kiểu, tích hợp LLM báo cáo & embedding_text
-    3. EMBED: Sinh vector offline với intfloat/multilingual-e5-base
-    4. LOAD: Nạp vào các đích đến (Parquet [mặc định], PostgreSQL, CSV, JSON)
-    5. MARK: Đánh dấu is_processed = 1 trong Staging DB
+    2. LLM EXTRACT: (Tùy chọn --extract-llm) Bóc tách ngữ nghĩa & kiểm định bằng chứng qua Gemini LLM
+    3. TRANSFORM: Làm sạch, khử trùng lặp, chuẩn hóa kiểu, tích hợp LLM báo cáo & embedding_text
+    4. EVAL PRICE: (Tùy chọn --eval-price) Thẩm định giá thị trường & chấm điểm price_score
+    5. EMBED: Sinh vector offline với intfloat/multilingual-e5-base
+    6. LOAD: Nạp vào các đích đến (Parquet [mặc định], PostgreSQL, CSV, JSON)
+    7. MARK: Đánh dấu is_processed = 1 trong Staging DB
     
     Returns:
         list[dict]: Danh sách các bản ghi đã làm sạch.
@@ -57,6 +60,36 @@ def run_pipeline(
     if not raw_records:
         print("[ETL] Không có dữ liệu thô để xử lý. Dừng pipeline.", flush=True)
         return []
+
+    # 1.5. LLM EXTRACTION (Chạy bóc tách ngữ nghĩa qua Gemini nếu được yêu cầu)
+    if extract_llm:
+        from pathlib import Path
+        from crawler.model.llm.pipeline import run_pipeline_chunking
+        raw_keys = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+        keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+        if keys:
+            print(f"[ETL] Đang kích hoạt LLM Gemini bóc tách ngữ nghĩa cho {len(raw_records)} bài...", flush=True)
+            ckpt_p = Path(checkpoint_path) if checkpoint_path else Path(PROJECT_ROOT) / "crawler" / "data" / "processed" / "checkpoint_reports.json"
+            llm_results, _ = run_pipeline_chunking(
+                datas=raw_records,
+                api_keys=keys,
+                checkpoint_path=ckpt_p,
+            )
+            checkpoint_path = str(ckpt_p)
+        else:
+            print("[ETL] Cảnh báo: --extract-llm được bật nhưng chưa cấu hình GEMINI_API_KEYS trong file .env. Bỏ qua bước LLM.", flush=True)
+
+    # Tự động tìm checkpoint có sẵn nếu chưa chỉ định checkpoint_path
+    if not checkpoint_path:
+        default_ckpts = [
+            os.path.join(PROJECT_ROOT, "crawler", "data", "processed", "checkpoint_reports.json"),
+            os.path.join(PROJECT_ROOT, "crawler", "model", "llm", "checkpoint.json"),
+        ]
+        for p in default_ckpts:
+            if os.path.exists(p):
+                checkpoint_path = p
+                print(f"[ETL] Tự động phát hiện và áp dụng báo cáo trích xuất LLM từ: {p}", flush=True)
+                break
 
     # 2. TRANSFORM
     transformer = ListingTransformer(llm_reports=checkpoint_path, enable_price_evaluator=eval_price)
@@ -154,6 +187,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Tự động tính toán điểm price_score bằng mô hình Machine Learning PriceEvaluator.",
     )
+    parser.add_argument(
+        "--extract-llm",
+        action="store_true",
+        help="Tự động kích hoạt LLM Gemini trích xuất ngữ nghĩa & bằng chứng cho các bài đăng thô.",
+    )
 
     args = parser.parse_args()
     run_pipeline(
@@ -161,6 +199,7 @@ if __name__ == "__main__":
         active_only=args.active_only,
         unprocessed_only=args.incremental,
         embed=args.embed,
+        extract_llm=args.extract_llm,
         raw_dir=args.raw_dir,
         output_csv=args.output_csv,
         output_json=args.output_json,
@@ -168,3 +207,4 @@ if __name__ == "__main__":
         checkpoint_path=args.checkpoint,
         eval_price=args.eval_price,
     )
+
