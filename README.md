@@ -55,55 +55,58 @@
 
 ```tree
 .
-├── backend/                       # Backend REST API (FastAPI)
+├── backend/                       # [Service 1] FastAPI Backend Core + Hybrid Search
 │   ├── app/
 │   │   ├── api/v1/controllers/    # API Controllers (listings, locations, geocode, health)
 │   │   ├── core/                  # Cấu hình, Database Session, Security Middlewares
 │   │   ├── models/                # SQLAlchemy ORM Models (Listing, Location, User)
-│   │   ├── repositories/          # Tầng truy vấn DB (Hybrid Search, pgvector, FTS)
+│   │   ├── repositories/          # Tầng truy vấn DB (Hybrid Search 70% Dense + 30% FTS)
 │   │   ├── schemas/               # Pydantic Request/Response DTOs
 │   │   ├── services/              # Nghiệp vụ (ListingService, Geocoder, Embedding)
 │   │   └── utils/                 # Rerank đa tiêu chí 5 trọng số (utils.py)
-│   ├── scripts/                   # Scripts khởi tạo DB và import dữ liệu mẫu
-│   ├── tests/                     # Unit tests bảo mật & API (test_security_middleware.py)
-│   ├── run.py                     # Script khởi chạy backend đơn giản
+│   ├── scripts/                   # Script khởi tạo schema DB (init_db.py)
+│   ├── tests/                     # Unit tests bảo mật & Rerank (conftest.py, test_*.py)
+│   ├── run.py                     # Script khởi chạy backend
 │   └── requirements.txt           # Thư viện phụ thuộc backend
 │
-├── frontend/                      # Web Client (Next.js 14 App Router)
+├── frontend/                      # [Service 2] Giao diện Web (Next.js 15 App Router + React 19)
 │   ├── src/
-│   │   ├── app/                   # App Router Pages (/tim-kiem-ai, /phong-tro, ...)
+│   │   ├── app/                   # App Router Pages (/tim-kiem-ai, /phong-tro/[id], ...)
 │   │   ├── components/            # UI Components (Cards, ChatBox, Map, Navbar)
-│   │   ├── hooks/                 # React Hooks (useAiChat.ts, useLocation.ts)
-│   │   └── services/              # API Client gọi Backend
+│   │   ├── hooks/                 # React Hooks (useAiChat.ts, useLocations.ts)
+│   │   └── lib/                   # API Client, hằng số, tiện ích lọc
 │   └── package.json
 │
-├── ai-agent/                      # Module AI Agent Quyết Định (LangGraph)
+├── ai-agent/                      # [Service 3] AI Agent Ra Quyết Định (LangGraph + Streamlit)
 │   ├── tools/                     # Native LangChain Tools & Tool Scoping Registry
 │   │   ├── housing_tools.py       # Tools (search_rooms, geocode, detail, skills)
 │   │   └── registry.py            # Phân vùng công cụ (RETRIEVAL, DETAIL, ADVISORY)
+│   ├── skills/                    # Kỹ năng chuyên sâu (rental-contract-advisor)
 │   ├── graph.py                   # Máy trạng thái LangGraph 7 node với Tool Partitioning
-│   ├── skills_discovery.py        # Engine khám phá kỹ năng động (Dynamic Skill Discovery)
-│   ├── intent_weights.py          # Engine nhận diện Intent Multipliers & Dynamic Weights
+│   ├── skills_discovery.py        # Engine khám phá kỹ năng động qua YAML triggers
+│   ├── intent_weights.py          # Engine nhận diện Intent Multipliers & L1 Dynamic Weights
 │   ├── memory.py                  # Bộ nhớ phiên & Tích lũy tiêu chí người dùng
 │   ├── guardrails.py              # Lớp bảo vệ Prompt Injection & Off-topic
-│   ├── service.py                 # HousingAgentService cung cấp giao diện thực thi
+│   ├── grounding.py               # Tự kiểm chứng trung thực RAG Grounding & Retry Loop
+│   ├── service.py                 # FastAPI microservice (Port 8001) phục vụ Frontend
+│   ├── app.py                     # Streamlit Observability & Debug Console (Port 8501)
+│   ├── observer.py                # Middleware chụp snapshot Context Window & Tool calls
+│   ├── trace.py                   # Ghi log sự kiện ra file JSONL
 │   ├── schemas.py                 # Schemas chuẩn (RoomItem, DecisionInsight, AgentResponse)
 │   ├── eval/                      # Bộ 30 benchmark test cases & RAG Triad Grounding
-│   └── tests/                     # 18 unit tests AI Agent (100% Passed)
+│   └── tests/                     # 20 unit tests AI Agent (100% Passed)
 │
-├── crawler/                       # Module Thu Thập & ETL Dữ Liệu Phòng Trọ (xem crawler/README.md)
+├── crawler/                       # [Service 4] Thu thập & ETL Dữ Liệu Phòng Trọ
 │   ├── spiders/                   # Spiders cào dữ liệu & verify trạng thái (Nhà Tốt)
 │   ├── staging_db.py              # SQLite Staging DB (Kiến trúc Two-Tier Storage)
-│   ├── model/                     # LLM Gemini Dynamic Chunking & Embedding Generator
-│   ├── etl/                       # Pipeline ETL làm sạch, làm giàu 5-block Embedding & nạp DB
+│   ├── model/
+│   │   ├── llm/                   # Gemini Dynamic Chunking & Metadata Extraction
+│   │   └── ml/                    # CatBoost + Ridge Blend & Conformal Prediction định giá
+│   ├── data/                      # Lưu raw SQLite DB và processed (listings_clean.parquet)
+│   ├── etl/                       # Pipeline ETL (Extract -> Transform -> Embed -> Load DB)
 │   └── tests/                     # 22 unit tests Crawler & ETL (100% Passed)
 │
-├── ml/                            # Module Machine Learning Thẩm Định Giá (xem ml/README.md)
-│   ├── feature_extractor.py       # Trích xuất đặc trưng không gian & tiện nghi
-│   ├── models.py                  # CatBoost + Ridge Blend & Mondrian Conformal Prediction
-│   ├── price_evaluator.py         # Suy luận khoảng giá hợp lý & chấm điểm price_score [0, 1]
-│   └── train_price_model.py       # Huấn luyện và xuất pipeline (.joblib)
-│
+├── models_cache/                  # Cache offline cục bộ cho SentenceTransformer (BAAI/bge-m3)
 ├── AGENT.md                       # Tài liệu kỹ thuật chi tiết dành cho AI Agents
 ├── run_backend.bat                # Phím tắt 1-click khởi chạy Backend trên Windows
 └── README.md                      # Tài liệu tổng quan toàn bộ dự án (File này)
@@ -111,7 +114,7 @@
 
 ### 📖 Tài Liệu Chi Tiết Từng Module
 - 🕷️ **Crawler & ETL Pipeline**: [`crawler/README.md`](crawler/README.md)
-- 🧠 **Machine Learning Price Evaluator**: [`ml/README.md`](ml/README.md)
+- 🧠 **Machine Learning Price Evaluator**: [`crawler/model/ml/README.md`](crawler/model/ml/README.md)
 - ⚡ **FastAPI Backend & MCDM Reranker**: [`backend/README.md`](backend/README.md)
 - 🤖 **LangGraph AI Agent**: [`ai-agent/README.md`](ai-agent/README.md)
 - 💻 **Next.js Frontend**: [`frontend/README.md`](frontend/README.md)
@@ -156,105 +159,169 @@ flowchart LR
 
 ---
 
-## 🚀 5. Hướng Dẫn Cài Đặt & Vận Hành
+---
 
-### 5.1 Yêu Cầu Môi Trường
-* **Python**: 3.11+
-* **Node.js**: 18+ & npm
-* **PostgreSQL**: 15+ (đã cài đặt extension `pgvector`)
+## 🚀 5. Hướng Dẫn Khởi Chạy Dự Án Từ Đầu Đến Cuối (End-to-End Guide)
+
+Hệ thống được thiết kế theo kiến trúc Microservices tách biệt gồm 4 khối: **Database (PostgreSQL + pgvector)** $\rightarrow$ **Crawler & ETL** $\rightarrow$ **Backend API** $\rightarrow$ **AI Agent** $\rightarrow$ **Frontend Web**. Dưới đây là quy trình khởi chạy từng bước từ A đến Z.
 
 ---
 
-### 5.2 Khởi Chạy Backend (FastAPI)
+### Bước 1: Chuẩn Bị Môi Trường & Môi Trường Ảo
 
-1. **Di chuyển vào thư mục backend:**
+* **Yêu cầu cài đặt:**
+  * Python 3.10+ (Khuyến nghị Python 3.11 hoặc 3.12).
+  * Node.js 18+ & npm.
+  * Docker Desktop (Khuyến nghị để chạy PostgreSQL + pgvector nhanh nhất) hoặc PostgreSQL 15+ cài sẵn pgvector.
+
+* **Khởi tạo 2 môi trường ảo Python độc lập:**
+  ```powershell
+  # 1. Môi trường ảo chính (Dành cho Backend & Crawler/ETL)
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  pip install -r backend/requirements.txt
+  pip install -r crawler/requirements.txt
+
+  # 2. Môi trường ảo cho AI Agent (Dành cho LangGraph, FastAPI Agent Service & Streamlit Debug)
+  cd ai-agent
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  pip install -r requirements.txt
+  cd ..
+  ```
+
+---
+
+### Bước 2: Khởi Động Cơ Sở Dữ Liệu PostgreSQL & pgvector
+
+* **Cách 1: Khởi chạy bằng Docker (Nhanh nhất - 1 dòng lệnh):**
+  ```powershell
+  docker run -d `
+    --name homigo-postgres `
+    -p 5432:5432 `
+    -e POSTGRES_USER=postgres `
+    -e POSTGRES_PASSWORD=postgres `
+    -e POSTGRES_DB=smart_housing_db `
+    pgvector/pgvector:pg16
+  ```
+
+* **Cách 2: Sử dụng PostgreSQL cài cục bộ:**
+  Tạo database `smart_housing_db` và bật extension `vector`:
+  ```sql
+  CREATE DATABASE smart_housing_db;
+  \c smart_housing_db
+  CREATE EXTENSION IF NOT EXISTS vector;
+  ```
+
+---
+
+### Bước 3: Thiết Lập Biến Môi Trường (`.env`)
+
+Tạo các file cấu hình `.env` cho từng module tương ứng:
+
+| Module | Đường dẫn file | Các biến môi trường thiết yếu |
+| :--- | :--- | :--- |
+| **Backend** | `backend/.env` | `POSTGRES_SERVER=localhost`, `POSTGRES_PORT=5432`, `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=postgres`, `POSTGRES_DB=smart_housing_db`, `RATE_LIMIT_PER_MINUTE=120`, `CORS_ORIGINS=["http://localhost:3000"]` |
+| **Crawler** | `crawler/.env` | `POSTGRES_SERVER=localhost`, `POSTGRES_PORT=5432`, `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=postgres`, `POSTGRES_DB=smart_housing_db`, `GEMINI_API_KEY=your_key` *(chỉ cần khi chạy `--extract-llm`)* |
+| **AI Agent** | `ai-agent/.env` | `OPENAI_API_KEY=your_key` *(hoặc `GEMINI_API_KEY`), `MODEL_NAME=gpt-4o-mini`, `BACKEND_API_URL=http://localhost:8000/api/v1` |
+| **Frontend** | `frontend/.env.local` | `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`, `NEXT_PUBLIC_AI_AGENT_URL=http://localhost:8001` |
+
+> [!TIP]
+> Bạn có thể sao chép nhanh từ các file mẫu có sẵn: `cp backend/.env.example backend/.env` và `cp ai-agent/.env.example ai-agent/.env`.
+
+---
+
+### Bước 4: Thu Thập Dữ Liệu & Chạy ETL Pipeline Nạp CSDL
+
+Pipeline ETL của Homigo xử lý khép kín: **Crawl $\rightarrow$ Làm sạch $\rightarrow$ Đánh giá giá phòng bằng ML $\rightarrow$ Xuất Parquet $\rightarrow$ Trích xuất Embedding 768 chiều $\rightarrow$ Nạp PostgreSQL**.
+
+1. **Cào dữ liệu thô (ví dụ: cào 5 trang khu vực TP.HCM từ Nhà Tốt):**
    ```powershell
-   cd backend
+   .\.venv\Scripts\python.exe crawler/main.py --source nhatot --pages 5 --region hcm --no-clean
    ```
 
-2. **Cài đặt thư viện phụ thuộc:**
+2. **Chạy ETL Pipeline tự động làm sạch, tính điểm ML và nạp vào CSDL:**
    ```powershell
-   pip install -r requirements.txt
+   # Tự động: Đánh giá ML Price -> Lưu Parquet -> Tạo BGE-M3 Embeddings -> Nạp thẳng vào PostgreSQL
+   .\.venv\Scripts\python.exe crawler/etl/pipeline.py --dest parquet postgres --embed
    ```
 
-3. **Thiết lập file cấu hình `.env`:**
-   Tạo file `backend/.env` (tham khảo `backend/.env.example`):
-   ```env
-   PROJECT_NAME="Smart Housing Decision Support System API"
-   POSTGRES_SERVER=localhost
-   POSTGRES_PORT=5432
-   POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=your_password
-   POSTGRES_DB=smart_housing_db
-   CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
-   RATE_LIMIT_PER_MINUTE=120
-   ```
+   *Tuỳ chọn nâng cao:* Thêm cờ `--extract-llm` nếu muốn Gemini bóc tách sâu metadata an ninh, giờ giấc tự do, gác lửng từ văn bản mô tả.
 
-4. **Khởi chạy Server:**
-   * **Cách 1 (Nhanh nhất - One click):** Nhấp đúp vào file `run_backend.bat` hoặc chạy:
+---
+
+### Bước 5: Khởi Chạy Backend API Server (Port 8000)
+
+1. **Khởi chạy máy chủ FastAPI:**
+   * **Cách 1 (Nhanh nhất trên Windows):** Nhấp đúp vào file [`run_backend.bat`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/run_backend.bat) hoặc gõ:
      ```powershell
      .\run_backend.bat
      ```
-   * **Cách 2 (Bằng Python runner):**
+   * **Cách 2 (Bằng Python):**
      ```powershell
-     python backend/run.py
-     ```
-   * **Cách 3 (Bằng Uvicorn trực tiếp):**
-     ```powershell
-     cd backend
-     python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+     .\.venv\Scripts\python.exe backend/run.py
      ```
 
-5. **Truy cập tài liệu API tương tác:**
-   * **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
-   * **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
-   * **Health Check:** [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
+2. **Kiểm tra trạng thái máy chủ:**
+   * **Health Check:** [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) (Trả về `{"status": "ok"}`).
+   * **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs) (Xem tài liệu và test trực tiếp các API tìm kiếm lai `POST /listings/vector-search`).
 
 ---
 
-### 5.3 Khởi Chạy Frontend (Next.js)
+### Bước 6: Khởi Chạy AI Agent (Microservice & Debug Console)
 
-1. **Di chuyển vào thư mục frontend:**
+Bạn có 2 chế độ chạy phục vụ 2 mục đích:
+
+* **Chế độ 1: Khởi chạy Microservice API (Port 8001) để Frontend Next.js gọi:**
+  ```powershell
+  cd ai-agent
+  .\.venv\Scripts\uvicorn.exe service:app --host 0.0.0.0 --port 8001 --reload
+  ```
+  *(Service này nhận câu hỏi của người dùng từ giao diện Next.js, điều phối LangGraph và trả kết quả phòng + trade-offs).*
+
+* **Chế độ 2: Khởi chạy Streamlit Observability Console (Port 8501) để Debug:**
+  ```powershell
+  cd ai-agent
+  .\.venv\Scripts\streamlit.exe run app.py
+  ```
+  *Mở trình duyệt tại [http://localhost:8501](http://localhost:8501)*: Giúp lập trình viên soi chi tiết **từng bước gọi Tool**, tham số arguments, latency `ms`, xem snapshot **Context Window** và kiểm soát số lượng token tiêu thụ.
+
+---
+
+### Bước 7: Khởi Chạy Giao Diện Frontend (Next.js - Port 3000)
+
+1. **Cài đặt thư viện và khởi chạy:**
    ```powershell
    cd frontend
    npm install
-   ```
-
-2. **Cấu hình môi trường:**
-   Tạo file `frontend/.env.local`:
-   ```env
-   NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-   ```
-
-3. **Khởi chạy máy chủ phát triển:**
-   ```powershell
    npm run dev
    ```
-   Truy cập trình duyệt tại: [http://localhost:3000/tim-kiem-ai](http://localhost:3000/tim-kiem-ai)
+
+2. **Trải nghiệm ứng dụng:**
+   * **Trang chủ:** [http://localhost:3000](http://localhost:3000)
+   * **Giao diện tìm kiếm AI & Bản đồ:** [http://localhost:3000/tim-kiem-ai](http://localhost:3000/tim-kiem-ai)
+   * **Trang tra cứu giá thị trường:** [http://localhost:3000/tra-cuu-gia-tro](http://localhost:3000/tra-cuu-gia-tro)
 
 ---
 
-### 5.4 Sử Dụng Module AI Agent
+### 📋 Bảng Tóm Tắt Các Lệnh Thường Dùng (Cheat Sheet)
 
-1. **Di chuyển vào thư mục `ai-agent/`:**
-   ```powershell
-   cd ai-agent
-   pip install -r requirements.txt
-   ```
+```powershell
+# 1. Chạy CSDL Docker (nếu chưa có)
+docker start homigo-postgres
 
-2. **Chạy thử nghiệm Agent qua mã Python:**
-   ```python
-   from service import HousingAgentService
+# 2. Khởi chạy Backend (Terminal 1)
+.\run_backend.bat
 
-   service = HousingAgentService()
-   response = service.run("Tìm phòng trọ gần trường UIT dưới 3 triệu, có gác lửng và an ninh nhé")
+# 3. Khởi chạy AI Agent REST Service (Terminal 2)
+cd ai-agent; .\.venv\Scripts\uvicorn.exe service:app --port 8001 --reload; cd ..
 
-   print("Câu trả lời:", response.text_reply)
-   print("Số lượng phòng gợi ý:", len(response.rooms))
-   if response.insights:
-       print("Lý do lựa chọn Top 1:", response.insights.top_1_reason)
-       print("Đối sánh đánh đổi:", response.insights.trade_offs)
-   ```
+# 4. Khởi chạy Frontend Next.js (Terminal 3)
+cd frontend; npm run dev; cd ..
+
+# 5. Khởi chạy Streamlit Debug Console (Khi cần soi Tool calls & Context Window)
+cd ai-agent; .\.venv\Scripts\streamlit.exe run app.py; cd ..
+```
 
 ---
 
