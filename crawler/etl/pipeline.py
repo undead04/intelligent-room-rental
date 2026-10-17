@@ -28,6 +28,7 @@ def run_pipeline(
     output_csv: str = None,
     output_json: str = None,
     checkpoint_path: str = None,
+    eval_price: bool = False,
 ) -> list[dict]:
     """
     Điều phối luồng ETL toàn diện:
@@ -57,7 +58,7 @@ def run_pipeline(
         return []
 
     # 2. TRANSFORM
-    transformer = ListingTransformer(llm_reports=checkpoint_path)
+    transformer = ListingTransformer(llm_reports=checkpoint_path, enable_price_evaluator=eval_price)
     cleaned_records = transformer.transform(raw_records, active_only=active_only)
     if not cleaned_records:
         print("[ETL] Không có dữ liệu hợp lệ sau khi Transform. Dừng pipeline.", flush=True)
@@ -141,6 +142,11 @@ if __name__ == "__main__":
         default=None,
         help="Đường dẫn file checkpoint chứa báo cáo trích xuất LLM (tùy chọn)."
     )
+    parser.add_argument(
+        "--eval-price",
+        action="store_true",
+        help="Tự động tính toán điểm price_score bằng mô hình Machine Learning PriceEvaluator.",
+    )
 
     args = parser.parse_args()
     run_pipeline(
@@ -152,4 +158,5 @@ if __name__ == "__main__":
         output_csv=args.output_csv,
         output_json=args.output_json,
         checkpoint_path=args.checkpoint,
+        eval_price=args.eval_price,
     )
