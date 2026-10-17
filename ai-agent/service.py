@@ -11,8 +11,6 @@ from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
-from agent import build_agent, build_model
-from config import load_settings
 from graph import build_decision_insights, housing_graph
 from memory import memory_manager
 from schemas import AgentResponse, DecisionInsight, RoomItem, TradeOffAnalysis
@@ -21,10 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 class HousingAgentService:
-    def __init__(self, settings=None):
-        self.settings = settings or load_settings()
-        self.model = build_model(self.settings)
-        self.agent = build_agent(self.model)
+    def __init__(self, settings: Any = None):
+        self.settings = settings
         self.graph = housing_graph
 
     def _extract_rooms_from_messages(self, messages: list[BaseMessage]) -> list[RoomItem]:
