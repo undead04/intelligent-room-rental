@@ -32,6 +32,10 @@ frontend/
 │   │   │   ├── page.tsx
 │   │   │   ├── _components/     # DetailBreadcrumb, LandlordCard, SimilarListings...
 │   │   │   └── _hooks/          # useListingDetail, useSimilarListings
+│   │   ├── tim-kiem-ai/         # Không gian làm việc AI Agent (/tim-kiem-ai)
+│   │   │   ├── page.tsx         # Giao diện 3 cột: Chat AI, Danh sách phòng Rerank, Bản đồ & Giải thích MCDM
+│   │   │   ├── _components/     # AiChatPanel, RoomResultsPanel, RoomMapPanel, AgentInsightPanel
+│   │   │   └── _hooks/          # useAiChat
 │   │   └── tra-cuu-gia-tro/     # Trang tra cứu & phân tích thị trường giá trọ
 │   │       ├── page.tsx
 │   │       ├── _components/     # PriceStatsOverview, PriceStatsFilterBar, PriceStatsTable
@@ -44,7 +48,7 @@ frontend/
 │   │   ├── constants/           # Hằng số (sort options, property defaults)
 │   │   └── utils/               # Helper functions (formatPrice, filter, priceStats...)
 │   └── types/                   # Định nghĩa kiểu dữ liệu TypeScript
-│       ├── dto/                 # Data Transfer Objects từ backend (ListingDto, CityDto...)
+│       ├── dto/                 # Data Transfer Objects đồng bộ 1-1 với Backend (ListingDto, RoomTypeDto, PriceStatsDto...)
 │       └── index.ts             # View-models & types chung cho UI
 ├── .env.example                 # Mẫu cấu hình biến môi trường
 ├── package.json                 # Khai báo thư viện & scripts
@@ -58,21 +62,19 @@ frontend/
 
 1. **Trang Chủ (`/`)**:
    - Hero banner tích hợp thanh tìm kiếm thông minh theo từ khóa và vị trí.
-   - Thẻ hiển thị các phòng trọ mới nhất và danh mục phòng trọ theo khu vực.
+   - Thẻ hiển thị các phòng trọ mới nhất (kèm nhãn loại phòng `room_type.name`) và danh mục phòng trọ theo khu vực.
 2. **Tìm Kiếm & Bộ Lọc Nâng Cao (`/tim-kiem`)**:
-   - Lọc đa tiêu chí: Tỉnh/Thành phố, Quận/Huyện, Phường/Xã, Loại phòng, Khoảng giá.
+   - Lọc đa tiêu chí: Tỉnh/Thành phố, Quận/Huyện, Phường/Xã, Loại phòng, Khoảng giá, Diện tích (`min_area`, `max_area`).
    - Sắp xếp linh hoạt: Tin mới nhất, Giá tăng dần/giảm dần, Diện tích.
    - Phân trang kết quả tìm kiếm với URL query params đồng bộ.
-3. **Chi Tiết Phòng Trọ (`/phong-tro/[id]`)**:
+3. **Không Gian Tìm Kiếm & Ra Quyết Định Cùng AI (`/tim-kiem-ai`)**:
+   - Giao diện 3 cột trực quan: Khung hội thoại đa lượt (`AiChatPanel`), Danh sách phòng được xếp hạng theo điểm phù hợp `matchScore` (`RoomResultsPanel`), Bản đồ tương tác (`RoomMapPanel`) và Bảng phân tích lý do đề xuất & đánh đổi (`AgentInsightPanel`).
+4. **Chi Tiết Phòng Trọ (`/phong-tro/[id]`)**:
    - Thư viện hình ảnh thực tế, mô tả chi tiết, giá thuê, tiền cọc.
-   - **Đánh giá an toàn & Tiện ích thông minh**: Hiển thị điểm an toàn (Safety Score) và các concept tiện ích (máy lạnh, gác lửng, ban công, an ninh, wifi...).
-   - Thông tin người đăng tin / chủ trọ.
-   - **Gợi ý phòng tương tự (`SimilarListings`)**: Tự động gợi ý các phòng cùng khu vực và cùng loại phòng.
-4. **Tra Cứu & Báo Cáo Biến Động Giá (`/tra-cuu-gia-tro`)**:
-   - Báo cáo thời gian thực về giá trung bình thị trường.
-   - Đo lường mức độ biến động giá tăng/giảm so với tháng trước.
-   - Xác định khu vực sôi động nhất (Hotspot) kèm tỉ lệ tăng trưởng lượng tin đăng tuyển.
-   - Bảng so sánh chi tiết giá min/max/trung bình và xu hướng theo từng quận/phường.
+   - **Đánh giá Giá, An toàn & Tiện ích thông minh**: Hiển thị điểm hợp lý giá (`price_score`), điểm an toàn (`safety_score`), điểm tiện nghi tổng thể (`amenity_overall`) và các concept tiện ích (`concept_scores`).
+   - Thông tin người đăng tin / chủ trọ và gợi ý phòng tương tự (`SimilarListings`).
+5. **Tra Cứu & Báo Cáo Biến Động Giá (`/tra-cuu-gia-tro`)**:
+   - Báo cáo thời gian thực về giá trung bình thị trường, mức độ biến động giá theo tháng và khu vực sôi động nhất (Hotspot).
 
 ---
 

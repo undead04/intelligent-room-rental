@@ -239,3 +239,34 @@ def run_pipeline_chunking(
     )
 
     return clean_results, total_failed_list
+
+
+if __name__ == "__main__":
+    import argparse
+    import os
+    from dotenv import load_dotenv
+    from crawler.etl.extract import extract_raw_listings
+
+    load_dotenv()
+
+    parser = argparse.ArgumentParser(description="Chạy LLM Extraction Pipeline với Dynamic Chunking & Checkpoint")
+    parser.add_argument("--limit", type=int, default=None, help="Giới hạn số lượng bài đăng cần trích xuất")
+    parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS_PER_CHUNK, help="Ngưỡng token tối đa mỗi chunk")
+    parser.add_argument("--rpm-delay", type=float, default=DEFAULT_RPM_DELAY, help="Thời gian nghỉ giữa các request (giây)")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Tên model Gemini sử dụng")
+    args = parser.parse_args()
+
+    raw_keys = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+    keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+    if not keys:
+        raise RuntimeError("Vui lòng cấu hình GEMINI_API_KEYS hoặc GEMINI_API_KEY trong file .env trước khi chạy LLM pipeline.")
+
+    records = extract_raw_listings(limit=args.limit)
+    run_pipeline_chunking(
+        datas=records,
+        api_keys=keys,
+        model_name=args.model,
+        rpm_delay=args.rpm_delay,
+        max_tokens_per_chunk=args.max_tokens,
+    )
+

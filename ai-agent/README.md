@@ -1,101 +1,101 @@
-# Stage 04: Script skill
+# 🤖 AI Agent Module — Smart Housing Decision Support (`ai-agent/`)
 
-read_file, write_file, bash + skill catalog (weekly-report, csv-quality có script).
+Module **AI Agent (`ai-agent/`)** đóng vai trò là bộ não tư vấn và hỗ trợ ra quyết định của hệ thống **Homigo**. Được xây dựng trên nền tảng **LangGraph 7-Node State Machine**, kết hợp mô hình **Intent-Aware Dynamic MCDM (Ra quyết định đa tiêu chí thích ứng theo ý định)**, **Multi-Turn Preference Memory**, **Dynamic Skill Discovery** và **Guardrails Security**.
 
-- Tools: `read_file(path)`, `write_file(path, content)`, `bash(command)`
-- Skills: `weekly-report`, `csv-quality`
+---
 
-## Cài đặt và chạy
+## 🏗️ 1. Kiến Trúc Máy Trạng Thái 7-Node (`graph.py`)
 
-Cần Python 3.11+ và [uv](https://docs.astral.sh/uv/). Chạy trong thư mục project này:
-
-```bash
-cd stage-04-script-skill
-uv sync --all-packages --locked
-cp -n .env.example .env
-# Điền OPENAI_API_KEY, MODEL_NAME (và OPENAI_BASE_URL nếu dùng endpoint khác) vào .env
-uv run streamlit run app.py
+```mermaid
+flowchart LR
+    START([User Message]) --> N1["1. guardrail_node\n(0 Tools)"]
+    N1 -->|Vi phạm| N7["7. formatter_node"]
+    N1 -->|An toàn| N2["2. preference_intent_node\n(Memory + Dynamic Weights)"]
+    N2 -->|Khớp Skill pháp lý/hợp đồng| N4["4. advisory_node\n(ADVISORY_TOOLS)"]
+    N2 -->|Thiếu thông tin cơ bản| N3["3. clarification_node\n(0 Tools)"]
+    N2 -->|Đủ tiêu chí tìm kiếm| N5["5. retrieval_node\n(RETRIEVAL_TOOLS)"]
+    N3 --> N7
+    N4 --> N7
+    N5 --> N6["6. decision_node\n(Trade-off & Checklist)"]
+    N6 --> N7
+    N7 --> END([AgentResponse])
 ```
 
-Trong lab, cả 5 stage dùng chung `.venv` và `uv.lock` ở thư mục `agent-tools-skills-lab`; `uv sync` và `uv run` tự nhận diện workspace. Không tạo `.venv` riêng tại stage. Nếu copy stage ra ngoài lab để chạy độc lập, dùng `uv sync` thay cho lệnh sync trên.
+### Điểm Nổi Bật Thiết Kế
+1. **Tool Partitioning (`tools/registry.py`)**: Phân vùng công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giúp giảm thiểu token overhead và ngăn LLM gọi nhầm tool.
+2. **Intent-Aware Dynamic Weighting (`intent_weights.py`)**:
+   - Phát hiện ý định ưu tiên từ câu nói tự nhiên để kích hoạt hệ số nhân (`price: 2.0x`, `location: 2.0x`, `safety: 2.0x`, `amenity: 1.8x`).
+   - Tự động bật/tắt tiêu chí động (`location` chỉ bật khi có tọa độ/địa điểm; `amenity` chỉ bật khi có yêu cầu tiện nghi) và chuẩn hóa $L_1$-norm ($\sum w_i = 1.0$).
+3. **Multi-Turn Memory & State Management (`memory.py`)**:
+   - Tích lũy tiêu chí (`location_text`, `lat`, `lng`, `min_price`, `max_price`, `amenities`, `special_requirements`) xuyên suốt nhiều lượt hội thoại.
+   - Tự động reset tọa độ `lat`/`lng` khi người dùng chuyển sang khu vực mới để kích hoạt Geocoding lại chính xác.
+4. **Dynamic Skill Discovery (`skills_discovery.py`)**:
+   - Tự động quét thư mục `workspace/skills/*/SKILL.md` (ví dụ: `rental-contract-advisor`) và định tuyến thẳng các câu hỏi về hợp đồng/tiền cọc sang `advisory_node` mà không tốn tài nguyên truy vấn phòng.
+5. **Decision Insights & Trade-off Analysis (`schemas.py`, `graph.py`)**:
+   - Giải thích rõ vì sao phòng Top 1 đạt điểm cao nhất dựa trên `explain_match` từ Backend, phân tích đánh đổi (Trade-off) với Top 2 và sinh danh sách kiểm tra thực tế (`verification_checklist`).
 
-Mở **Local URL** in ra terminal (mặc định `http://localhost:8501`). `.streamlit/config.toml` của project bật `server.headless`, nên Streamlit không hỏi email ở lần chạy đầu và không tự mở trình duyệt; file này cũng đặt màu theme và tắt gửi thống kê sử dụng. Streamlit chỉ đọc file này khi chạy trong thư mục project.
+---
 
-Đường dẫn được resolve từ vị trí source. Chạy từ thư mục khác: `uv run --project stage-04-script-skill streamlit run stage-04-script-skill/app.py`; app vẫn dùng đúng `.env`, workspace và `traces/` của project này.
+## 📂 2. Cấu Trúc Thư Mục
 
-## Cấu hình model
-
-| Biến | Bắt buộc | Ý nghĩa |
-|---|---|---|
-| `OPENAI_API_KEY` | Có | API key của provider |
-| `MODEL_NAME` | Có | Tên model, cần hỗ trợ native tool calling |
-| `OPENAI_BASE_URL` | Không | OpenAI-compatible endpoint. Endpoint phải hỗ trợ tool calling theo chuẩn OpenAI Chat Completions (`tools`, `tool_calls`, message role `tool`). |
-
-Thiếu `OPENAI_API_KEY` hoặc `MODEL_NAME`: UI hiện cảnh báo, ô chat bị khóa và app không gọi model. App không truyền `temperature` hay tham số model khác; key không được ghi vào trace/log.
-
-## Prompt thử
-
-1. `Kiểm tra chất lượng data/tasks.csv và ghi báo cáo vào output/csv-quality.md.`
-2. `Kiểm tra chất lượng data/khong-co.csv.`
-3. (Lượt tiếp theo) `Dòng nào thiếu owner?`
-
-Kỳ vọng: Agent đọc `skills/csv-quality/SKILL.md`, chạy `python skills/csv-quality/scripts/check_csv.py --input data/tasks.csv` bằng bash, kiểm tra exit code, dùng JSON (6 dòng, 1 thiếu owner, 1 hours sai, T02 lặp), đọc reference khi viết báo cáo, ghi `output/csv-quality.md`. File không tồn tại: script exit 1, agent báo lỗi thực thi, không bịa thống kê. CSV gốc không bị sửa.
-
-## Xem output, trace, state và context
-
-- **Bố cục**: trang không cuộn; chỉ cột chat và cột State & Context cuộn riêng, cao theo cửa sổ trình duyệt (khối CSS nhỏ `PAGE_CSS` trong `app.py`). Nội dung dài (trace, bảng, file output) hiện đầy đủ trong cột, không có khung cuộn lồng nhau.
-- **Chat (cột trái)**: mỗi lượt assistant có expander **Các bước thực hiện (N model call, M tool call)**: từng model call, mỗi tool call trong một khung có badge ok/lỗi, thời gian chạy, arguments (lệnh bash hiện dạng code), result; content/stdout/stderr hiện đầy đủ. Final answer nằm ngoài expander. Nút **Cuộc trò chuyện mới** (cạnh tiêu đề) xóa history, counters, snapshots, skill đã load của conversation cũ; không xóa `traces/` hay file output.
-- **State & Context (cột phải)**: badge trạng thái và 4 counters cập nhật trong lúc chạy (rê chuột vào biểu tượng ? để xem định nghĩa); **Tools được cấp** (schema); **Skills trong catalog** (metadata, chưa phải đã load); **Skill content đã vào history** (chỉ khi `read_file` SKILL.md thành công, kèm message index và tool_call_id); **Tài nguyên đã đọc**; **Message history hiện tại**; **Event log**.
-- **Context gửi model (lớp LangChain)**: snapshot request chụp ngay trước mỗi model call: system prompt thực tế, messages theo thứ tự, tools schema, metadata (conversation_id, run_id, lượt, model call, event sequence, thời điểm, model name, số message, số ký tự, usage nếu provider trả về). Trước model call đầu tiên, panel hiện **Context cấu hình (chưa gửi)**. Sau khi lượt kết thúc có thể chọn lại snapshot cũ (chỉ đọc, không chạy lại agent) và tải snapshot JSON. Snapshot không phải provider wire payload, tokenizer output hay nội dung bên trong model.
-- **File đầu ra**: chọn file trong `workspace/output/`, xem Markdown/text và tải xuống. Xem file là thao tác UI, không gửi nội dung vào context của model.
-- **Trace trên đĩa**: `traces/<thời gian>_<conversation>_turnNN_<run>.jsonl`, mỗi dòng một event (sequence, type, tool_call_id, tool_name, arguments, result, elapsed_ms; event `model_request` kèm snapshot request). Exception không mong đợi ghi thêm vào `traces/debug.log`.
-
-## Định nghĩa trong State & Context
-
-| Trường | Ý nghĩa |
-|---|---|
-| Lượt chat | Một lần gửi input; bắt đầu từ 1 trong mỗi conversation. |
-| Lần gọi model trong lượt | Tăng ngay trước mỗi model request thực tế (middleware `wrap_model_call`); reset khi gửi lượt mới. Retry nội bộ của OpenAI SDK không quan sát được nên không đếm riêng. |
-| Bước sự kiện trong lượt | Số thứ tự observer event (`user_submitted`, `model_request`, `model_response`, `tool_started`, `tool_finished`, `run_completed`, `run_failed`). Không phải LangGraph step. |
-| Tool calls trong lượt | Số tool call đã thực thi, mỗi call có ID riêng. Một model response có thể yêu cầu nhiều tool calls. |
-| Trạng thái | Sẵn sàng / Đang gọi model / Đang chạy tool / Hoàn tất / Lỗi. |
-
-## Giới hạn thực thi
-
-Mỗi lượt: tối đa 8 lần gọi model (`ModelCallLimitMiddleware`), 20 tool calls (`ToolCallLimitMiddleware`), recursion limit LangGraph 50 (số bước graph, không phải số tool calls). Giá trị nằm trong `config.py`.
-
-Lỗi runtime/provider: UI hiện lỗi, giữ trace đã có, rollback model history về trước lượt lỗi. App không tự chạy lại lượt lỗi.
-
-## Workspace và reset
-
-Agent chỉ làm việc trong `workspace/`: `read_file` đọc file trong workspace, `write_file` chỉ ghi dưới `workspace/output/`. Lần chạy đầu, nếu chưa có workspace, app copy từ `fixtures/`; rerun không ghi đè.
-
-Khôi phục dữ liệu gốc (xóa output, giữ traces):
-
-```bash
-uv run python reset_workspace.py
+```text
+ai-agent/
+├── agent.py                     # Khởi tạo LangChain Agent & Middleware giới hạn Model/Tool calls
+├── config.py                    # Cấu hình biến môi trường & giới hạn thực thi
+├── graph.py                     # Máy trạng thái LangGraph 7 Node & Decision Support Builder
+├── guardrails.py                # Chặn Prompt Injection, SQLi payload & câu hỏi Off-topic
+├── intent_weights.py            # Nhận diện Intent Multipliers & chuẩn hóa trọng số MCDM
+├── memory.py                    # Quản lý phiên hội thoại & tích lũy UserPreferenceState
+├── schemas.py                   # Pydantic DTOs (RoomItem, DecisionInsight, AgentResponse)
+├── service.py                   # HousingAgentService — Giao diện tích hợp chính
+├── skills_discovery.py          # Engine tự động phát hiện Housing Skills từ SKILL.md
+├── tools/
+│   ├── __init__.py
+│   ├── housing_tools.py         # Native HTTP Tools gọi Backend API (/geocode, /vector-search...)
+│   └── registry.py              # Phân vùng Tools theo Scope (RETRIEVAL, DETAIL, ADVISORY)
+├── workspace/skills/            # Thư mục chứa các kỹ năng chuyên sâu (rental-contract-advisor)
+├── eval/                        # Bộ benchmark đánh giá RAG Triad Grounding
+└── tests/
+    └── test_housing_agent.py    # 19 Unit Tests kiểm thử toàn diện AI Agent
 ```
 
-Lệnh chỉ chạy khi workspace có marker `.lab-workspace` của lab.
+---
 
-## Skills
+## 🚀 3. Hướng Dẫn Cài Đặt & Sử Dụng
 
-`skill_catalog.py` quét `workspace/skills/*/SKILL.md`, chỉ đưa `name`, `description`, `location` vào system prompt. Body và reference không có trong context ban đầu. Model tự đọc SKILL.md bằng `read_file` khi task khớp description; tool result ở lại trong history cho các lượt sau. Skill thiếu metadata hoặc YAML sai bị bỏ qua kèm diagnostic; trùng `name` báo lỗi và giữ bản đầu (xem expander **Skills trong catalog**). Thêm skill mới: tạo `workspace/skills/<name>/SKILL.md` (và bản trong `fixtures/skills/` nếu muốn giữ sau reset).
-
-## Tests
-
-```bash
-uv run pytest
+### 3.1. Cài Đặt Môi Trường
+```powershell
+cd ai-agent
+uv sync
+```
+Hoặc sử dụng môi trường ảo có sẵn tại `ai-agent/.venv`. Thiết lập file `ai-agent/.env`:
+```env
+OPENAI_API_KEY=your_api_key
+MODEL_NAME=gpt-4o-mini
+SEARCH_ROOM_API_BASE=http://localhost:8000/api/v1
 ```
 
-Tests dùng mock model, không cần API key.
+### 3.2. Gọi `HousingAgentService` Trong Python
+```python
+from service import HousingAgentService
 
-## Giới hạn môi trường
+service = HousingAgentService()
+res = service.run(
+    user_message="Tìm phòng trọ gần ĐH CNTT (UIT) dưới 3 triệu có máy lạnh, gác lửng",
+    session_id="user_session_01",
+)
 
-- **Bash không phải sandbox.** `bash` chạy `bash -c` với cwd là `workspace/`, env tối thiểu (PATH trỏ Python trong `.venv` của project, locale UTF-8, không có API key), timeout 10 giây. Path check của `read_file`/`write_file` không áp dụng cho Bash: lệnh vẫn đọc/ghi được ngoài workspace với quyền user chạy app.
+print(res.text_reply)
+print("Số phòng phù hợp:", len(res.rooms))
+if res.insights:
+    print("Lý do chọn Top 1:", res.insights.top_1_reason)
+```
 
-- Chỉ chạy trong môi trường lab với dữ liệu giả. Không mount thư mục cá nhân hoặc secrets vào máy/container chạy lab.
+---
 
-- Cần môi trường POSIX có `bash`. Trên Windows dùng WSL2 (cài uv và chạy project bên trong WSL2).
+## 🧪 4. Chạy Kiểm Thử (Unit Tests)
 
-- Chạy local, một người dùng cho mỗi project. Không có xác thực, không chia sẻ workspace đa người dùng.
+Chạy toàn bộ 19 unit tests của Homigo AI Agent (không cần kết nối mạng hay tốn phí API):
+```powershell
+.\ai-agent\.venv\Scripts\python.exe -m pytest ai-agent/tests/test_housing_agent.py -v
+```

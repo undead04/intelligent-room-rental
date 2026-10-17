@@ -324,11 +324,12 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
     # 1. Geocoding nếu có địa điểm văn bản mà chưa có toạ độ
     if pref.location_text and (pref.lat is None or pref.lng is None):
         try:
-            geo_raw = geocode_location.invoke({"address": pref.location_text})
+            geo_raw = geocode_location.invoke({"query": pref.location_text})
             geo_data = json.loads(geo_raw)
-            if geo_data.get("ok"):
-                pref.lat = geo_data.get("lat")
-                pref.lng = geo_data.get("lng")
+            if isinstance(geo_data, dict) and geo_data.get("ok"):
+                inner = geo_data.get("data") if isinstance(geo_data.get("data"), dict) else geo_data
+                pref.lat = inner.get("lat")
+                pref.lng = inner.get("lng") if inner.get("lng") is not None else inner.get("lon")
                 # Sau khi có lat, lng -> kích hoạt location weight và tính lại
                 weights = compute_normalized_weights(pref, multipliers)
         except Exception as e:

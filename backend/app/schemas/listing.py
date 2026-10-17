@@ -29,6 +29,7 @@ class WardReference(BaseModel):
 
 class RoomTypeReference(BaseModel):
     id: int
+    name: Optional[str] = None
     room_type: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,6 +46,8 @@ class ListingResponse(BaseModel):
     lng: Optional[float] = None
     main_image: Optional[str] = None
     price_string: Optional[str] = None
+    price_score: Optional[float] = None
+    amenity_overall: Optional[float] = None
     city: Optional[CityReference] = None
     district: Optional[DistrictReference] = None
     ward: Optional[WardReference] = None

@@ -140,3 +140,8 @@ class PriceEvaluator:
         if df_res.empty:
             return {}
         return df_res.iloc[0].to_dict()
+
+
+# Alias đồng bộ tên class dùng trong tài liệu và crawler/model/ml
+RoomPriceEvaluator = PriceEvaluator
+

@@ -44,6 +44,8 @@ export interface ListingDto {
   lng: number | null;
   main_image: string | null;
   price_string: string | null;
+  price_score?: number | null;
+  amenity_overall?: number | null;
   posted_date: string | null;
   city: CityDto | null;
   district: DistrictDto | null;
@@ -85,6 +87,8 @@ export interface ListingQueryDto {
   room_type_id?: number;
   min_price?: number;
   max_price?: number;
+  min_area?: number;
+  max_area?: number;
   order_by?: string;
   sort_desc?: boolean;
 }

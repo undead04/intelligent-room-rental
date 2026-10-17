@@ -369,3 +369,19 @@ def test_langgraph_advisory_node_bypasses_retrieval():
     assert "Tiền đặt cọc" in result["final_text"]
 
 
+def test_memory_location_change_resets_coordinates():
+    mem = SessionMemoryManager()
+    session = mem.get_or_create_session("test_session_loc_reset")
+
+    mem.update_preferences_from_text(session, "Tìm phòng ở Linh Xuân Thủ Đức")
+    session.preferences.lat = 10.875
+    session.preferences.lng = 106.790
+
+    # Khi đổi sang khu vực khác -> lat, lng phải reset về None để geocode lại
+    mem.update_preferences_from_text(session, "Thôi đổi sang tìm ở Bình Thạnh giá 4tr")
+    assert "bình thạnh" in session.preferences.location_text.lower()
+    assert session.preferences.lat is None
+    assert session.preferences.lng is None
+
+
+
