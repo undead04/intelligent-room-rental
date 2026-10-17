@@ -299,7 +299,6 @@ def test_tool_partitioning_scopes():
         ALL_TOOLS,
         DETAIL_TOOLS,
         RETRIEVAL_TOOLS,
-        SYSTEM_TOOLS,
         get_tools_for_scope,
     )
 
@@ -317,11 +316,7 @@ def test_tool_partitioning_scopes():
     assert "consult_housing_skill" in advisory_names
     assert "search_rooms" not in advisory_names
 
-    system_names = [t.name for t in SYSTEM_TOOLS]
-    assert "read_file" in system_names
-    assert "write_file" in system_names
-
-    assert len(ALL_TOOLS) == len(retrieval_names) + len(detail_names) + len(advisory_names) + len(system_names)
+    assert len(ALL_TOOLS) == len(retrieval_names) + len(detail_names) + len(advisory_names)
     assert get_tools_for_scope("retrieval") == RETRIEVAL_TOOLS
     assert get_tools_for_scope("advisory") == ADVISORY_TOOLS
     assert get_tools_for_scope("unknown") == []
