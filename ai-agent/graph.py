@@ -13,6 +13,11 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from guardrails import GuardrailResult, check_guardrails
+from grounding import (
+    MAX_GROUNDING_RETRIES,
+    verify_answer_grounding,
+    verify_context_grounding,
+)
 from intent_weights import (
     DEFAULT_BASE_WEIGHTS,
     compute_normalized_weights,
@@ -74,6 +79,15 @@ class HousingAgentState(TypedDict, total=False):
 
     # Danh sách phòng sau khi Hybrid Search & Rerank từ Backend
     retrieved_rooms: list[RoomItem]
+
+    # Trạng thái Corrective RAG Grounding & Retry
+    retry_count: int
+    retry_strategy: Optional[str]
+    retry_notes: list[str]
+    context_grounded: bool
+    answer_retry_count: int
+    answer_grounded: bool
+    grounding_report: Optional[dict[str, Any]]
 
     # Bảng phân tích hỗ trợ ra quyết định
     insights: Optional[DecisionInsight]
@@ -313,13 +327,17 @@ def advisory_node(state: HousingAgentState) -> dict[str, Any]:
 
 
 def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 5: Truy vấn dữ liệu kết hợp Geocoding, Hybrid Search và Rerank với Trọng số Động.
+    """Node 5: Truy vấn dữ liệu kết hợp Geocoding, Hybrid Search, Rerank và Context Grounding Check.
     Scope: RETRIEVAL_TOOLS [geocode_location, get_location_hierarchy, search_rooms].
+    Hỗ trợ Corrective RAG Retry: Tự động nới biên độ ngân sách (±15%) hoặc mở rộng phạm vi khi kết quả rỗng.
     """
     user_text = state.get("user_message", "")
     pref = state.get("preferences") or UserPreferenceState()
     weights = state.get("computed_weights") or {}
     multipliers = state.get("multipliers") or {}
+    retry_count = state.get("retry_count", 0)
+    retry_strategy = state.get("retry_strategy")
+    retry_notes = list(state.get("retry_notes") or [])
 
     # 1. Geocoding nếu có địa điểm văn bản mà chưa có toạ độ
     if pref.location_text and (pref.lat is None or pref.lng is None):
@@ -335,42 +353,72 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
         except Exception as e:
             logger.warning(f"Lỗi geocode địa điểm {pref.location_text}: {e}")
 
-    # 2. Gọi công cụ search_rooms kết hợp Rerank với Custom Weights
+    # 2. Điều chỉnh tham số lọc theo chiến lược Corrective Retry (nếu đang trong vòng lặp Retry)
+    eff_min_price = pref.min_price
+    eff_max_price = pref.max_price
+    eff_amenities = pref.amenities if pref.amenities else None
+
+    if retry_strategy == "relax_budget":
+        if eff_max_price:
+            eff_max_price = round(eff_max_price * 1.15, 0)
+        if eff_min_price:
+            eff_min_price = round(eff_min_price * 0.85, 0)
+        retry_notes.append(f"Retry #{retry_count}: Nới biên độ ngân sách ±15% để tìm các phòng lân cận phù hợp.")
+    elif retry_strategy == "broaden_search":
+        eff_min_price = None
+        eff_max_price = None
+        eff_amenities = None
+        retry_notes.append(f"Retry #{retry_count}: Mở rộng tìm kiếm ngữ nghĩa và chấm điểm mềm qua MCDM Rerank.")
+
+    # 3. Gọi công cụ search_rooms kết hợp Rerank với Custom Weights
     rooms: list[RoomItem] = []
+    api_ok = False
     try:
         search_args = {
             "query": user_text,
             "lat": pref.lat,
             "lng": pref.lng,
-            "min_price": pref.min_price,
-            "max_price": pref.max_price,
-            "amenities": pref.amenities if pref.amenities else None,
+            "min_price": eff_min_price,
+            "max_price": eff_max_price,
+            "amenities": eff_amenities,
             "weights": weights,
             "limit": 5,
         }
         res_json = search_rooms.invoke(search_args)
         data = json.loads(res_json)
         if isinstance(data, dict) and data.get("ok"):
+            api_ok = True
             raw_items = data.get("data", [])
             for idx, raw in enumerate(raw_items, 1):
                 rooms.append(RoomItem.from_backend_result(raw, rank=idx))
     except Exception as e:
         logger.warning(f"Lỗi truy vấn search_rooms: {e}")
 
+    # 4. Kiểm định Context Grounding (Chỉ kích hoạt retry khi API kết nối thành công nhưng kết quả chưa đạt)
+    ctx_check = verify_context_grounding(rooms, pref, retry_count=retry_count)
+    next_strategy = ctx_check.retry_strategy if (api_ok and not ctx_check.is_grounded and retry_count < MAX_GROUNDING_RETRIES) else None
+    next_retry_count = retry_count + 1 if next_strategy else retry_count
+
     return {
         "retrieved_rooms": rooms,
         "preferences": pref,
         "computed_weights": weights,
+        "context_grounded": ctx_check.is_grounded,
+        "retry_strategy": next_strategy,
+        "retry_count": next_retry_count,
+        "retry_notes": retry_notes,
     }
 
 
 def decision_node(state: HousingAgentState) -> dict[str, Any]:
     """Node 6: Phân tích Hỗ trợ Ra quyết định (Decision Support & Trade-offs).
     Scope: DETAIL_TOOLS [get_listing_detail].
+    Nếu được gọi lại từ grounding_node (do phát hiện ảo giác ở lần sinh trước), sẽ tái tạo phản hồi bám sát 100% dữ liệu gốc.
     """
     rooms = state.get("retrieved_rooms", [])
     weights = state.get("computed_weights", {})
     explanations = state.get("weight_explanations", [])
+    retry_notes = state.get("retry_notes") or []
 
     insights = build_decision_insights(rooms, weights=weights, weight_explanations=explanations)
 
@@ -388,11 +436,16 @@ def decision_node(state: HousingAgentState) -> dict[str, Any]:
     reply_lines = [
         f"Dựa trên các tiêu chí và ý định của bạn, Homigo đã áp dụng mô hình phân tích đa tiêu chí (MCDM) "
         f"với các trọng số: {weights_display}.",
+    ]
+    if retry_notes:
+        reply_lines.append(f"*(Ghi chú Grounding: {retry_notes[-1]})*")
+
+    reply_lines.extend([
         "",
         f"🏆 **Lựa chọn tối ưu nhất: {top_1.title}** (Điểm phù hợp: **{top_1.matchScore}**)",
         f"- **Giá thuê:** {top_1.price}",
         f"- **Địa chỉ:** {top_1.address}",
-    ]
+    ])
     if insights and insights.top_1_reason:
         reply_lines.append(f"- **Lý do lựa chọn:** {insights.top_1_reason}")
 
@@ -415,8 +468,45 @@ def decision_node(state: HousingAgentState) -> dict[str, Any]:
     return {"insights": insights, "final_text": final_text}
 
 
+def grounding_node(state: HousingAgentState) -> dict[str, Any]:
+    """Node 7: Kiểm định RAG Grounding & Chống ảo giác (Answer Faithfulness Check).
+    Scope: 0 Tools.
+    - Kiểm tra câu trả lời có bịa mã phòng (ID) hoặc mức giá không có trong retrieved_rooms hay không.
+    - Nếu không hợp lệ (is_grounded=False) và còn lượt retry -> quay lại decision_node để tái tạo câu trả lời chuẩn xác.
+    """
+    final_text = state.get("final_text", "")
+    rooms = state.get("retrieved_rooms", [])
+    pref = state.get("preferences")
+    ans_retry = state.get("answer_retry_count", 0)
+    ctx_retries = state.get("retry_count", 0)
+    retry_notes = list(state.get("retry_notes") or [])
+
+    ans_check = verify_answer_grounding(final_text, rooms, pref)
+    next_ans_retry = ans_retry + 1 if (not ans_check.is_grounded and ans_retry < MAX_GROUNDING_RETRIES) else ans_retry
+
+    if not ans_check.is_grounded:
+        retry_notes.append(f"Answer Grounding Retry #{next_ans_retry}: Phát hiện sai lệch {ans_check.issues} -> Tái tạo phản hồi chuẩn.")
+
+    report = {
+        "is_grounded": ans_check.is_grounded,
+        "groundedness_score": ans_check.groundedness_score,
+        "context_grounded": state.get("context_grounded", bool(rooms)),
+        "context_retries": ctx_retries,
+        "answer_retries": next_ans_retry,
+        "retry_notes": retry_notes,
+        "issues": ans_check.issues,
+    }
+
+    return {
+        "answer_grounded": ans_check.is_grounded,
+        "answer_retry_count": next_ans_retry,
+        "retry_notes": retry_notes,
+        "grounding_report": report,
+    }
+
+
 def formatter_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 7: Đóng gói AgentResponse chuẩn cho Frontend và cập nhật Memory Session.
+    """Node 8: Đóng gói AgentResponse chuẩn cho Frontend và cập nhật Memory Session.
     Scope: 0 Tools.
     """
     final_text = state.get("final_text", "")
@@ -425,6 +515,7 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
     pref = state.get("preferences") or UserPreferenceState()
     need_clarification = state.get("needs_clarification", False)
     session_id = state.get("session_id", "default_session")
+    grounding_report = state.get("grounding_report")
 
     # Tạo câu hỏi gợi mở
     if need_clarification:
@@ -449,6 +540,7 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
         current_preferences=pref,
         need_clarification=need_clarification,
         follow_up_questions=follow_up,
+        grounding_report=grounding_report,
     )
 
     # Cập nhật vào SessionMemoryManager
@@ -486,17 +578,38 @@ def route_after_preference(state: HousingAgentState) -> str:
     return "retrieval_node"
 
 
+def route_after_retrieval(state: HousingAgentState) -> str:
+    """Rẽ nhánh sau Retrieval (Corrective RAG):
+    - Nếu Context chưa đạt chuẩn Grounding và còn chiến lược retry_strategy -> Quay lại retrieval_node.
+    - Ngược lại -> Sang decision_node để tổng hợp tư vấn.
+    """
+    if state.get("retry_strategy") and state.get("retry_count", 0) <= MAX_GROUNDING_RETRIES:
+        return "retrieval_node"
+    return "decision_node"
+
+
+def route_after_grounding(state: HousingAgentState) -> str:
+    """Rẽ nhánh sau Grounding Check (Self-RAG):
+    - Nếu câu trả lời hợp lệ (answer_grounded=True) hoặc đã hết số lần retry -> Sang formatter_node trả về.
+    - Nếu phát hiện ảo giác (answer_grounded=False) và còn lượt retry -> Quay lại decision_node để tạo lại câu trả lời chuẩn.
+    """
+    if not state.get("answer_grounded", True) and state.get("answer_retry_count", 0) <= MAX_GROUNDING_RETRIES:
+        return "decision_node"
+    return "formatter_node"
+
+
 def build_housing_graph() -> StateGraph:
-    """Khởi tạo và biên dịch StateGraph cho Housing Decision Support Agent."""
+    """Khởi tạo và biên dịch StateGraph cho Housing Decision Support Agent (8 Nodes với Corrective RAG & Grounding Retry)."""
     workflow = StateGraph(HousingAgentState)
 
-    # Đăng ký 7 Node chức năng
+    # Đăng ký 8 Node chức năng
     workflow.add_node("guardrail_node", guardrail_node)
     workflow.add_node("preference_intent_node", preference_intent_node)
     workflow.add_node("clarification_node", clarification_node)
     workflow.add_node("advisory_node", advisory_node)
     workflow.add_node("retrieval_node", retrieval_node)
     workflow.add_node("decision_node", decision_node)
+    workflow.add_node("grounding_node", grounding_node)
     workflow.add_node("formatter_node", formatter_node)
 
     # Đăng ký luồng di chuyển và các cạnh điều kiện (Conditional Edges)
@@ -518,10 +631,30 @@ def build_housing_graph() -> StateGraph:
         },
     )
 
+    # Vòng lặp Corrective RAG ở tầng Retrieval (nếu rỗng/điểm thấp -> tự động nới điều kiện & retry)
+    workflow.add_conditional_edges(
+        "retrieval_node",
+        route_after_retrieval,
+        {
+            "retrieval_node": "retrieval_node",
+            "decision_node": "decision_node",
+        },
+    )
+
+    workflow.add_edge("decision_node", "grounding_node")
+
+    # Vòng lặp Self-RAG Grounding ở tầng Generation (nếu phát hiện ảo giác -> quay lại decision_node)
+    workflow.add_conditional_edges(
+        "grounding_node",
+        route_after_grounding,
+        {
+            "decision_node": "decision_node",
+            "formatter_node": "formatter_node",
+        },
+    )
+
     workflow.add_edge("advisory_node", "formatter_node")
     workflow.add_edge("clarification_node", "formatter_node")
-    workflow.add_edge("retrieval_node", "decision_node")
-    workflow.add_edge("decision_node", "formatter_node")
     workflow.add_edge("formatter_node", END)
 
     return workflow.compile()
