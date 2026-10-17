@@ -198,3 +198,46 @@ def test_listing_transformer_clean_record_and_transform():
     assert "máy lạnh" in item["embedding_text"]
     assert "cho nuôi thú cưng" in item["embedding_text"]
     assert "0909123456" not in item["embedding_text"]
+
+
+def test_parquet_round_trip(tmp_path):
+    """Kiểm tra xuất và đọc lại file Parquet bảo toàn dict concept_scores, mảng vector và giá trị None."""
+    from crawler.etl.load import DataLoader
+
+    loader = DataLoader()
+    parquet_file = str(tmp_path / "test_listings_clean.parquet")
+    sample_records = [
+        {
+            "listing_id": "nhatot_1001",
+            "title": "Phòng trọ Quận 10",
+            "price_vnd": 3500000.0,
+            "area_m2": 25.0,
+            "deposit": None,
+            "images": ["https://a.jpg", "https://b.jpg"],
+            "concept_scores": {"aircon": 1.0, "private_wc": 1.0},
+            "vector": [0.1, 0.2, 0.3],
+        },
+        {
+            "listing_id": "nhatot_1002",
+            "title": "Phòng trọ Quận 3",
+            "price_vnd": 4200000.0,
+            "area_m2": 30.0,
+            "deposit": 4200000.0,
+            "images": [],
+            "concept_scores": {},
+            "vector": [0.4, 0.5, 0.6],
+        },
+    ]
+
+    saved_path = loader.load_to_parquet(sample_records, output_path=parquet_file)
+    assert saved_path == parquet_file
+
+    loaded = loader.read_processed_records(parquet_file)
+    assert len(loaded) == 2
+    assert loaded[0]["listing_id"] == "nhatot_1001"
+    assert loaded[0]["deposit"] is None
+    assert loaded[0]["images"] == ["https://a.jpg", "https://b.jpg"]
+    assert loaded[0]["concept_scores"] == {"aircon": 1.0, "private_wc": 1.0}
+    assert len(loaded[0]["vector"]) == 3
+    assert loaded[1]["concept_scores"] == {}
+

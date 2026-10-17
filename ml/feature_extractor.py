@@ -21,7 +21,12 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_PATH = PROJECT_ROOT / "backend" / "app" / "datas" / "datas.json"
+DEFAULT_PARQUET_PATH = PROJECT_ROOT / "crawler" / "data" / "processed" / "listings_clean.parquet"
+DEFAULT_DATA_PATH = (
+    DEFAULT_PARQUET_PATH
+    if DEFAULT_PARQUET_PATH.exists()
+    else PROJECT_ROOT / "backend" / "app" / "datas" / "datas.json"
+)
 
 # Danh sách tiện ích / quy định / an ninh chuẩn hóa theo Schema mới (KHÔNG có water_heater, wifi)
 CANONICAL_AMENITY_KEYS = [
@@ -61,9 +66,21 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
         "furnishing_code": float(r.get("furnishing_code") or 2.0), # 2: chưa nội thất (default)
     }
 
-    # Đọc từ concept_scores hoặc lồng trong report
+    # Đọc từ concept_scores hoặc lồng trong report (hỗ trợ cả dict lẫn JSON string từ Parquet)
     concept = r.get("concept_scores") or {}
+    if isinstance(concept, str) and concept.strip().startswith("{"):
+        try:
+            concept = json.loads(concept)
+        except Exception:
+            concept = {}
+
     report = r.get("report") or {}
+    if isinstance(report, str) and report.strip().startswith("{"):
+        try:
+            report = json.loads(report)
+        except Exception:
+            report = {}
+
     rep_amenities = report.get("amenities") or {}
     rep_rules = report.get("rules") or {}
     rep_safety = report.get("safety") or {}
@@ -93,7 +110,7 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_and_preprocess_dataset(
-    json_path: str | Path = DEFAULT_DATA_PATH,
+    data_path: str | Path = DEFAULT_DATA_PATH,
     min_area: float = 8.0,
     max_area: float = 150.0,
     min_price: float = 500_000.0,
@@ -101,9 +118,17 @@ def load_and_preprocess_dataset(
     min_ppm: float = 30_000.0,
     max_ppm: float = 600_000.0,
 ) -> Tuple[pd.DataFrame, pd.Series]:
-    """Nạp dataset từ JSON, loại bỏ nhiễu và trả về (X, y)."""
-    with open(json_path, "r", encoding="utf-8") as f:
-        raw_data = json.load(f)
+    """Nạp dataset từ Parquet (ưu tiên) hoặc JSON, loại bỏ nhiễu và trả về (X, y)."""
+    path_obj = Path(data_path)
+    if not path_obj.exists() and DEFAULT_PARQUET_PATH.exists():
+        path_obj = DEFAULT_PARQUET_PATH
+
+    if path_obj.suffix.lower() == ".parquet":
+        raw_df = pd.read_parquet(path_obj)
+        raw_data = raw_df.to_dict(orient="records")
+    else:
+        with open(path_obj, "r", encoding="utf-8") as f:
+            raw_data = json.load(f)
 
     extracted_rows = [extract_features_from_record(r) for r in raw_data]
     df = pd.DataFrame(extracted_rows)
