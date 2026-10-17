@@ -9,12 +9,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from ml.price_evaluator import PriceEvaluator
-DATA_PATH = PROJECT_ROOT / "backend" / "app" / "datas" / "datas.json"
+from crawler.model.ml.price_evaluator import PriceEvaluator
+DATA_PATH = PROJECT_ROOT / "crawler" / "data" / "processed" / "listings_clean.json"
 
 
 def apply_scores_to_datas_json(data_path: Path = DATA_PATH):
