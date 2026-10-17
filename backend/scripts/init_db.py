@@ -22,6 +22,9 @@ def init_db() -> None:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
         # Create all tables registered under Base.metadata
         Base.metadata.create_all(bind=connection)
+        # Ensure updated schema columns exist in existing table
+        connection.execute(text("ALTER TABLE listings ADD COLUMN IF NOT EXISTS amenity_overall FLOAT;"))
+        connection.execute(text("ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_score FLOAT;"))
 
     logger.info("Database schema initialized successfully.")
 

@@ -11,7 +11,10 @@ venv/
 ENV/
 env/
 
-ml/*
+# ML Artifacts (Large model binaries)
+ml/artifacts/*.joblib
+ml/artifacts/*.parquet
+ml/*.parquet
 models_cache/
 
 # Scratch & test outputs

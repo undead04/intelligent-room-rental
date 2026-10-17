@@ -1,0 +1,28 @@
+{
+  "dataset_size": 9384,
+  "features": [
+    "area_m2",
+    "lat",
+    "lng",
+    "furnishing_code",
+    "is_private_wc",
+    "is_aircon",
+    "is_mezzanine",
+    "is_kitchen",
+    "is_washing_machine",
+    "is_window_balcony",
+    "is_furniture",
+    "is_parking",
+    "is_free_hours",
+    "is_no_shared_landlord",
+    "is_fingerprint_lock",
+    "is_camera",
+    "is_guard",
+    "is_safe_area"
+  ],
+  "mae_vnd": 770512.72,
+  "rmse_vnd": 1079077.49,
+  "r2_score": 0.484,
+  "conformal_coverage": 0.7812,
+  "trained_at": "2026-10-15 23:23:49"
+}

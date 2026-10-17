@@ -49,6 +49,16 @@ def build_enriched_embedding_text(
     """
     blocks = []
 
+    def _dedup(items: list[Any]) -> list[str]:
+        seen = set()
+        res = []
+        for x in items:
+            s = str(getattr(x, "value", x) if x is not None else "").strip()
+            if s and s.lower() not in seen:
+                seen.add(s.lower())
+                res.append(s)
+        return res
+
     # 1. Địa điểm & Tiện ích ngoại khu
     loc_tokens = [
         t for t in [
@@ -59,7 +69,7 @@ def build_enriched_embedding_text(
         ] if t
     ]
     loc_str = ", ".join(loc_tokens) if loc_tokens else "Không xác định"
-    landmarks = getattr(data, "landmarks_nearby", []) or []
+    landmarks = _dedup(getattr(data, "landmarks_nearby", []) or [])
     if landmarks:
         near_str = ", ".join(landmarks)
         loc_str += f" (Gần: {near_str})"
@@ -84,7 +94,7 @@ def build_enriched_embedding_text(
     # 3. Tiện ích nội khu (gộp cả chuẩn hóa lẫn mô tả phụ)
     std_amenities = getattr(data, "standard_amenities", []) or []
     extra_amenities = getattr(data, "extra_amenities", []) or []
-    amenity_labels = [getattr(a, "value", str(a)) for a in std_amenities] + list(extra_amenities)
+    amenity_labels = _dedup(std_amenities + list(extra_amenities))
     if amenity_labels:
         amen_str = ", ".join(amenity_labels)
         blocks.append(f"Tiện ích: {amen_str}")
@@ -96,6 +106,7 @@ def build_enriched_embedding_text(
         rule_items.append("cho nuôi thú cưng")
     elif is_pet_allowed is False:
         rule_items.append("không cho nuôi thú cưng")
+    rule_items = _dedup(rule_items)
     if rule_items:
         rule_str = ", ".join(rule_items)
         blocks.append(f"Quy định & Môi trường: {rule_str}")

@@ -130,7 +130,7 @@ def test_extract_room_data_from_record():
 
 
 def test_listing_transformer_clean_record_and_transform():
-    transformer = ListingTransformer()
+    transformer = ListingTransformer(enable_price_evaluator=False)
 
     raw_items = [
         {
