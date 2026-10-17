@@ -10,15 +10,16 @@ if PROJECT_ROOT not in sys.path:
 
 DEFAULT_PROCESSED_CSV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.csv"))
 DEFAULT_PROCESSED_JSON = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.json"))
+DEFAULT_PROCESSED_PARQUET = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.parquet"))
 
 class DataLoader:
     """
     [LOAD STAGE]
     Chịu trách nhiệm lưu trữ và nạp dữ liệu sạch vào các đích đến (Destinations):
-    1. CSV (`listings_clean.csv`) - Dùng cho phân tích nhanh, báo cáo
-    2. JSON (`datas.json` / `listings_clean.json`) - Dùng cho backend & nạp CSDL
-    3. Parquet - Dùng cho huấn luyện mô hình Machine Learning
-    4. PostgreSQL / Database - Nạp vào CSDL hệ thống
+    1. Parquet (`listings_clean.parquet`) - Định dạng nhị phân chuẩn, tốc độ cao cho nạp DB & huấn luyện ML
+    2. PostgreSQL / Database - Nạp vào CSDL hệ thống (pgvector)
+    3. CSV (`listings_clean.csv`) - Dùng cho phân tích nhanh, báo cáo Excel
+    4. JSON (`listings_clean.json`) - Tùy chọn xuất đối chiếu văn bản
     """
 
     def __init__(self):
@@ -90,15 +91,32 @@ class DataLoader:
 
     def load_to_parquet(self, records: list[dict], output_path: str = None) -> str:
         """
-        Xuất danh sách records ra file Parquet (tối ưu nạp dữ liệu cho ML/XGBoost).
-        Yêu cầu có pandas & pyarrow nếu máy hỗ trợ.
+        Xuất danh sách records ra file Parquet nhị phân (tối ưu tốc độ đọc/ghi cho nạp PostgreSQL & huấn luyện ML).
+        - Giữ nguyên kiểu số, chuỗi, mảng `images` và mảng `vector` (float32).
+        - Tự động đóng gói các trường dict có cấu trúc động (`concept_scores`, `report`) sang JSON string
+          để PyArrow không gặp lỗi struct rỗng `{}` giữa các dòng.
         """
-        target_path = output_path or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.parquet"))
+        target_path = output_path or DEFAULT_PROCESSED_PARQUET
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        if not records:
+            print("[LOAD] Không có bản ghi nào để lưu ra Parquet.", flush=True)
+            return target_path
+
         try:
+            import json
             import pandas as pd
-            df = pd.DataFrame(records)
+
+            normalized_rows = []
+            for r in records:
+                row = dict(r)
+                for k, v in list(row.items()):
+                    if isinstance(v, dict):
+                        row[k] = json.dumps(v, ensure_ascii=False)
+                normalized_rows.append(row)
+
+            df = pd.DataFrame(normalized_rows)
             df.to_parquet(target_path, index=False)
-            print(f"[LOAD] Đã xuất thành công file Parquet: {target_path}", flush=True)
+            print(f"[LOAD] Đã xuất thành công {len(records)} bản ghi vào Parquet: {target_path}", flush=True)
             return target_path
         except ImportError:
             print("[LOAD] Chưa cài đặt pyarrow/pandas. Bỏ qua xuất Parquet.", flush=True)
@@ -106,6 +124,59 @@ class DataLoader:
         except Exception as e:
             print(f"[LOAD] Lỗi xuất Parquet: {e}", flush=True)
             return None
+
+    def read_from_parquet(self, parquet_path: str = None) -> list[dict]:
+        """Đọc nhanh danh sách bản ghi từ file Parquet và khôi phục chuẩn kiểu dữ liệu Python."""
+        import json
+        import numpy as np
+        import pandas as pd
+
+        target_path = parquet_path or DEFAULT_PROCESSED_PARQUET
+        df = pd.read_parquet(target_path)
+        records = df.to_dict(orient="records")
+
+        cleaned_records = []
+        for r in records:
+            item = {}
+            for k, v in r.items():
+                if isinstance(v, np.ndarray):
+                    item[k] = v.tolist()
+                elif isinstance(v, float) and np.isnan(v):
+                    item[k] = None
+                elif v is pd.NA:
+                    item[k] = None
+                elif k in ("concept_scores", "report") and isinstance(v, str) and v.strip().startswith("{"):
+                    try:
+                        item[k] = json.loads(v)
+                    except Exception:
+                        item[k] = v
+                else:
+                    item[k] = v
+            cleaned_records.append(item)
+        return cleaned_records
+
+    def read_processed_records(self, input_path: str = None) -> list[dict]:
+        """Đọc dữ liệu đã qua ETL (Ưu tiên đọc từ file Parquet tốc độ cao, fallback sang JSON nếu cần)."""
+        import json
+
+        processed_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed"))
+        if not input_path:
+            if os.path.exists(DEFAULT_PROCESSED_PARQUET):
+                input_path = DEFAULT_PROCESSED_PARQUET
+            else:
+                datas_json = os.path.join(processed_dir, "datas.json")
+                input_path = datas_json if os.path.exists(datas_json) else DEFAULT_PROCESSED_JSON
+
+        if not os.path.exists(input_path):
+            raise FileNotFoundError(f"[LOAD] Không tìm thấy file dữ liệu đã xử lý tại: {input_path}")
+
+        if input_path.endswith(".parquet"):
+            print(f"[LOAD] Đang đọc dữ liệu tốc độ cao từ Parquet: {input_path}", flush=True)
+            return self.read_from_parquet(input_path)
+
+        print(f"[LOAD] Đang đọc dữ liệu từ JSON: {input_path}", flush=True)
+        with open(input_path, "r", encoding="utf-8") as f:
+            return json.load(f)
 
     def load_to_postgres(self, records: list[dict], db_url: str = None) -> tuple[int, int]:
         """Nạp trực tiếp dữ liệu phòng và vector embedding vào PostgreSQL (pgvector).
@@ -372,32 +443,19 @@ class DataLoader:
 
 if __name__ == "__main__":
     import argparse
-    import json
 
-    parser = argparse.ArgumentParser(description="Nạp dữ liệu đã xử lý từ Crawler vào PostgreSQL (pgvector)")
+    parser = argparse.ArgumentParser(description="Nạp dữ liệu đã xử lý từ Crawler (ưu tiên Parquet) vào PostgreSQL (pgvector)")
     parser.add_argument(
         "--input",
         type=str,
         default=None,
-        help="Đường dẫn file JSON đã qua ETL (mặc định: tự động tìm datas.json hoặc listings_clean.json trong crawler/data/processed/)",
+        help="Đường dẫn file Parquet/JSON đã qua ETL (mặc định: ưu tiên listings_clean.parquet trong crawler/data/processed/)",
     )
     args = parser.parse_args()
 
-    processed_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed"))
-    input_path = args.input
-    if not input_path:
-        datas_json = os.path.join(processed_dir, "datas.json")
-        clean_json = os.path.join(processed_dir, "listings_clean.json")
-        input_path = datas_json if os.path.exists(datas_json) else clean_json
-
-    if not os.path.exists(input_path):
-        print(f"[LOAD] Không tìm thấy file dữ liệu tại: {input_path}")
-        sys.exit(1)
-
-    with open(input_path, "r", encoding="utf-8") as f:
-        records_data = json.load(f)
-
     loader = DataLoader()
+    records_data = loader.read_processed_records(args.input)
     loader.load_to_postgres(records_data)
     loader.print_summary(records_data)
+
 

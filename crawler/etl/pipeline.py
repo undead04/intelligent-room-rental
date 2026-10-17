@@ -27,6 +27,7 @@ def run_pipeline(
     raw_dir: str = None,
     output_csv: str = None,
     output_json: str = None,
+    output_parquet: str = None,
     checkpoint_path: str = None,
     eval_price: bool = False,
 ) -> list[dict]:
@@ -35,14 +36,14 @@ def run_pipeline(
     1. EXTRACT: Đọc dữ liệu từ SQLite Staging DB (hỗ trợ incremental)
     2. TRANSFORM: Làm sạch, khử trùng lặp, chuẩn hóa kiểu, tích hợp LLM báo cáo & embedding_text
     3. EMBED: Sinh vector offline với intfloat/multilingual-e5-base
-    4. LOAD: Nạp vào các đích đến (CSV, JSON, Parquet, PostgreSQL)
+    4. LOAD: Nạp vào các đích đến (Parquet [mặc định], PostgreSQL, CSV, JSON)
     5. MARK: Đánh dấu is_processed = 1 trong Staging DB
     
     Returns:
         list[dict]: Danh sách các bản ghi đã làm sạch.
     """
     if destinations is None:
-        destinations = ["csv"]
+        destinations = ["parquet"]
 
     print("\n" + "#" * 60, flush=True)
     print("     KHỞI ĐỘNG PIPELINE ETL (EXTRACT - TRANSFORM - LOAD)", flush=True)
@@ -72,14 +73,14 @@ def run_pipeline(
 
     # 4. LOAD
     loader = DataLoader()
+    if "parquet" in destinations:
+        loader.load_to_parquet(cleaned_records, output_path=output_parquet)
+
     if "csv" in destinations:
         loader.load_to_csv(cleaned_records, output_path=output_csv)
 
     if "json" in destinations:
         loader.load_to_json(cleaned_records, output_path=output_json)
-
-    if "parquet" in destinations:
-        loader.load_to_parquet(cleaned_records)
 
     if "db" in destinations or "postgres" in destinations:
         loader.load_to_postgres(cleaned_records)
@@ -99,9 +100,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dest",
         nargs="+",
-        default=["csv"],
-        choices=["csv", "json", "parquet", "db", "postgres"],
-        help="Các đích đến muốn nạp dữ liệu: 'csv', 'json', 'parquet', 'db'."
+        default=["parquet"],
+        choices=["parquet", "db", "postgres", "csv", "json"],
+        help="Các đích đến muốn nạp dữ liệu (mặc định: 'parquet'): 'parquet', 'db', 'csv', 'json'."
     )
     parser.add_argument(
         "--active-only",
@@ -123,6 +124,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Đường dẫn thư mục chứa raw JSON (tùy chọn)."
+    )
+    parser.add_argument(
+        "--output-parquet",
+        type=str,
+        default=None,
+        help="Đường dẫn file Parquet xuất ra (tùy chọn)."
     )
     parser.add_argument(
         "--output-csv",
@@ -157,6 +164,7 @@ if __name__ == "__main__":
         raw_dir=args.raw_dir,
         output_csv=args.output_csv,
         output_json=args.output_json,
+        output_parquet=args.output_parquet,
         checkpoint_path=args.checkpoint,
         eval_price=args.eval_price,
     )
