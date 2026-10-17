@@ -2,8 +2,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
 try:
+    from crawler.config.settings import GEMINI_API_KEY
     from crawler.model.llm.checkpoint import load_checkpoint, save_checkpoint
     from crawler.model.llm.chunker import create_dynamic_chunks
     from crawler.model.llm.client import (
@@ -15,6 +15,7 @@ try:
     from crawler.model.llm.processor import process_chunk_result, process_one_chunk
     from crawler.model.llm.prompt import SYSTEM_PROMPT
 except ImportError:
+    from config.settings import GEMINI_API_KEY
     from checkpoint import load_checkpoint, save_checkpoint
     from chunker import create_dynamic_chunks
     from client import (
@@ -256,7 +257,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Tên model Gemini sử dụng")
     args = parser.parse_args()
 
-    raw_keys = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+    raw_keys = GEMINI_API_KEY
     keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
     if not keys:
         raise RuntimeError("Vui lòng cấu hình GEMINI_API_KEYS hoặc GEMINI_API_KEY trong file .env trước khi chạy LLM pipeline.")

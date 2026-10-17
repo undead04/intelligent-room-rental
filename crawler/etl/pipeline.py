@@ -64,8 +64,9 @@ def run_pipeline(
     # 1.5. LLM EXTRACTION (Chạy bóc tách ngữ nghĩa qua Gemini nếu được yêu cầu)
     if extract_llm:
         from pathlib import Path
+        from crawler.config.settings import GEMINI_API_KEY
         from crawler.model.llm.pipeline import run_pipeline_chunking
-        raw_keys = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+        raw_keys = GEMINI_API_KEY or os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or ""
         keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
         if keys:
             print(f"[ETL] Đang kích hoạt LLM Gemini bóc tách ngữ nghĩa cho {len(raw_records)} bài...", flush=True)

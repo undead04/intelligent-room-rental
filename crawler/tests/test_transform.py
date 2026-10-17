@@ -241,3 +241,37 @@ def test_parquet_round_trip(tmp_path):
     assert len(loaded[0]["vector"]) == 3
     assert loaded[1]["concept_scores"] == {}
 
+
+def test_listing_embedder_batch():
+    import numpy as np
+    from unittest.mock import MagicMock, patch
+    from crawler.etl.embed import ListingEmbedder
+
+    with patch("crawler.etl.embed.EmbeddingModel") as mock_emb_cls:
+        mock_emb = MagicMock()
+        mock_emb_cls.return_value = mock_emb
+        mock_emb.encode_passages.return_value = np.zeros((2, 768), dtype=np.float32)
+
+        embedder = ListingEmbedder(model_name="intfloat/multilingual-e5-base")
+        records = [
+            {
+                "listing_id": "item_1",
+                "embedding_text": "passage: Vị trí: Quận 10 | Giá: 3,000,000",
+            },
+            {
+                "listing_id": "item_2",
+                "title": "Phòng đẹp quận 1",
+                "description": "Full nội thất",
+            },
+        ]
+
+        embedded = embedder.embed_records(records)
+
+        assert len(embedded) == 2
+        assert "vector" in embedded[0]
+        assert len(embedded[0]["vector"]) == 768
+        assert embedded[0]["embedding_model"] == "intfloat/multilingual-e5-base"
+        assert embedded[0]["embedding_dim"] == 768
+        assert "passage:" in embedded[1]["embedding_text"]
+
+
