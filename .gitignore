@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *$py.class
 *.so
@@ -10,6 +11,8 @@ __pycache__/
 venv/
 ENV/
 env/
+
+.env
 
 # ML Artifacts (Large model binaries)
 ml/artifacts/*.joblib

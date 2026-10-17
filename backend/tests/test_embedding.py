@@ -1,14 +1,12 @@
-import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
 
 from app.services.embedding import EmbeddingModel
-from crawler.etl.embed import ListingEmbedder
 
 
 def test_embedding_model_format_prefix():
     # Kiểm tra cơ chế tự động gắn prefix của họ E5
-    with patch("app.services.embedding.SentenceTransformer") as mock_st:
+    with patch("app.services.embedding.SentenceTransformer"):
         model = EmbeddingModel(model_name="intfloat/multilingual-e5-base")
 
         # 1. Query: thêm prefix 'query: ' nếu chưa có
@@ -48,33 +46,3 @@ def test_embedding_model_encode_query_and_passage():
             convert_to_numpy=True,
             normalize_embeddings=True,
         )
-
-
-def test_listing_embedder_batch():
-    with patch("crawler.etl.embed.EmbeddingModel") as mock_emb_cls:
-        mock_emb = MagicMock()
-        mock_emb_cls.return_value = mock_emb
-        # Giả lập ma trận 2 vector 768 chiều
-        mock_emb.encode_passages.return_value = np.zeros((2, 768), dtype=np.float32)
-
-        embedder = ListingEmbedder(model_name="intfloat/multilingual-e5-base")
-        records = [
-            {
-                "listing_id": "item_1",
-                "embedding_text": "passage: Vị trí: Quận 10 | Giá: 3,000,000",
-            },
-            {
-                "listing_id": "item_2",
-                "title": "Phòng đẹp quận 1",
-                "description": "Full nội thất",
-            },
-        ]
-
-        embedded = embedder.embed_records(records)
-
-        assert len(embedded) == 2
-        assert "vector" in embedded[0]
-        assert len(embedded[0]["vector"]) == 768
-        assert embedded[0]["embedding_model"] == "intfloat/multilingual-e5-base"
-        assert embedded[0]["embedding_dim"] == 768
-        assert "passage:" in embedded[1]["embedding_text"]

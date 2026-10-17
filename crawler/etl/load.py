@@ -189,21 +189,25 @@ class DataLoader:
         import hashlib
         import numpy as np
         from sqlalchemy import text
-        try:
-            from app.core.database import SessionLocal, engine, Base
-            from app.models import City, District, Ward, RoomType, User, Listing, ListingEmbedding
-            from app.core.config import settings
-        except ImportError:
-            from backend.app.core.database import SessionLocal, engine, Base
-            from backend.app.models import City, District, Ward, RoomType, User, Listing, ListingEmbedding
-            from backend.app.core.config import settings
+        from crawler.etl.db_models import (
+            DEFAULT_EMBEDDING_MODEL,
+            Base,
+            City,
+            District,
+            Listing,
+            ListingEmbedding,
+            RoomType,
+            User,
+            Ward,
+            create_db_session,
+        )
 
-        # Đảm bảo pgvector extension và bảng dữ liệu được khởi tạo
+        # Đảm bảo pgvector extension và bảng dữ liệu được khởi tạo độc lập
+        engine, session = create_db_session(db_url)
         with engine.connect() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             conn.commit()
         Base.metadata.create_all(bind=engine)
-        session = SessionLocal()
 
         # Fallback: Nếu records chưa có inline "vector", tự động kiểm tra file .npy/.parquet trong crawler/data/embeddings
         precomputed_vectors: dict[str, tuple[list[float], str, int]] = {}
@@ -220,7 +224,7 @@ class DataLoader:
                     for _, row in mapping_df.iterrows():
                         idx = int(row["embedding_index"])
                         lid_key = str(row["id"]).strip()
-                        m_name = str(row.get("model_name") or settings.EMBEDDING_MODEL_NAME)
+                        m_name = str(row.get("model_name") or DEFAULT_EMBEDDING_MODEL)
                         dim_val = int(row.get("embedding_dim") or vectors_arr.shape[1])
                         precomputed_vectors[lid_key] = (vectors_arr[idx].astype(np.float32).tolist(), m_name, dim_val)
                     print(f"[LOAD] Đã tải {len(precomputed_vectors)} vector từ {emb_dir}", flush=True)
@@ -364,7 +368,7 @@ class DataLoader:
 
                 # 5. ListingEmbedding Upsert (hỗ trợ cả inline vector từ ETL hoặc file .npy/.parquet từ crawler/data/embeddings)
                 vec = r.get("vector")
-                model_name = r.get("embedding_model") or settings.EMBEDDING_MODEL_NAME
+                model_name = r.get("embedding_model") or DEFAULT_EMBEDDING_MODEL
                 dim = r.get("embedding_dim") or (len(vec) if vec else None)
 
                 if not vec and lid in precomputed_vectors:
