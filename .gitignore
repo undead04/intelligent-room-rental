@@ -11,23 +11,16 @@ __pycache__/
 venv/
 ENV/
 env/
-
 .env
+*.env
+!*.env.example
 
-# ML Artifacts (Large model binaries)
-ml/artifacts/*.joblib
-ml/artifacts/*.parquet
-ml/*.parquet
+# Model & Embedding Caches
 models_cache/
+model_cache/
+backend/models_cache/
 
-# Scratch & test outputs
-test_output.json
-test_output_1050.json
-categories.txt
-crawl-plan.md
-region_test.json
-
-# Crawler Data (Large/Raw datasets & checkpoints & SQLite Staging DB)
+# Crawler Data (Raw datasets, checkpoints, SQLite Staging DB & Processed outputs)
 crawler/data/raw/*.db
 crawler/data/raw/*.db-wal
 crawler/data/raw/*.db-shm
@@ -35,11 +28,13 @@ crawler/data/raw/listings/*.json
 crawler/data/raw/checkpoint_*.json
 crawler/data/raw/urls_queue.csv
 crawler/data/processed/*.csv
+crawler/data/processed/*.json
 crawler/data/processed/*.parquet
+crawler/data/processed/*.npy
+crawler/data/processed/llm_reports/
 
 # Keep folder structure
 !crawler/data/raw/.gitkeep
-!crawler/data/raw/listings/.gitkeep
 !crawler/data/processed/.gitkeep
 
 # IDE & OS
@@ -47,16 +42,3 @@ crawler/data/processed/*.parquet
 .idea/
 .DS_Store
 Thumbs.db
-
-# Agent folders
-ai-agent/fixtures/data/*
-ai-agent/traces/*
-ai-agent/workspace/data/*
-ai-agent/workspace/output/*
-ai-agent/explainer.html
-
-# Backend
-backend/models_cache/*
-
-
-Plan_Module_ML_PriceModel_MatchScore.md

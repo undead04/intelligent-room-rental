@@ -16,7 +16,7 @@ if PROJECT_ROOT not in sys.path:
 
 from crawler.spiders.nhatot import NhaTotSpider
 from crawler.spiders.phongtro123 import PhongTro123Spider
-from crawler.etl.clean import combine_and_clean
+from crawler.etl.pipeline import run_pipeline
 
 SPIDERS = {
     "nhatot": NhaTotSpider,
@@ -85,7 +85,7 @@ def main():
 
     if not args.no_clean:
         print("\n>>> TỔNG HỢP VÀ LÀM SẠCH TOÀN BỘ DỮ LIỆU ĐA NGUỒN (ETL)...", flush=True)
-        combine_and_clean()
+        run_pipeline()
 
 if __name__ == "__main__":
     main()
