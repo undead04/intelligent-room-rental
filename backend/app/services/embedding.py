@@ -4,6 +4,43 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+
+def resolve_model_cache_dir(custom_path: Optional[str] = None) -> str:
+    """Tự động tìm kiếm và đồng nhất thư mục model_cache/models_cache trên máy.
+    Tránh trường hợp mỗi module hoặc terminal chạy từ thư mục khác nhau tạo ra folder riêng.
+    """
+    if custom_path and os.path.isabs(custom_path) and os.path.exists(custom_path):
+        return custom_path
+
+    env_dir = os.environ.get("MODEL_CACHE_DIR") or os.environ.get("EMBEDDING_MODEL_CACHE_DIR")
+    if env_dir and os.path.exists(env_dir):
+        return os.path.abspath(env_dir)
+
+    # Ưu tiên các thư mục cache đã tồn tại theo thứ tự
+    candidate_dirs = [
+        os.path.join(PROJECT_ROOT, "model_cache"),
+        os.path.join(PROJECT_ROOT, "models_cache"),
+        os.path.join(PROJECT_ROOT, "backend", "model_cache"),
+        os.path.join(PROJECT_ROOT, "backend", "models_cache"),
+        os.path.join(PROJECT_ROOT, "crawler", "model_cache"),
+        os.path.join(PROJECT_ROOT, "crawler", "models_cache"),
+    ]
+    for c in candidate_dirs:
+        if os.path.isdir(c):
+            return os.path.abspath(c)
+
+    # Nếu chỉ định custom_path tương đối, gán về thư mục gốc dự án
+    if custom_path:
+        target = os.path.abspath(os.path.join(PROJECT_ROOT, custom_path.lstrip("./\\")))
+        os.makedirs(target, exist_ok=True)
+        return target
+
+    default_dir = os.path.join(PROJECT_ROOT, "models_cache")
+    os.makedirs(default_dir, exist_ok=True)
+    return default_dir
+
 
 class EmbeddingModel:
     """Mô hình nhúng ngữ nghĩa (Embedding Model).
@@ -18,7 +55,7 @@ class EmbeddingModel:
         self,
         model_name: str = DEFAULT_MODEL_NAME,
         batch_size: int = 32,
-        cache_dir: str = "./models_cache",
+        cache_dir: Optional[str] = None,
         device: Optional[str] = None,
     ):
         self.model_name = model_name
@@ -36,12 +73,33 @@ class EmbeddingModel:
         else:
             self.device = device
 
-        os.makedirs(cache_dir, exist_ok=True)
-        self.model = SentenceTransformer(
-            model_name_or_path=model_name,
-            cache_folder=cache_dir,
-            device=self.device,
-        )
+        resolved_cache = resolve_model_cache_dir(cache_dir)
+        self.cache_dir = resolved_cache
+
+        # 1. Thử nạp Offline trước (local_files_only=True)
+        # Giúp nạp tức thì trong < 1s và KHÔNG BAO GIỜ ping mạng lên Hugging Face Hub nếu đã có cache
+        model_loaded = False
+        try:
+            self.model = SentenceTransformer(
+                model_name_or_path=model_name,
+                cache_folder=resolved_cache,
+                device=self.device,
+                local_files_only=True,
+            )
+            model_loaded = True
+        except Exception:
+            pass
+
+        # 2. Nếu chưa có trong cache cục bộ thì mới tải từ HuggingFace Hub (chỉ 1 lần duy nhất)
+        if not model_loaded:
+            print(f"[EmbeddingModel] Đang tải mô hình {model_name} về cache tập trung: {resolved_cache}...", flush=True)
+            self.model = SentenceTransformer(
+                model_name_or_path=model_name,
+                cache_folder=resolved_cache,
+                device=self.device,
+                local_files_only=False,
+            )
+            print(f"[EmbeddingModel] Đã hoàn tất lưu mô hình vào: {resolved_cache}", flush=True)
 
     def _format_text(self, text: str, is_query: bool = False) -> str:
         """Định dạng tiền tố chuẩn cho mô hình E5."""
