@@ -7,7 +7,6 @@ from __future__ import annotations
 from typing import Dict, List
 from langchain_core.tools import BaseTool
 
-from tools.files import read_file, write_file
 from tools.housing_tools import (
     consult_housing_skill,
     geocode_location,
@@ -35,20 +34,13 @@ ADVISORY_TOOLS: List[BaseTool] = [
     consult_housing_skill,
 ]
 
-# 4. Phân vùng công cụ thao tác hệ thống tệp tin nội bộ (Nếu cần)
-SYSTEM_TOOLS: List[BaseTool] = [
-    read_file,
-    write_file,
-]
-
-# Tập hợp toàn bộ công cụ (dùng khi cần kiểm tra danh mục hoặc tương thích ngược)
-ALL_TOOLS: List[BaseTool] = RETRIEVAL_TOOLS + DETAIL_TOOLS + ADVISORY_TOOLS + SYSTEM_TOOLS
+# Tập hợp toàn bộ công cụ của Homigo Housing Agent
+ALL_TOOLS: List[BaseTool] = RETRIEVAL_TOOLS + DETAIL_TOOLS + ADVISORY_TOOLS
 
 TOOL_SCOPES: Dict[str, List[BaseTool]] = {
     "retrieval": RETRIEVAL_TOOLS,
     "detail": DETAIL_TOOLS,
     "advisory": ADVISORY_TOOLS,
-    "system": SYSTEM_TOOLS,
     "all": ALL_TOOLS,
 }
 

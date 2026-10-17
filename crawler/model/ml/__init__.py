@@ -1,11 +1,5 @@
-"""Cầu nối (Re-export) tới module Machine Learning tại `/ml` (nếu có mặt trong cùng môi trường).
-Nếu chạy trong container tách biệt không có `/ml`, module vẫn hoạt động an toàn.
-"""
+"""Module Machine Learning thẩm định giá phòng trọ (`crawler.model.ml`)."""
 
-try:
-    from ml.price_evaluator import PriceEvaluator, RoomPriceEvaluator
-except ImportError:
-    PriceEvaluator = None
-    RoomPriceEvaluator = None
+from crawler.model.ml.price_evaluator import PriceEvaluator, RoomPriceEvaluator
 
 __all__ = ["RoomPriceEvaluator", "PriceEvaluator"]

@@ -285,7 +285,7 @@ class ListingTransformer:
         # 3. Tùy chọn chạy PriceEvaluator nếu enable_price_evaluator=True
         if self.enable_price_evaluator and cleaned_records:
             try:
-                from ml.price_evaluator import PriceEvaluator
+                from crawler.model.ml.price_evaluator import PriceEvaluator
                 evaluator = PriceEvaluator()
                 df_eval = evaluator.evaluate_batch(cleaned_records)
                 if not df_eval.empty and "price_score" in df_eval.columns:

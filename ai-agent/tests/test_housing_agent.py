@@ -1,29 +1,21 @@
 """Unit tests cho Homigo AI Agent: Tools, Schemas, Decision Support, Guardrails và Memory."""
 
 import pytest
-from agent import TOOLS, capabilities, system_prompt
 from guardrails import check_guardrails
 from memory import SessionMemoryManager
 from schemas import AgentResponse, DecisionInsight, RoomItem, UserPreferenceState
 from service import HousingAgentService
+from tools.registry import ALL_TOOLS
 
 
 def test_registered_tools_include_housing_tools():
-    tool_names = [t.name for t in TOOLS]
+    tool_names = [t.name for t in ALL_TOOLS]
     assert "geocode_location" in tool_names
     assert "get_location_hierarchy" in tool_names
     assert "search_rooms" in tool_names
     assert "get_listing_detail" in tool_names
-    assert "read_file" in tool_names
-    assert "write_file" in tool_names
-
-
-def test_system_prompt_persona():
-    prompt = system_prompt()
-    assert "Homigo AI" in prompt
-    assert "Hỗ trợ ra quyết định" in prompt
-    assert "geocode_location" in prompt
-    assert "search_rooms" in prompt
+    assert "list_housing_skills" in tool_names
+    assert "consult_housing_skill" in tool_names
 
 
 def test_room_item_from_backend_result():

@@ -12,7 +12,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ML_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = ML_DIR.parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -20,8 +21,9 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from ml.feature_extractor import extract_features_from_record
-from ml.models import (
+from crawler.model.ml import models as _ml_models
+from crawler.model.ml.feature_extractor import extract_features_from_record
+from crawler.model.ml.models import (
     MondrianPriceInterval,
     PriceInterval,
     SpatialTE,
@@ -30,9 +32,12 @@ from ml.models import (
     make_base_features,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PIPELINE_PATH = PROJECT_ROOT / "ml" / "artifacts" / "rent_pipeline.joblib"
-DEFAULT_GUARD_PATH = PROJECT_ROOT / "ml" / "artifacts" / "guard.joblib"
+# Tương thích unpickle với các file .joblib được huấn luyện dưới namespace `ml.models`
+sys.modules.setdefault("ml", sys.modules[__package__ or "crawler.model.ml"])
+sys.modules.setdefault("ml.models", _ml_models)
+
+DEFAULT_PIPELINE_PATH = ML_DIR / "artifacts" / "rent_pipeline.joblib"
+DEFAULT_GUARD_PATH = ML_DIR / "artifacts" / "guard.joblib"
 
 
 class PriceEvaluator:

@@ -29,12 +29,13 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import KFold, train_test_split
 import xgboost as xgb
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ML_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = ML_DIR.parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from ml.feature_extractor import load_and_preprocess_dataset
-from ml.models import (
+from crawler.model.ml.feature_extractor import load_and_preprocess_dataset
+from crawler.model.ml.models import (
     DROP_COLS,
     FINAL_PREDICT,
     MAX_PRICE,
@@ -53,7 +54,7 @@ from ml.models import (
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-ARTIFACTS_DIR = PROJECT_ROOT / "ml" / "artifacts"
+ARTIFACTS_DIR = ML_DIR / "artifacts"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 METRIC_LABELS = {"mse": "MSE", "mae": "MAE", "rmse": "RMSE", "r2": "R²"}

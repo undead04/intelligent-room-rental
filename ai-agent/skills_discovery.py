@@ -81,6 +81,7 @@ def discover_housing_skills(force_reload: bool = False) -> Dict[str, SkillMetada
         return _SKILL_CACHE
 
     base_dirs = [
+        Path(__file__).resolve().parent / "skills",
         Path(__file__).resolve().parent / "workspace" / "skills",
         Path(__file__).resolve().parent / "fixtures" / "skills",
     ]

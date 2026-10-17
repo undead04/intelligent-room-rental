@@ -248,6 +248,7 @@ def list_housing_skills() -> str:
         JSON danh sách các kỹ năng kèm mô tả công dụng.
     """
     base_dirs = [
+        Path(__file__).resolve().parent.parent / "skills",
         Path(__file__).resolve().parent.parent / "workspace" / "skills",
         Path(__file__).resolve().parent.parent / "fixtures" / "skills",
     ]
@@ -295,6 +296,7 @@ def consult_housing_skill(
         JSON chứa toàn bộ nội dung hướng dẫn, checklist và lưu ý từ kỹ năng tương ứng.
     """
     base_dirs = [
+        Path(__file__).resolve().parent.parent / "skills",
         Path(__file__).resolve().parent.parent / "workspace" / "skills",
         Path(__file__).resolve().parent.parent / "fixtures" / "skills",
     ]

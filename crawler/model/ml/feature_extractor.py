@@ -20,12 +20,12 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PARQUET_PATH = PROJECT_ROOT / "crawler" / "data" / "processed" / "listings_clean.parquet"
 DEFAULT_DATA_PATH = (
     DEFAULT_PARQUET_PATH
     if DEFAULT_PARQUET_PATH.exists()
-    else PROJECT_ROOT / "backend" / "app" / "datas" / "datas.json"
+    else PROJECT_ROOT / "crawler" / "data" / "processed" / "listings_clean.json"
 )
 
 # Danh sách tiện ích / quy định / an ninh chuẩn hóa theo Schema mới (KHÔNG có water_heater, wifi)
