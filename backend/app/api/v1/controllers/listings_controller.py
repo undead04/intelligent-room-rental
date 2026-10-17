@@ -37,6 +37,8 @@ def get_listings(
     room_type_id: Optional[int] = Query(None, ge=1),
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
+    min_area: Optional[float] = Query(None, ge=0),
+    max_area: Optional[float] = Query(None, ge=0),
     order_by: str = Query("posted_date"),
     sort_desc: bool = Query(True),
     service: ListingService = Depends(get_listing_service),
@@ -44,7 +46,7 @@ def get_listings(
     listings = service.list_listings(
         search=search, city_id=city_id, district_id=district_id,
         ward_id=ward_id, room_type_id=room_type_id, min_price=min_price,
-        max_price=max_price, min_area=None, max_area=None, order_by=order_by,
+        max_price=max_price, min_area=min_area, max_area=max_area, order_by=order_by,
         sort_desc=sort_desc, limit=limit, offset=offset,
     )
     return ResponseDTO[list[ListingResponse]](data=listings)

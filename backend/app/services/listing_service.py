@@ -170,7 +170,7 @@ class ListingService:
         max_area: float | None = None,
         limit: int = 5,
         offset: int = 0,
-    ) -> VectorSearchResult:
+    ) -> list[VectorSearchResult]:
         if hasattr(model_embedding, "encode_query"):
             raw_vector = model_embedding.encode_query(query)
         else:
@@ -191,12 +191,7 @@ class ListingService:
         )
 
         if not candidates:
-            return VectorSearchResult(
-                listings=[],
-                reranked=[],
-                match_scores=[],
-                explain_match=None,
-            )
+            return []
 
         user_pref = {"lat": lat, "lng": lng, "amenities": amenities, "query": query}
 

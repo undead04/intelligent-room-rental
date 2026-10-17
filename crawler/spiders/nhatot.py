@@ -80,17 +80,19 @@ class NhaTotSpider(BaseSpider):
 
                 new_in_page = 0
                 for ad in ads:
-                    ad_id = str(ad.get('list_id') or ad.get('ad_id'))
+                    ad_id = str(ad.get('list_id') or ad.get('ad_id') or '').strip()
                     if not ad_id:
                         continue
 
-                    if ad_id in processed_ids:
+                    record_id = f"{self.name}_{ad_id}"
+                    if ad_id in processed_ids or record_id in processed_ids:
                         continue
 
                     parsed_item = parse_chotot_item(ad)
                     self.save_listing(parsed_item)
 
                     processed_ids.add(ad_id)
+                    processed_ids.add(record_id)
                     new_in_page += 1
                     total_crawled += 1
 
@@ -124,44 +126,59 @@ class NhaTotSpider(BaseSpider):
 
     def verify(self, limit: int = 100, delay: float = 1.0) -> dict:
         """
-        Kiểm tra danh sách tin đã lưu trên Chợ Tốt:
+        Kiểm tra danh sách tin đã lưu trên Chợ Tốt (ưu tiên đọc/ghi từ SQLite staging.db):
         - Gọi endpoint chi tiết: https://gateway.chotot.com/v1/public/ad-listing/{list_id}
-        - Nếu 404 hoặc status != active: đánh dấu is_active = False, status = 'expired'
+        - Nếu 404 hoặc status != active: đánh dấu is_active = False, status = 'expired_or_deleted'
         - Nếu 200 và status == active: đánh dấu is_active = True
-        - Cập nhật trường last_checked_at vào file JSON
+        - Cập nhật trường last_checked_at trực tiếp vào staging.db (hoặc file JSON legacy)
         """
         stats = {"checked": 0, "active": 0, "expired": 0, "error": 0}
-        
-        # Tìm các file của nhatot
-        files_to_check = []
-        for fname in os.listdir(self.raw_dir):
-            if fname.startswith("nhatot_") and fname.endswith(".json"):
-                fpath = os.path.join(self.raw_dir, fname)
-                files_to_check.append(fpath)
-
-        if not files_to_check:
-            self.log("Không có file dữ liệu nào để kiểm tra.")
-            return stats
-
-        # Đọc metadata sơ bộ để ưu tiên kiểm tra các tin cũ nhất hoặc chưa từng verify
         indexed = []
-        for fp in files_to_check:
-            try:
-                # Đọc nhanh file để lấy list_id và last_checked_at
-                with open(fp, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    last_checked = data.get("last_checked_at") or data.get("crawled_at") or "1970-01-01"
-                    is_active = data.get("is_active", True)
-                    list_id = data.get("list_id") or data.get("ad_id")
-                    indexed.append({
-                        "file_path": fp,
-                        "list_id": str(list_id),
-                        "last_checked": last_checked,
-                        "is_active": is_active,
-                        "data": data
-                    })
-            except Exception:
+
+        # 1. Ưu tiên đọc dữ liệu từ SQLite Staging Database
+        db_records = self.staging_db.get_raw_listings(source=self.name)
+        for data in db_records:
+            raw_id = str(data.get("list_id") or data.get("ad_id") or data.get("listing_id") or "")
+            list_id = raw_id.replace(f"{self.name}_", "")
+            if not list_id:
                 continue
+            last_checked = data.get("last_checked_at") or data.get("crawled_at") or "1970-01-01"
+            is_active = data.get("is_active", True)
+            indexed.append({
+                "storage": "sqlite",
+                "file_path": None,
+                "list_id": list_id,
+                "last_checked": str(last_checked),
+                "is_active": bool(is_active),
+                "data": data,
+            })
+
+        # 2. Fallback: Quét thêm file JSON legacy nếu staging.db trống
+        if not indexed and os.path.exists(self.raw_dir):
+            for fname in os.listdir(self.raw_dir):
+                if fname.startswith("nhatot_") and fname.endswith(".json"):
+                    fp = os.path.join(self.raw_dir, fname)
+                    try:
+                        with open(fp, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        last_checked = data.get("last_checked_at") or data.get("crawled_at") or "1970-01-01"
+                        is_active = data.get("is_active", True)
+                        list_id = str(data.get("list_id") or data.get("ad_id") or "").replace(f"{self.name}_", "")
+                        if list_id:
+                            indexed.append({
+                                "storage": "json",
+                                "file_path": fp,
+                                "list_id": list_id,
+                                "last_checked": str(last_checked),
+                                "is_active": bool(is_active),
+                                "data": data,
+                            })
+                    except Exception:
+                        continue
+
+        if not indexed:
+            self.log("Không có dữ liệu tin đăng nào trong staging.db hoặc thư mục raw để kiểm tra.")
+            return stats
 
         # Ưu tiên các tin đang active và được kiểm tra lâu nhất
         indexed.sort(key=lambda x: (not x["is_active"], x["last_checked"]))
@@ -194,7 +211,6 @@ class NhaTotSpider(BaseSpider):
                     item_data["is_active"] = True
                     item_data["status"] = "active"
                     stats["active"] += 1
-                    # Lưu thêm số điện thoại nếu có
                     if ad.get("phone") and not item_data.get("phone"):
                         item_data["phone"] = ad.get("phone")
                     self.log(f"[{idx}/{len(target_list)}] Tin {list_id}: CÒN HOẠT ĐỘNG (Active)")
@@ -207,12 +223,15 @@ class NhaTotSpider(BaseSpider):
                 stats["error"] += 1
                 self.log(f"[{idx}/{len(target_list)}] Tin {list_id}: Lỗi kiểm tra (HTTP {status_code})")
 
-            # Ghi lại file json đã cập nhật trạng thái
+            # Lưu lại bản ghi đã cập nhật trạng thái vào SQLite hoặc file JSON
             try:
-                with open(fp, "w", encoding="utf-8") as f:
-                    json.dump(item_data, f, ensure_ascii=False, indent=2)
+                if item_info["storage"] == "sqlite":
+                    self.staging_db.save_listing(item_data, source=self.name)
+                elif fp:
+                    with open(fp, "w", encoding="utf-8") as f:
+                        json.dump(item_data, f, ensure_ascii=False, indent=2)
             except Exception as e:
-                self.log(f"Lỗi ghi file {fp}: {e}")
+                self.log(f"Lỗi lưu trạng thái tin {list_id}: {e}")
 
             stats["checked"] += 1
             time.sleep(random.uniform(delay * 0.8, delay * 1.2))

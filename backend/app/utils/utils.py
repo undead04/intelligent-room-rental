@@ -66,34 +66,60 @@ except ImportError:
         "ac": "aircon",
         "air_conditioner": "aircon",
         "may_lanh": "aircon",
+        "máy lạnh": "aircon",
         "dieu_hoa": "aircon",
+        "điều hòa": "aircon",
         "wc": "private_wc",
         "ve_sinh_rieng": "private_wc",
+        "wc riêng": "private_wc",
+        "vệ sinh riêng": "private_wc",
         "gac": "mezzanine",
         "gac_lung": "mezzanine",
         "gac_xep": "mezzanine",
+        "gác lửng": "mezzanine",
+        "gác cao": "mezzanine",
+        "gác xép": "mezzanine",
         "bep": "kitchen",
         "kitchen_shelf": "kitchen",
+        "kệ bếp": "kitchen",
         "tu_lanh": "fridge",
+        "tủ lạnh": "fridge",
         "may_giat": "washing_machine",
+        "máy giặt": "washing_machine",
         "balcony": "window_balcony",
         "window": "window_balcony",
         "ban_cong": "window_balcony",
+        "ban công": "window_balcony",
         "cua_so": "window_balcony",
+        "cửa sổ": "window_balcony",
         "full_noi_that": "furniture",
         "noi_that": "furniture",
+        "nội thất": "furniture",
         "xe": "parking",
         "ham_xe": "parking",
+        "chỗ để xe": "parking",
         "pet": "pet_allowed",
         "cho_nuoi_pet": "pet_allowed",
         "thu_cung": "pet_allowed",
+        "thú cưng": "pet_allowed",
+        "nuôi mèo": "pet_allowed",
+        "nuôi chó": "pet_allowed",
         "tu_do": "free_hours",
         "gio_tu_do": "free_hours",
+        "free_time": "free_hours",
+        "giờ giấc tự do": "free_hours",
         "khong_chung_chu": "no_shared_landlord",
+        "private_entrance": "no_shared_landlord",
+        "không chung chủ": "no_shared_landlord",
         "van_tay": "fingerprint_lock",
         "the_tu": "fingerprint_lock",
         "khoa_van_tay": "fingerprint_lock",
+        "smart_lock": "fingerprint_lock",
+        "khoá vân tay": "fingerprint_lock",
+        "khóa vân tay": "fingerprint_lock",
         "bao_ve": "guard",
+        "security": "guard",
+        "bảo vệ": "guard",
     }
 
     def _NORMALIZE_AMENITY(code: str) -> str:
@@ -108,19 +134,27 @@ def _normalize_amenity(code: str) -> str:
     return res if res else code
 
 
-def _amenity_fit(requested: Sequence[str] | None, concept_scores: Mapping | None) -> float:
+def _amenity_fit(
+    requested: Sequence[str] | None,
+    concept_scores: Mapping | None,
+    amenity_overall: float | None = None,
+) -> float:
     """Điểm trung bình của các tiện ích user yêu cầu (thiếu dữ liệu -> trung tính).
-    Hỗ trợ alias chuẩn hóa về canonical taxonomy.
+    Hỗ trợ alias chuẩn hóa về canonical taxonomy (cả tiếng Việt có dấu lẫn mã tiếng Anh).
     Khi không có tiện ích cụ thể nào được yêu cầu, fallback về amenity_overall nếu có.
     """
     scores = concept_scores or {}
     if not requested:
+        if amenity_overall is not None:
+            return _clamp01(amenity_overall)
         if "amenity_overall" in scores:
             return _clamp01(scores["amenity_overall"])
         return 1.0
 
     normalized_req = [_normalize_amenity(a) for a in requested if a]
     if not normalized_req:
+        if amenity_overall is not None:
+            return _clamp01(amenity_overall)
         if "amenity_overall" in scores:
             return _clamp01(scores["amenity_overall"])
         return 1.0
@@ -130,21 +164,22 @@ def _amenity_fit(requested: Sequence[str] | None, concept_scores: Mapping | None
 
 # --- Weights ---
 def _dynamic_weights(user_pref: Any, base: Mapping[str, float]) -> dict[str, float]:
-    """Chỉ giữ tiêu chí user có nói tới, rồi chuẩn hóa để tổng = 1."""
+    """Chỉ giữ tiêu chí user có nói tới, rồi chuẩn hóa L1 để tổng trọng số = 1.0.
+    Sử dụng base.get(k) an toàn để không văng KeyError khi AI Agent gửi bộ trọng số rút gọn.
+    """
     lat = _get(user_pref, "lat")
     lng = _get(user_pref, "lng")
     amenities = _get(user_pref, "amenities")
-    query = _get(user_pref, "query")
     include_overall = bool(_get(user_pref, "include_amenity_overall", False))
 
     active = {
-        "price": True,     # Bắt buộc: luôn đánh giá giá phòng
-        "safety": True,    # Bắt buộc: luôn đánh giá điểm an ninh
-        "semantic": True,  # Bắt buộc: luôn đánh giá độ khớp ngữ nghĩa
-        "location": lat is not None and lng is not None,  # Động: chỉ bật khi có toạ độ
+        "price": True,     # Bắt buộc: luôn đánh giá mức độ hợp lý của giá phòng (price_score từ ML)
+        "safety": True,    # Bắt buộc: luôn đánh giá điểm an ninh (safety_score)
+        "semantic": True,  # Bắt buộc: luôn đánh giá độ khớp ngữ nghĩa (similarity_score)
+        "location": lat is not None and lng is not None,  # Động: chỉ bật khi có toạ độ mục tiêu
         "amenity": bool(amenities) or include_overall,    # Động: bật khi có tiện ích cụ thể hoặc yêu cầu overall
     }
-    w = {k: base[k] for k, on in active.items() if on}
+    w = {k: float(base.get(k, DEFAULT_WEIGHTS.get(k, 0.2))) for k, on in active.items() if on}
     total = sum(w.values())
     if total <= 0:
         raise ValueError("Tổng trọng số của các tiêu chí đang bật phải > 0")
@@ -168,13 +203,17 @@ def _match_breakdown(
     user_pref: Any,
     weights: dict[str, float],
 ) -> dict:
-    """Tính điểm từng thành phần dựa trên weights đã pre-computed."""
+    """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
     orm = _get(listing, "listing", listing)
     scorers = {
         "price": lambda: _score_or_unknown(orm, "price_score"),
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
-        "amenity": lambda: _amenity_fit(_get(user_pref, "amenities"), _get(orm, "concept_scores")),
+        "amenity": lambda: _amenity_fit(
+            _get(user_pref, "amenities"),
+            _get(orm, "concept_scores"),
+            _get(orm, "amenity_overall"),
+        ),
         "semantic": lambda: _score_or_unknown(listing, "similarity_score") if isinstance(listing, Mapping) and "similarity_score" in listing else _score_or_unknown(orm, "similarity_score"),
     }
     parts = {k: scorers[k]() for k in weights}

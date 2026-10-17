@@ -1,268 +1,110 @@
-# FastAPI Backend - Smart Housing Decision Support System
+# ⚡ Backend Module — FastAPI Hybrid Search & MCDM Reranker (`backend/`)
 
-Backend service built with **FastAPI**, **Pydantic v2**, and **SQLAlchemy** for the Smart Housing Decision Support System.
+Module **Backend (`backend/`)** cung cấp hệ thống RESTful API hiệu năng cao được xây dựng trên nền tảng **FastAPI**, **SQLAlchemy 2.0**, và **PostgreSQL (`pgvector` + Full-Text Search)** cho Hệ Thống Hỗ Trợ Ra Quyết Định Tìm Kiếm Phòng Trọ Thông Minh (**Homigo**).
 
-## 📁 Directory Structure
+---
+
+## 📂 1. Cấu Trúc Thư Mục (Layered Architecture)
+
+Backend tuân thủ nghiêm ngặt kiến trúc phân tầng **`Controllers -> Services -> Repositories -> ORM Models`**:
 
 ```text
 backend/
 ├── app/
-│   ├── api/
-│   │   └── v1/
-│   │       ├── endpoints/
-│   │       │   ├── health.py        # GET /api/v1/health
-│   │       │   └── listings.py      # GET /api/v1/listings
-│   │       └── router.py            # API v1 Central Router
+│   ├── api/v1/
+│   │   ├── controllers/               # Định nghĩa HTTP Endpoints & Query/Body Validation
+│   │   │   ├── listings_controller.py # /api/v1/listings (CRUD, Filter, Vector Search, Price Stats)
+│   │   │   ├── locations_controller.py# /api/v1/locations (Cities, Districts, Wards)
+│   │   │   ├── room_type_controller.py# /api/v1/room-types
+│   │   │   ├── geocode.py             # /api/v1/geocode (Nominatim OSM Geocoding)
+│   │   │   └── health_controller.py   # /api/v1/health
+│   │   └── router.py                  # Router tổng hợp API v1
 │   ├── core/
-│   │   ├── config.py                # Environment & App Settings (Pydantic BaseSettings)
-│   │   └── database.py              # SQLAlchemy Database Setup
-│   ├── models/                      # SQLAlchemy Database Models
-│   ├── schemas/                     # Pydantic Request/Response Schemas
-│   ├── services/                    # Business Logic / ML Integrations
-│   └── main.py                      # FastAPI Application Entrypoint
-├── .env.example                     # Environment Configuration Template
-├── .env                             # Active Local Environment File
-├── requirements.txt                 # Backend Python Dependencies
-└── README.md                        # Documentation
+│   │   ├── config.py                  # Cấu hình biến môi trường (Pydantic Settings)
+│   │   ├── database.py                # Quản lý kết nối SQLAlchemy Session
+│   │   ├── exceptions.py              # Custom HTTP Exceptions & Global Error Handlers
+│   │   └── security.py                # Middleware chống SQL Injection & Sliding-Window Rate Limit
+│   ├── models/                        # SQLAlchemy ORM Models (Listing, ListingEmbedding, Location, RoomType, User)
+│   ├── repositories/                  # Truy vấn CSDL & Hybrid Search (70% Dense pgvector + 30% Sparse FTS)
+│   ├── schemas/                       # Pydantic v2 DTOs (ResponseDTO, ListingResponse, VectorSearchResult...)
+│   ├── services/                      # Logic nghiệp vụ (ListingService, EmbeddingModel, GeocodeService)
+│   ├── utils/
+│   │   └── utils.py                   # Thuật toán MCDM Rerank 5 tiêu chí & Explainable AI (explain_match)
+│   └── main.py                        # FastAPI App Entrypoint & Lifespan (nạp sẵn Vietnamese-SBERT)
+├── scripts/
+│   ├── init_db.py                     # Khởi tạo extension pgvector & toàn bộ bảng CSDL
+│   └── load_data.py                   # Nạp dữ liệu phòng trọ & vector nhúng vào PostgreSQL
+├── tests/                             # Bộ Unit Tests (Embedding, MCDM Rerank, Security Middleware)
+├── requirements.txt
+└── run.py                             # Script khởi chạy nhanh Uvicorn server
 ```
 
-## 🚀 Getting Started
+---
 
-### 1. Environment Setup
+## 🧠 2. Cơ Chế Tìm Kiếm Lai (Hybrid Search) & MCDM Reranking
 
-Ensure the virtual environment is created and dependencies are installed:
+### 2.1. Giai đoạn 1 — Candidate Generation (`listing_repository.py`)
+1. **Lọc ràng buộc cứng (Hard Constraints)**: Lọc theo `city_id`, `district_id`, `ward_id`, `min_price`, `max_price`, `min_area`, `max_area`.
+2. **Chấm điểm Hybrid Search**: Kết hợp độ tương đồng Cosine trên vector 768 chiều (`keepitreal/vietnamese-sbert`) và điểm khớp từ khóa PostgreSQL Full-Text Search để lấy Top 50 ứng viên tiềm năng nhất:
+   $$\text{CandidateScore} = 0.70 \times \text{DenseScore} + 0.30 \times \text{SparseScore}$$
 
-```bash
-# From workspace root
-pip install -r backend/requirements.txt
-```
+### 2.2. Giai đoạn 2 — 5-Factor Dynamic MCDM Reranking (`app/utils/utils.py`)
+Top 50 ứng viên được xếp hạng lại theo 5 tiêu chí với trọng số thích ứng động ($\sum w_k = 1.0$):
+- **`price`**: Điểm hợp lý giá `price_score` $\in [0.0, 1.0]$ từ mô hình ML Conformal Prediction.
+- **`safety`**: Điểm an ninh `safety_score` $\in [0.0, 1.0]$ trích xuất từ bằng chứng thực tế trong mô tả.
+- **`semantic`**: Độ tương đồng ngữ nghĩa `similarity_score` $\in [0.0, 1.0]$.
+- **`location`** *(Động — bật khi có `lat`, `lng`)*: Độ gần địa lý tính bằng công thức Haversine ($\le 1\text{km} \rightarrow 1.0$, giảm tuyến tính đến $10\text{km} \rightarrow 0.0$).
+- **`amenity`** *(Động — bật khi có yêu cầu `amenities`)*: Điểm khớp trung bình các tiện ích người dùng yêu cầu trên `concept_scores` (hỗ trợ chuẩn hóa cả mã tiếng Anh lẫn từ khóa tiếng Việt có dấu như `"máy lạnh" -> "aircon"`, `"gác lửng" -> "mezzanine"`).
 
-### PostgreSQL vector search setup
+Hàm `explain_match(breakdown)` xuất ra đóng góp của từng tiêu chí (`top_factors`, `weak_factors`) để **AI Agent** và **Frontend** giải thích minh bạch lý do đề xuất.
 
-Embeddings use PostgreSQL's `pgvector` extension through the SQLAlchemy
-`Vector` type. Install the extension once in the target database before
-creating or migrating the tables:
+---
 
-```bash
-psql "$DATABASE_URL" -f backend/sql/001_enable_pgvector.sql
-```
+## 📡 3. Danh Sách Endpoints Chính
 
-The `listing_embeddings.vector` column intentionally uses an unbounded
-`vector` type. This allows different embedding models to coexist; the
-`dimension` column stores the expected length for each row. Validate the
-vector length in the embedding service before persisting it. Add a
-dimension-specific HNSW or IVFFlat index only after choosing the model and
-dimension used for similarity search.
+| Phương thức | Endpoint | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/health` | Kiểm tra trạng thái hoạt động của Backend & Database |
+| `GET` | `/api/v1/listings/` | Lấy danh sách tin đăng (hỗ trợ lọc địa lý, loại phòng, giá, diện tích, sắp xếp, phân trang) |
+| `GET` | `/api/v1/listings/total` | Đếm tổng số lượng tin đăng khớp bộ lọc |
+| `GET` | `/api/v1/listings/price-stats` | Thống kê giá trung bình, min/max, biến động theo tháng & khu vực sôi động (Hotspot) |
+| `GET` | `/api/v1/listings/{list_id}` | Xem chi tiết tin đăng (`ListingDetailResponse` kèm `price_score`, `safety_score`, `concept_scores`) |
+| `POST` | `/api/v1/listings/by-ids` | Lấy danh sách tin đăng theo mảng ID và bảo toàn thứ tự |
+| `POST` | `/api/v1/listings/vector-search` | Tìm kiếm Hybrid Vector Search kết hợp MCDM Rerank & `explain_match` |
+| `GET` | `/api/v1/locations/cities` | Danh sách Tỉnh/Thành phố |
+| `GET` | `/api/v1/locations/districts` | Danh sách Quận/Huyện theo `city_id` |
+| `GET` | `/api/v1/locations/wards` | Danh sách Phường/Xã theo `district_id` |
+| `GET` | `/api/v1/room-types/` | Danh sách loại hình phòng trọ (`id`, `name`) |
+| `GET` | `/api/v1/geocode` | Chuyển đổi tên địa điểm/trường học sang tọa độ (`lat`, `lon`) |
 
-### Initialize the development database
+---
 
-1. Create a PostgreSQL database named `smart_housing_db` in PostgreSQL, pgAdmin,
-   or with `createdb`.
-2. Copy `backend/.env.example` to `backend/.env` and set the real PostgreSQL
-   password. The database URL must include the database name, for example:
+## 🚀 4. Hướng Dẫn Cài Đặt & Khởi Chạy
 
+### 4.1. Cấu Hình Môi Trường & Khởi Tạo Database
+1. Cài đặt thư viện:
+   ```powershell
+   .\.venv\Scripts\pip.exe install -r backend/requirements.txt
+   ```
+2. Tạo file `backend/.env` từ `backend/.env.example`:
    ```env
    DATABASE_URL=postgresql://postgres:your_password@localhost:5432/smart_housing_db
+   RATE_LIMIT_PER_MINUTE=120
    ```
-
-3. Ensure the PostgreSQL server has the `vector` extension installed. The
-   initialization script enables it in the selected database and creates all
-   SQLAlchemy tables:
-
+3. Khởi tạo bảng và nạp dữ liệu:
    ```powershell
-   cd backend
-   ..\.venv\Scripts\python.exe scripts\init_db.py
+   .\.venv\Scripts\python.exe backend/scripts/init_db.py
+   .\.venv\Scripts\python.exe backend/scripts/load_data.py
    ```
 
-The script is intended for local development. It creates missing tables but
-does not alter existing columns. Use a migration tool before applying schema
-changes to a shared or production database.
-
-### Load crawler data
-
-After initializing the schema, load the bundled data:
-
+### 4.2. Chạy Server Phát Triển
 ```powershell
-cd backend
-..\.venv\Scripts\python.exe scripts\load_data.py
+.\.venv\Scripts\python.exe backend/run.py
 ```
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
-The default source is `backend/app/datas/datas.json`. The loader upserts
-listings by `listing_id`, creates or updates the related users, cities,
-districts, wards, and room types, and imports the vectors from
-`listing_embeddings.npy` using `listing_embedding_mapping.parquet`.
-To explicitly load the processed CSV or raw crawler JSON files:
-
+### 4.3. Chạy Kiểm Thử (Unit Tests)
 ```powershell
-..\.venv\Scripts\python.exe scripts\load_data.py --source csv
-..\.venv\Scripts\python.exe scripts\load_data.py --source json --data-dir ..\crawler\data
+.\.venv\Scripts\python.exe -m pytest backend/tests -v
 ```
-
-Use `--data-dir` when the crawler data is stored elsewhere.
-
-### Backend layers and error responses
-
-The API is organized into:
-
-```text
-controllers -> services -> repositories -> SQLAlchemy models
-```
-
-Controllers only declare HTTP routes and dependencies. Services contain
-business rules and repositories contain database queries. Application errors
-use `ErrorDTO`:
-
-```json
-{
-  "success": false,
-  "status": 404,
-  "code": "NOT_FOUND",
-  "message": "Listing with id 'missing-id' not found",
-  "details": null,
-  "request_id": "..."
-}
-```
-
-Successful API responses use the same envelope style:
-
-```json
-{
-  "success": true,
-  "status": 200,
-  "code": "OK",
-  "message": "Request completed successfully",
-  "data": []
-}
-```
-
-The frontend API client unwraps `data` automatically, while direct API
-consumers can use `status`, `code`, and `message` for response handling.
-
-Every response includes `X-Request-ID`. The same ID is included in logs, so a
-frontend error can be searched directly in the backend log.
-
-Unknown routes also use the same error format instead of FastAPI's default
-`{"detail":"Not Found"}` response:
-
-```json
-{
-  "success": false,
-  "status": 404,
-  "code": "NOT_FOUND",
-  "message": "Not Found",
-  "details": null,
-  "request_id": "..."
-}
-```
-
-The listings API also provides `GET /api/v1/listings/total` for counting
-matching listings without loading listing records. It accepts the listing
-filters such as `city_id`, `district_id`, `ward_id`, `room_type_id`,
-`min_price`, `max_price`, `min_area`, `max_area`, and `search`, and returns:
-
-```json
-{
-  "total_listings": 9551
-}
-```
-
-#### Vector Search API (`POST /api/v1/listings/vector-search`)
-
-Thực hiện tìm kiếm ngữ nghĩa (Semantic Search) bằng PostgreSQL `pgvector`:
-
-* **Request Body**:
-  ```json
-  {
-    "vector": [0.012, -0.045, ...]
-  }
-  ```
-* **Query Parameters**:
-  * `limit` (int, default: 20): Số lượng kết quả tối đa
-  * `similarity_threshold` (float 0.0 - 1.0): Ngưỡng tương đồng tối thiểu
-  * `model_name` (string, optional): Tên mô hình embedding
-  * `city_id`, `district_id`, `ward_id`, `room_type_id`, `min_price`, `max_price`: Bộ lọc metadata kết hợp (Hybrid Search)
-* **Response**:
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "listing": { "id": "nhatot_123", "title": "Phòng trọ..." },
-        "distance": 0.1824,
-        "similarity_score": 0.8176
-      }
-    ]
-  }
-  ```
-
-#### Batch Query By IDs (`POST /api/v1/listings/by-ids`)
-
-Lấy thông tin danh sách tin đăng theo mảng ID và **giữ nguyên thứ tự** của mảng đầu vào:
-
-* **Request Body**:
-  ```json
-  {
-    "ids": ["nhatot_123", "nhatot_456"]
-  }
-  ```
-* **Response**:
-  ```json
-  {
-    "success": true,
-    "data": [ { "id": "nhatot_123", ... }, { "id": "nhatot_456", ... } ]
-  }
-  ```
-
-#### Market Price Statistics (`GET /api/v1/listings/price-stats`)
-
-Thống kê phân tích giá phòng trọ theo thành phố/quận/phường trong thời gian thực:
-
-* **Query Parameters**: `city_id` (bắt buộc), `district_id`, `room_type_id`.
-* **Response Data**:
-  ```json
-  {
-    "price_stats_general": {
-      "total_listings": 9550,
-      "average_price_vnd": 4500000.0,
-      "price_fluctuation_month": 2.45,
-      "area_hotspot": "Quận Gò Vấp",
-      "hotspot_posting_growth_month": 15.3
-    },
-    "price_stats_by_area": [
-      {
-        "area_id": 1,
-        "area": "Quận Gò Vấp",
-        "total_listings": 1250,
-        "fluctuation_month": 1.8,
-        "average_price_vnd": 4200000.0,
-        "minimum_price_vnd": 2000000.0,
-        "maximum_price_vnd": 9000000.0
-      }
-    ]
-  }
-  ```
-
-### 2. Running the Development Server
-
-Navigate to the `backend` folder and run `uvicorn`:
-
-```bash
-cd backend
-uvicorn app.main:app --reload --port 8000
-```
-
-Or from the root directory using python from `.venv`:
-
-```bash
-python -m uvicorn app.main:app --reload --port 8000 --app-dir backend
-```
-
-### 3. API Documentation
-
-Once the server is running, visit:
-- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc Documentation**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-- **Health Check**: [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
-- **Listings API**: [http://localhost:8000/api/v1/listings?limit=10](http://localhost:8000/api/v1/listings?limit=10)
-- **Vector Search API**: `POST http://localhost:8000/api/v1/listings/vector-search`
-- **Price Stats API**: [http://localhost:8000/api/v1/listings/price-stats?city_id=1](http://localhost:8000/api/v1/listings/price-stats?city_id=1)

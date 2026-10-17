@@ -91,16 +91,30 @@
 │   ├── eval/                      # Bộ 30 benchmark test cases & RAG Triad Grounding
 │   └── tests/                     # 18 unit tests AI Agent (100% Passed)
 │
-├── crawler/                       # Module Thu Thập Dữ Liệu Phòng Trọ
-│   ├── spiders/                   # Spiders cào dữ liệu (Nhà Tốt, Phongtro123)
+├── crawler/                       # Module Thu Thập & ETL Dữ Liệu Phòng Trọ (xem crawler/README.md)
+│   ├── spiders/                   # Spiders cào dữ liệu & verify trạng thái (Nhà Tốt)
 │   ├── staging_db.py              # SQLite Staging DB (Kiến trúc Two-Tier Storage)
-│   ├── etl/                       # Pipeline ETL làm sạch & nạp dữ liệu (Incremental ETL)
-│   └── tests/                     # Unit tests Staging DB & Pipeline (100% Passed)
+│   ├── model/                     # LLM Gemini Dynamic Chunking & Embedding Generator
+│   ├── etl/                       # Pipeline ETL làm sạch, làm giàu 5-block Embedding & nạp DB
+│   └── tests/                     # 22 unit tests Crawler & ETL (100% Passed)
+│
+├── ml/                            # Module Machine Learning Thẩm Định Giá (xem ml/README.md)
+│   ├── feature_extractor.py       # Trích xuất đặc trưng không gian & tiện nghi
+│   ├── models.py                  # CatBoost + Ridge Blend & Mondrian Conformal Prediction
+│   ├── price_evaluator.py         # Suy luận khoảng giá hợp lý & chấm điểm price_score [0, 1]
+│   └── train_price_model.py       # Huấn luyện và xuất pipeline (.joblib)
 │
 ├── AGENT.md                       # Tài liệu kỹ thuật chi tiết dành cho AI Agents
 ├── run_backend.bat                # Phím tắt 1-click khởi chạy Backend trên Windows
 └── README.md                      # Tài liệu tổng quan toàn bộ dự án (File này)
 ```
+
+### 📖 Tài Liệu Chi Tiết Từng Module
+- 🕷️ **Crawler & ETL Pipeline**: [`crawler/README.md`](crawler/README.md)
+- 🧠 **Machine Learning Price Evaluator**: [`ml/README.md`](ml/README.md)
+- ⚡ **FastAPI Backend & MCDM Reranker**: [`backend/README.md`](backend/README.md)
+- 🤖 **LangGraph AI Agent**: [`ai-agent/README.md`](ai-agent/README.md)
+- 💻 **Next.js Frontend**: [`frontend/README.md`](frontend/README.md)
 
 ---
 

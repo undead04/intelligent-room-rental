@@ -71,6 +71,9 @@ class SessionMemoryManager:
                 # Cắt bớt nếu gặp từ khóa giá hoặc tiện ích
                 cand = re.split(r"(?:giá|dưới|có|khoảng|tầm|\d+tr)", cand, flags=re.IGNORECASE)[0].strip()
                 if len(cand) >= 3 and not any(cand.lower().startswith(w) for w in ["máy lạnh", "gác", "nuôi", "tiền"]):
+                    if pref.location_text and pref.location_text.lower() != cand.lower():
+                        pref.lat = None
+                        pref.lng = None
                     pref.location_text = cand
                     break
 

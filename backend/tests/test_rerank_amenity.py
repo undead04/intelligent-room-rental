@@ -99,3 +99,46 @@ def test_rerank_with_candidates():
     explanation = explain_match(top_breakdown)
     assert "top_factors" in explanation
     assert explanation["score"] > 0.8
+
+
+def test_vietnamese_diacritic_amenities_and_partial_weights():
+    concept_scores = {
+        "aircon": 1.0,
+        "mezzanine": 1.0,
+        "pet_allowed": 1.0,
+    }
+    # Tiếng Việt có dấu từ AI Agent ('máy lạnh', 'gác lửng', 'nuôi mèo')
+    fit = _amenity_fit(["máy lạnh", "gác lửng", "nuôi mèo"], concept_scores)
+    assert fit == 1.0
+
+    # Partial weights dict missing 'amenity' or 'location' should not raise KeyError
+    partial_base = {"price": 0.5, "safety": 0.25, "semantic": 0.25}
+    w = _dynamic_weights({"amenities": ["máy lạnh"]}, partial_base)
+    assert "amenity" in w
+    assert round(sum(w.values()), 5) == 1.0
+
+
+def test_room_type_reference_and_listing_response_schema():
+    from app.schemas.listing import ListingResponse, RoomTypeReference
+
+    class DummyRoomType:
+        id = 1
+        name = "Phòng trọ"
+
+    rt = RoomTypeReference.model_validate(DummyRoomType())
+    assert rt.id == 1
+    assert rt.name == "Phòng trọ"
+
+    listing_data = {
+        "id": "nhatot_999",
+        "title": "Phòng trọ Thủ Đức",
+        "price_score": 0.82,
+        "amenity_overall": 0.75,
+        "room_type": DummyRoomType(),
+    }
+    res = ListingResponse.model_validate(listing_data)
+    assert res.price_score == 0.82
+    assert res.amenity_overall == 0.75
+    assert res.room_type is not None
+    assert res.room_type.name == "Phòng trọ"
+
