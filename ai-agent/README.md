@@ -4,25 +4,31 @@ Module **AI Agent (`ai-agent/`)** đóng vai trò là bộ não tư vấn và h�
 
 ---
 
-## 🏗️ 1. Kiến Trúc Máy Trạng Thái 7-Node (`graph.py`)
+## 🏗️ 1. Kiến Trúc Máy Trạng Thái 8-Node (`graph.py` & `grounding.py`)
 
 ```mermaid
 flowchart LR
     START([User Message]) --> N1["1. guardrail_node\n(0 Tools)"]
-    N1 -->|Vi phạm| N7["7. formatter_node"]
+    N1 -->|Vi phạm| N8["8. formatter_node"]
     N1 -->|An toàn| N2["2. preference_intent_node\n(Memory + Dynamic Weights)"]
     N2 -->|Khớp Skill pháp lý/hợp đồng| N4["4. advisory_node\n(ADVISORY_TOOLS)"]
     N2 -->|Thiếu thông tin cơ bản| N3["3. clarification_node\n(0 Tools)"]
     N2 -->|Đủ tiêu chí tìm kiếm| N5["5. retrieval_node\n(RETRIEVAL_TOOLS)"]
-    N3 --> N7
-    N4 --> N7
-    N5 --> N6["6. decision_node\n(Trade-off & Checklist)"]
-    N6 --> N7
-    N7 --> END([AgentResponse])
+    N5 -->|Context rỗng/thấp & retry <= 2| N5
+    N5 -->|Context Grounded| N6["6. decision_node\n(Trade-off & Checklist)"]
+    N6 --> N7["7. grounding_node\n(Anti-Hallucination Check)"]
+    N7 -->|Phát hiện ảo giác & retry <= 2| N6
+    N7 -->|Grounded 100%| N8
+    N3 --> N8
+    N4 --> N8
+    N8 --> END([AgentResponse])
 ```
 
 ### Điểm Nổi Bật Thiết Kế
-1. **Tool Partitioning (`tools/registry.py`)**: Phân vùng công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giúp giảm thiểu token overhead và ngăn LLM gọi nhầm tool.
+1. **Corrective RAG & Self-RAG Grounding (`grounding.py`)**:
+   - **Tầng Retrieval (`verify_context_grounding`)**: Nếu không tìm thấy phòng hoặc `matchScore` quá thấp do bộ lọc cứng quá chặt, hệ thống tự động kích hoạt **Corrective Retry** (Lần 1: nới biên độ ngân sách $\pm 15\%$; Lần 2: mở rộng tìm kiếm ngữ nghĩa kết hợp chấm điểm mềm MCDM).
+   - **Tầng Generation (`verify_answer_grounding` / `grounding_node`)**: Đối chiếu mọi mã phòng (`nhatot_...`) và con số giá tiền trong câu trả lời với `retrieved_rooms`. Chỉ khi `is_grounded = True` mới chuyển qua `formatter_node`; nếu phát hiện ảo giác sẽ tự động quay lại `decision_node` để tái tạo câu trả lời chuẩn xác.
+2. **Tool Partitioning (`tools/registry.py`)**: Phân vùng công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giúp giảm thiểu token overhead và ngăn LLM gọi nhầm tool.
 2. **Intent-Aware Dynamic Weighting (`intent_weights.py`)**:
    - Phát hiện ý định ưu tiên từ câu nói tự nhiên để kích hoạt hệ số nhân (`price: 2.0x`, `location: 2.0x`, `safety: 2.0x`, `amenity: 1.8x`).
    - Tự động bật/tắt tiêu chí động (`location` chỉ bật khi có tọa độ/địa điểm; `amenity` chỉ bật khi có yêu cầu tiện nghi) và chuẩn hóa $L_1$-norm ($\sum w_i = 1.0$).

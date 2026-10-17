@@ -384,4 +384,103 @@ def test_memory_location_change_resets_coordinates():
     assert session.preferences.lng is None
 
 
+def test_rag_grounding_verification_and_hallucination_detection():
+    from grounding import verify_answer_grounding, verify_context_grounding
+
+    pref = UserPreferenceState(location_text="Thủ Đức", max_price=3000000)
+
+    # 1. Context rỗng ở lần đầu -> kích hoạt chiến lược relax_budget
+    ctx_empty = verify_context_grounding([], pref, retry_count=0)
+    assert ctx_empty.is_grounded is False
+    assert ctx_empty.retry_strategy == "relax_budget"
+
+    # 2. Context có phòng hợp lệ -> is_grounded = True
+    room = RoomItem(
+        id="nhatot_111",
+        rank=1,
+        title="Phòng trọ Linh Xuân",
+        price="2.8 triệu/tháng",
+        priceNum=2800000,
+        address="Linh Xuân, Thủ Đức",
+        matchScore=0.85,
+    )
+    ctx_ok = verify_context_grounding([room], pref, retry_count=0)
+    assert ctx_ok.is_grounded is True
+    assert ctx_ok.retry_strategy is None
+
+    # 3. Answer Grounding hợp lệ
+    valid_text = "Gợi ý phòng nhatot_111 tại Linh Xuân với mức giá 2.8 triệu/tháng."
+    ans_ok = verify_answer_grounding(valid_text, [room], pref)
+    assert ans_ok.is_grounded is True
+    assert ans_ok.groundedness_score == 1.0
+
+    # 4. Answer Grounding phát hiện ảo giác ID và ảo giác giá
+    hallucinated_text = "Gợi ý phòng nhatot_999999 với mức giá 6.5 triệu/tháng."
+    ans_bad = verify_answer_grounding(hallucinated_text, [room], pref)
+    assert ans_bad.is_grounded is False
+    assert len(ans_bad.issues) >= 2
+
+
+def test_langgraph_corrective_rag_retry_loop(monkeypatch):
+    import json
+    from graph import housing_graph
+    from tools import geocode_location, search_rooms
+
+    call_history = []
+
+    def fake_geocode(query: str, hint: str = "Hồ Chí Minh") -> str:
+        return json.dumps({"ok": True, "data": {"lat": 10.875, "lon": 106.790}})
+
+    def fake_search(**kwargs) -> str:
+        call_history.append(kwargs)
+        # Lần gọi 1 (max_price = 3,000,000): Giả lập không tìm thấy phòng -> kích hoạt Corrective Retry
+        if len(call_history) == 1:
+            return json.dumps({"ok": True, "data": []})
+        # Lần gọi 2 (sau khi tự động nới ngân sách +15% lên 3,450,000): Trả về phòng hợp lệ
+        return json.dumps({
+            "ok": True,
+            "data": [
+                {
+                    "listing": {
+                        "id": "nhatot_777",
+                        "title": "Phòng trọ Linh Xuân 22m2",
+                        "price_vnd": 3300000,
+                        "area_m2": 22.0,
+                        "address_raw": "Linh Xuân, Thủ Đức",
+                        "lat": 10.876,
+                        "lng": 106.791,
+                    },
+                    "match_score": 0.84,
+                    "explain_match": {
+                        "score": 0.84,
+                        "top_factors": [{"name": "location", "fit": 0.92, "weight": 0.4, "contribution": 0.368}],
+                    },
+                }
+            ],
+        })
+
+    monkeypatch.setattr(geocode_location, "func", fake_geocode)
+    monkeypatch.setattr(search_rooms, "func", fake_search)
+
+    state = {
+        "user_message": "Tìm phòng ở Linh Xuân dưới 3 triệu có máy lạnh",
+        "session_id": "test_crag_retry_session",
+    }
+    result = housing_graph.invoke(state)
+
+    # Đảm bảo hệ thống đã tự động Retry sang lần 2 với ngân sách được nới rộng (+15%)
+    assert len(call_history) == 2
+    assert call_history[0]["max_price"] == 3000000
+    assert call_history[1]["max_price"] == 3450000
+
+    # Kết quả cuối cùng đạt chuẩn Grounding và trả về đúng phòng nhatot_777
+    resp = result["final_response"]
+    assert len(resp.rooms) == 1
+    assert resp.rooms[0].id == "nhatot_777"
+    assert resp.grounding_report is not None
+    assert resp.grounding_report["is_grounded"] is True
+    assert resp.grounding_report["context_retries"] == 1
+
+
+
 

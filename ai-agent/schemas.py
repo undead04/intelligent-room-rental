@@ -150,3 +150,8 @@ class AgentResponse(BaseModel):
     current_preferences: Optional[UserPreferenceState] = Field(None, description="Trạng thái tiêu chí đã ghi nhận hiện tại")
     need_clarification: bool = Field(False, description="True nếu yêu cầu của người dùng quá mơ hồ cần hỏi lại")
     follow_up_questions: list[str] = Field(default_factory=list, description="Gợi ý 1-2 câu hỏi làm rõ tiếp theo")
+    grounding_report: Optional[dict[str, Any]] = Field(
+        None,
+        description="Báo cáo kiểm định RAG Grounding (Context & Answer Groundedness + số lần Corrective Retry)",
+    )
+
