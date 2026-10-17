@@ -33,7 +33,7 @@ backend/
 │   └── main.py                        # FastAPI App Entrypoint & Lifespan (nạp sẵn Vietnamese-SBERT)
 ├── scripts/
 │   ├── init_db.py                     # Khởi tạo extension pgvector & toàn bộ bảng CSDL
-│   └── load_data.py                   # Nạp dữ liệu phòng trọ & vector nhúng vào PostgreSQL
+│   └── load_data.py                   # Wrapper tương thích ngược gọi sang crawler.etl.load.DataLoader
 ├── tests/                             # Bộ Unit Tests (Embedding, MCDM Rerank, Security Middleware)
 ├── requirements.txt
 └── run.py                             # Script khởi chạy nhanh Uvicorn server
@@ -81,7 +81,7 @@ Hàm `explain_match(breakdown)` xuất ra đóng góp của từng tiêu chí (`
 
 ## 🚀 4. Hướng Dẫn Cài Đặt & Khởi Chạy
 
-### 4.1. Cấu Hình Môi Trường & Khởi Tạo Database
+### 4.1. Cấu Hình Môi Trường & Nạp Dữ Liệu (từ Crawler ETL)
 1. Cài đặt thư viện:
    ```powershell
    .\.venv\Scripts\pip.exe install -r backend/requirements.txt
@@ -91,10 +91,13 @@ Hàm `explain_match(breakdown)` xuất ra đóng góp của từng tiêu chí (`
    DATABASE_URL=postgresql://postgres:your_password@localhost:5432/smart_housing_db
    RATE_LIMIT_PER_MINUTE=120
    ```
-3. Khởi tạo bảng và nạp dữ liệu:
+3. Nạp dữ liệu vào PostgreSQL thông qua **Crawler ETL** (`crawler/etl/load.py` tự động tạo extension `pgvector`, khởi tạo bảng và nạp cả dữ liệu phòng lẫn vector 768 chiều):
    ```powershell
-   .\.venv\Scripts\python.exe backend/scripts/init_db.py
-   .\.venv\Scripts\python.exe backend/scripts/load_data.py
+   # Cách 1: Nạp trực tiếp từ file JSON + Embeddings đã xử lý sẵn trong crawler/data/
+   .\.venv\Scripts\python.exe -m crawler.etl.load
+
+   # Cách 2: Chạy full luồng ETL (Extract -> Transform -> Embed -> Load vào DB)
+   .\.venv\Scripts\python.exe -m crawler.etl.pipeline --dest db --embed --eval-price
    ```
 
 ### 4.2. Chạy Server Phát Triển
