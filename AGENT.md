@@ -91,13 +91,12 @@ Ngăn ngừa hiện tượng **Context Bloat** (tiết kiệm ~65-80% tokens so 
 * `RETRIEVAL_TOOLS`: `geocode_location`, `get_location_hierarchy`, `search_rooms` (cấp cho `retrieval_node`).
 * `DETAIL_TOOLS`: `get_listing_detail` (cấp cho `decision_node`).
 * `ADVISORY_TOOLS`: `list_housing_skills`, `consult_housing_skill` (cấp cho `advisory_node`).
-* `SYSTEM_TOOLS`: `read_file`, `write_file`.
 
 ### 4.2 Dynamic Skill Discovery (`ai-agent/skills_discovery.py`)
-Mỗi kỹ năng trong `ai-agent/workspace/skills/<tên-kỹ-năng>/SKILL.md` khai báo danh sách `triggers` trong YAML frontmatter. Hệ thống tự động quét và kích hoạt mà không cần sửa code trong `graph.py`.
+Mỗi kỹ năng trong `ai-agent/skills/<tên-kỹ-năng>/SKILL.md` khai báo danh sách `triggers` trong YAML frontmatter. Hệ thống tự động quét và kích hoạt mà không cần sửa code trong `graph.py`.
 
 ### 4.3 Quy trình mở rộng Kỹ năng mới trong tương lai:
-* **Kỹ năng Tri thức / Cẩm nang (Knowledge Skill):** Chỉ cần tạo thư mục `ai-agent/workspace/skills/<tên-kỹ-năng>/SKILL.md` với các từ khóa `triggers: [...]`. **0 dòng code cần sửa**!
+* **Kỹ năng Tri thức / Cẩm nang (Knowledge Skill):** Chỉ cần tạo thư mục `ai-agent/skills/<tên-kỹ-năng>/SKILL.md` với các từ khóa `triggers: [...]`. **0 dòng code cần sửa**!
 * **Kỹ năng Hành động / Gọi API ngoài (Action Skill):** Viết hàm `@tool` trong `housing_tools.py` $\rightarrow$ Thêm vào scope phù hợp trong `registry.py` $\rightarrow$ Khai báo `SKILL.md`.
 
 ---
@@ -132,17 +131,17 @@ $$w_i = \frac{w_{base, i} \cdot m_i}{\sum_{k \in \text{active}} (w_{base, k} \cd
 ## 🧠 6. Cấu Trúc File Module `ai-agent/`
 
 * **[`ai-agent/graph.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph.py)**: Toàn bộ StateGraph 7 node với Tool Partitioning và Dynamic Skill Routing.
-* **[`ai-agent/tools/registry.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/registry.py)**: Quản lý tập trung các phân vùng công cụ (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`, `SYSTEM_TOOLS`).
+* **[`ai-agent/tools/registry.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/registry.py)**: Quản lý tập trung các phân vùng công cụ (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`).
 * **[`ai-agent/skills_discovery.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/skills_discovery.py)**: Engine tự động quét và khám phá kỹ năng động qua YAML frontmatter `triggers`.
 * **[`ai-agent/intent_weights.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/intent_weights.py)**: Engine nhận diện Intent Boosters và tính toán L1 Normalized Weights.
 * **[`ai-agent/service.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/service.py)**: `HousingAgentService` điều phối qua `housing_graph.invoke()`.
 * **[`ai-agent/memory.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/memory.py)**: Multi-turn session state management & Context window compaction.
 * **[`ai-agent/guardrails.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/guardrails.py)**: 2-layer defense (Prompt Injection & Off-topic filtering).
+* **[`ai-agent/grounding.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/grounding.py)**: Cơ chế tự kiểm chứng độ trung thực (Self-Grounding Verification & Retry Loop).
 * **[`ai-agent/tools/housing_tools.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tools/housing_tools.py)**: Native LangChain tools (`search_rooms`, `geocode_location`, `get_location_hierarchy`, `get_listing_detail`, `list_housing_skills`, `consult_housing_skill`).
-* **[`ai-agent/workspace/skills/rental-contract-advisor/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/workspace/skills/rental-contract-advisor/)**: Kỹ năng chuyên sâu về thẩm định hợp đồng thuê trọ, bẫy tiền cọc và pháp lý nhà ở sinh viên.
-* **[`ai-agent/prompts.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/prompts.py)**: Persona Homigo Decision Advisor prompt.
+* **[`ai-agent/skills/rental-contract-advisor/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/skills/rental-contract-advisor/)**: Kỹ năng chuyên sâu về thẩm định hợp đồng thuê trọ, bẫy tiền cọc và pháp lý nhà ở sinh viên.
 * **[`ai-agent/eval/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/eval/)**: Bộ 30 benchmark test cases và script đánh giá RAG Grounding Triad.
-* **[`ai-agent/tests/test_housing_agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tests/test_housing_agent.py)**: 18 unit tests bao phủ toàn bộ hệ thống (100% Passed).
+* **[`ai-agent/tests/test_housing_agent.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/tests/test_housing_agent.py)**: 20 unit tests bao phủ toàn bộ hệ thống (100% Passed).
 
 ---
 

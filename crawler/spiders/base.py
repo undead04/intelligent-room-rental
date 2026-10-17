@@ -91,6 +91,6 @@ class BaseSpider(ABC):
             self.log(f"Crawl hoàn tất! Đã thu thập thêm {total} tin mới.")
 
         if auto_clean:
-            from crawler.etl.clean import combine_and_clean
+            from crawler.etl.pipeline import run_pipeline
             self.log("Tự động chạy pipeline tổng hợp dữ liệu (ETL)...")
-            combine_and_clean()
+            run_pipeline()
