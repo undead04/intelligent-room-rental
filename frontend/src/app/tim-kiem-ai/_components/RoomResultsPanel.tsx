@@ -18,9 +18,9 @@ export default function RoomResultsPanel({
   onSelectFilter,
 }: RoomResultsPanelProps) {
   return (
-    <section className="lg:col-span-4 bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-[650px] lg:h-full overflow-hidden">
+    <section className="lg:col-span-4 bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-[520px] lg:h-full min-h-0 overflow-hidden">
       {/* Header & Quick Filters */}
-      <div className="p-3.5 px-4 border-b border-[#E8E4DC] space-y-2.5 bg-white">
+      <div className="p-3 px-4 border-b border-[#E8E4DC] space-y-2 bg-white shrink-0">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-[#0F5F4A] flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#0F5F4A]"></span>

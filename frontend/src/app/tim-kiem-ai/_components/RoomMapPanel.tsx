@@ -12,8 +12,8 @@ export default function RoomMapPanel({
   onSelectRoom,
 }: RoomMapPanelProps) {
   return (
-    <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-[48%] overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-[#E8E4DC] flex items-center justify-between bg-white">
+    <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-full overflow-hidden">
+      <div className="px-4 py-2 border-b border-[#E8E4DC] flex items-center justify-between bg-white shrink-0">
         <h2 className="text-sm font-bold text-[#0F5F4A] flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-[#0F5F4A]"></span>
           <span>3. Bản đồ vị trí</span>
