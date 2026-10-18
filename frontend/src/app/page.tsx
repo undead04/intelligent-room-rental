@@ -48,7 +48,7 @@ export default function HomePage() {
           onSubmit={submitSearch}
         />
 
-        <div className="max-w-[1500px] mx-auto px-4 lg:px-8 py-8">
+        <div className="max-w-[1500px] mx-auto px-4 lg:px-8 py-6">
           {apiError ? (
             <BackendConnectionError message={apiError} onRetry={reload} />
           ) : isLoading ? (
