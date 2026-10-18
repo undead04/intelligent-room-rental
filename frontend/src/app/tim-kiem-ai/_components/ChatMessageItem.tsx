@@ -3,9 +3,10 @@ import { USER_AVATAR } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 
 interface ChatMessageItemProps {
   message: ChatMessage;
+  onSelectQuestion?: (question: string) => void;
 }
 
-export default function ChatMessageItem({ message }: ChatMessageItemProps) {
+export default function ChatMessageItem({ message, onSelectQuestion }: ChatMessageItemProps) {
   if (message.sender === "user") {
     return (
       <div className="flex items-start gap-2.5">
@@ -29,7 +30,7 @@ export default function ChatMessageItem({ message }: ChatMessageItemProps) {
         <span className="material-symbols-outlined text-[17px]">auto_awesome</span>
       </div>
       <div className="bg-white border border-[#E8E4DC] rounded-2xl rounded-tl-xs p-4 shadow-sm flex-1 space-y-3">
-        <p className="font-bold text-[#121E1A]">{message.text}</p>
+        <p className="font-bold text-[#121E1A] whitespace-pre-line">{message.text}</p>
 
         {/* Condition: Bắt buộc */}
         {message.mandatoryCriteria && (
@@ -68,10 +69,32 @@ export default function ChatMessageItem({ message }: ChatMessageItemProps) {
         )}
 
         {/* Clarification prompt text */}
-        {message.summaryCount && (
+        {message.summaryCount ? (
           <p className="text-[11px] text-[#6F7974] pt-1 leading-normal border-t border-[#F1F5F9]">
-            Mình đã tìm thấy <span className="font-bold text-[#0F5F4A]">{message.summaryCount} phòng</span> phù hợp nhất cho bạn ở khu vực gần UIT.
+            Homigo đã tìm thấy <span className="font-bold text-[#0F5F4A]">{message.summaryCount} phòng</span> phù hợp nhất với các tiêu chí của bạn.
           </p>
+        ) : null}
+
+        {/* Follow-up question chips */}
+        {message.followUpQuestions && message.followUpQuestions.length > 0 && (
+          <div className="space-y-1.5 pt-2 border-t border-[#F1F5F9]">
+            <span className="text-[10px] text-[#6F7974] font-semibold flex items-center gap-1">
+              <span className="material-symbols-outlined text-[13px] text-[#0F5F4A]">help_outline</span>
+              <span>Gợi ý câu hỏi tiếp theo:</span>
+            </span>
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {message.followUpQuestions.map((q, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onSelectQuestion?.(q)}
+                  className="text-[11px] text-[#0F5F4A] bg-[#E6F4EE] hover:bg-[#D4EFE4] px-2.5 py-1 rounded-full border border-[#0F5F4A]/20 transition cursor-pointer text-left font-medium"
+                >
+                  💬 {q}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

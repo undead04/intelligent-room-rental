@@ -12,3 +12,12 @@ export type {
   UserDto,
   WardDto,
 } from "./listing";
+
+export type {
+  AgentChatRequest,
+  AgentResponse,
+  DecisionInsight,
+  RoomItem,
+  TradeOffAnalysis,
+  UserPreferenceState,
+} from "./agent";

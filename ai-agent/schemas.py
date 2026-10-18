@@ -144,6 +144,7 @@ class UserPreferenceState(BaseModel):
 class AgentResponse(BaseModel):
     """Toàn bộ phản hồi chuẩn hoá của AI Agent gửi về cho Client/UI."""
 
+    session_id: Optional[str] = Field(None, description="Mã phiên làm việc để duy trì hội thoại đa lượt")
     text_reply: str = Field(..., description="Văn bản tư vấn bằng ngôn ngữ tự nhiên gửi người dùng")
     rooms: list[RoomItem] = Field(default_factory=list, description="Danh sách các phòng phù hợp nhất")
     insights: Optional[DecisionInsight] = Field(None, description="Bảng phân tích hỗ trợ ra quyết định")

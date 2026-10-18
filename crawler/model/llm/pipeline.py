@@ -29,7 +29,7 @@ except ImportError:
 
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
-DEFAULT_MAX_TOKENS_PER_CHUNK = 3000
+DEFAULT_MAX_TOKENS_PER_CHUNK = 2500
 
 
 def retry_failed_chunks(

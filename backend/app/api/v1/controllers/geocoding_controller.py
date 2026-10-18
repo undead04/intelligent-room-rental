@@ -35,7 +35,8 @@ def _geocode_one(query: str, hint: Optional[str]) -> Optional[GeocodeResponse]:
 
 # ---------- Endpoints ----------
 
-@router.get("/", response_model=ResponseDTO[GeocodeResponse], summary="Tìm toạ độ một địa điểm")
+@router.get("", response_model=ResponseDTO[GeocodeResponse], summary="Tìm toạ độ một địa điểm")
+@router.get("/", response_model=ResponseDTO[GeocodeResponse], summary="Tìm toạ độ một địa điểm", include_in_schema=False)
 def geocode(
     q: str = Query(..., min_length=2, max_length=200, description="Địa điểm cần tìm"),
     hint: Optional[str] = Query(None, max_length=100, description="Tỉnh/thành, vd: Đà Nẵng"),
