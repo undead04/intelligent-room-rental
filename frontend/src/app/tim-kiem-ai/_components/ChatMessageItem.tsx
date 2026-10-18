@@ -83,16 +83,36 @@ export default function ChatMessageItem({ message, onSelectQuestion }: ChatMessa
               <span>Gợi ý câu hỏi tiếp theo:</span>
             </span>
             <div className="flex flex-wrap gap-1.5 pt-0.5">
-              {message.followUpQuestions.map((q, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onSelectQuestion?.(q)}
-                  className="text-[11px] text-[#0F5F4A] bg-[#E6F4EE] hover:bg-[#D4EFE4] px-2.5 py-1 rounded-full border border-[#0F5F4A]/20 transition cursor-pointer text-left font-medium"
-                >
-                  💬 {q}
-                </button>
-              ))}
+              {message.followUpQuestions.map((q, idx) => {
+                const isCustom = q.includes("Tùy chỉnh tiêu chí") || q.startsWith("✏️");
+                const isAgree = q.startsWith("👍");
+                const isKeep = q.startsWith("❌");
+                const isBroaden = q.startsWith("🧭");
+
+                let chipStyle = "text-[#0F5F4A] bg-[#E6F4EE] hover:bg-[#D4EFE4] border-[#0F5F4A]/20";
+                if (isCustom) {
+                  chipStyle = "text-[#C2410C] bg-[#FFF7ED] hover:bg-[#FFEDD5] border-[#FDBA74] font-semibold shadow-2xs";
+                } else if (isAgree) {
+                  chipStyle = "text-[#0F5F4A] bg-[#E6F4EE] hover:bg-[#D4EFE4] border-[#0F5F4A]/40 font-semibold";
+                } else if (isKeep) {
+                  chipStyle = "text-[#475569] bg-[#F8FAFC] hover:bg-[#F1F5F9] border-[#CBD5E1]";
+                } else if (isBroaden) {
+                  chipStyle = "text-[#0369A1] bg-[#F0F9FF] hover:bg-[#E0F2FE] border-[#BAE6FD]";
+                }
+
+                const hasIcon = isCustom || isAgree || isKeep || isBroaden || q.startsWith("🔍");
+
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => onSelectQuestion?.(q)}
+                    className={`text-[11px] px-2.5 py-1 rounded-full border transition cursor-pointer text-left font-medium ${chipStyle}`}
+                  >
+                    {hasIcon ? q : `💬 ${q}`}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

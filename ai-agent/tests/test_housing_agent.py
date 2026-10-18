@@ -376,10 +376,13 @@ def test_rag_grounding_verification_and_hallucination_detection():
 
     pref = UserPreferenceState(location_text="Thủ Đức", max_price=3000000)
 
-    # 1. Context rỗng ở lần đầu -> kích hoạt chiến lược relax_budget
+    # 1. Context rỗng ở lần đầu -> needs_user_consent = True, retry_strategy = None
     ctx_empty = verify_context_grounding([], pref, retry_count=0)
     assert ctx_empty.is_grounded is False
-    assert ctx_empty.retry_strategy == "relax_budget"
+    assert ctx_empty.retry_strategy is None
+    assert ctx_empty.needs_user_consent is True
+    assert ctx_empty.proposed_budget == 3450000
+    assert ctx_empty.proposed_budget_str == "3.45 triệu/tháng"
 
     # 2. Context có phòng hợp lệ -> is_grounded = True
     room = RoomItem(
@@ -408,7 +411,12 @@ def test_rag_grounding_verification_and_hallucination_detection():
     assert len(ans_bad.issues) >= 2
 
 
-def test_langgraph_corrective_rag_retry_loop(monkeypatch):
+def test_langgraph_human_in_the_loop_relaxation(monkeypatch):
+    """Kiểm tra quy trình Human-in-the-loop:
+    - Khi không tìm thấy phòng: KHÔNG tự động retry ngầm, trả về 4 lựa chọn tương tác.
+    - Khi người dùng gửi lựa chọn đồng ý nới ngân sách (+15%): Hệ thống mới thực sự nới ngân sách và tìm lại.
+    - Khi người dùng chọn giữ nguyên tiêu chí: Không tìm kiếm lại và ghi nhận thông điệp lịch sự.
+    """
     import json
     from graph import housing_graph
     from tools import geocode_location, search_rooms
@@ -420,10 +428,10 @@ def test_langgraph_corrective_rag_retry_loop(monkeypatch):
 
     def fake_search(**kwargs) -> str:
         call_history.append(kwargs)
-        # Lần gọi 1 (max_price = 3,000,000): Giả lập không tìm thấy phòng -> kích hoạt Corrective Retry
-        if len(call_history) == 1:
+        # Nếu max_price <= 3 triệu: không có phòng
+        if kwargs.get("max_price", 0) <= 3000000:
             return json.dumps({"ok": True, "data": []})
-        # Lần gọi 2 (sau khi tự động nới ngân sách +15% lên 3,450,000): Trả về phòng hợp lệ
+        # Nếu max_price được nới lên > 3 triệu: tìm thấy phòng
         return json.dumps({
             "ok": True,
             "data": [
@@ -449,24 +457,54 @@ def test_langgraph_corrective_rag_retry_loop(monkeypatch):
     monkeypatch.setattr(geocode_location, "func", fake_geocode)
     monkeypatch.setattr(search_rooms, "func", fake_search)
 
-    state = {
-        "user_message": "Tìm phòng ở Linh Xuân dưới 3 triệu có máy lạnh",
-        "session_id": "test_crag_retry_session",
+    # Lượt 1: Người dùng yêu cầu tìm phòng dưới 3 triệu (không có phòng nào)
+    state1 = {
+        "user_message": "Tìm phòng ở Linh Xuân dưới 3 triệu",
+        "session_id": "test_hitl_session",
     }
-    result = housing_graph.invoke(state)
+    result1 = housing_graph.invoke(state1)
 
-    # Đảm bảo hệ thống đã tự động Retry sang lần 2 với ngân sách được nới rộng (+15%)
-    assert len(call_history) == 2
+    # Đảm bảo hệ thống KHÔNG tự động retry ngầm (chỉ gọi search đúng 1 lần)
+    assert len(call_history) == 1
     assert call_history[0]["max_price"] == 3000000
-    assert call_history[1]["max_price"] == 3450000
 
-    # Kết quả cuối cùng đạt chuẩn Grounding và trả về đúng phòng nhatot_777
-    resp = result["final_response"]
-    assert len(resp.rooms) == 1
-    assert resp.rooms[0].id == "nhatot_777"
-    assert resp.grounding_report is not None
-    assert resp.grounding_report["is_grounded"] is True
-    assert resp.grounding_report["context_retries"] == 1
+    resp1 = result1["final_response"]
+    assert len(resp1.rooms) == 0
+    # Trả về đủ 4 lựa chọn tương tác
+    assert len(resp1.follow_up_questions) == 4
+    assert any("Đồng ý nới ngân sách" in q for q in resp1.follow_up_questions)
+    assert any("Mở rộng bán kính" in q for q in resp1.follow_up_questions)
+    assert any("Giữ nguyên tiêu chí" in q for q in resp1.follow_up_questions)
+    assert any("Tùy chỉnh tiêu chí" in q for q in resp1.follow_up_questions)
+
+    # Lượt 2: Người dùng bấm chọn Option 1 (Đồng ý nới ngân sách)
+    state2 = {
+        "user_message": "👍 Đồng ý nới ngân sách lên 3.45 triệu/tháng (+15%)",
+        "session_id": "test_hitl_session",
+    }
+    result2 = housing_graph.invoke(state2)
+
+    # Hệ thống đã gọi search lần 2 với ngân sách được nới lên 3,450,000 (+15%)
+    assert len(call_history) == 2
+    assert call_history[1]["max_price"] == 3450000
+    resp2 = result2["final_response"]
+    assert len(resp2.rooms) == 1
+    assert resp2.rooms[0].id == "nhatot_777"
+
+    # Lượt 3: Test lựa chọn giữ nguyên tiêu chí ở một session khác
+    state3_init = {
+        "user_message": "Tìm phòng ở Linh Xuân dưới 2 triệu",
+        "session_id": "test_keep_session",
+    }
+    housing_graph.invoke(state3_init)
+    state3_keep = {
+        "user_message": "❌ Giữ nguyên tiêu chí của tôi",
+        "session_id": "test_keep_session",
+    }
+    result3 = housing_graph.invoke(state3_keep)
+    resp3 = result3["final_response"]
+    assert len(resp3.rooms) == 0
+    assert "đã ghi nhận bạn muốn giữ nguyên các tiêu chí" in resp3.text_reply
 
 
 def test_llm_and_catalog_amenity_extraction():
