@@ -47,7 +47,7 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
               </span>
               <span className="text-[10px] font-bold text-[#0F5F4A] bg-[#E6F4EE] px-2 py-0.5 rounded-full border border-[#0F5F4A]/20 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#0F5F4A]"></span>
-                <span>Match {room.matchScore}%</span>
+                <span>Match {Math.round(room.matchScore <= 1 ? room.matchScore * 100 : room.matchScore)}%</span>
               </span>
             </div>
 

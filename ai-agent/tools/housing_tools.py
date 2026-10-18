@@ -16,14 +16,17 @@ TIMEOUT = float(os.environ.get("SEARCH_ROOM_TIMEOUT", "20.0"))
 
 
 def _client() -> httpx.Client:
-    return httpx.Client(base_url=API_BASE, timeout=TIMEOUT)
+    return httpx.Client(base_url=API_BASE, timeout=TIMEOUT, follow_redirects=True)
 
 
 def _unwrap_response(resp: httpx.Response) -> dict:
+    if resp.status_code == 404:
+        return {"ok": False, "error": "Không tìm thấy dữ liệu (HTTP 404)"}
     try:
         data = resp.json()
     except Exception:
-        return {"ok": False, "error": f"Phản hồi không phải JSON: {resp.text[:200]}"}
+        preview = resp.text[:200].strip() if resp.text else f"status {resp.status_code}"
+        return {"ok": False, "error": f"Phản hồi không phải JSON ({preview})"}
 
     if isinstance(data, dict) and "data" in data and "success" in data:
         if not data.get("success", False):

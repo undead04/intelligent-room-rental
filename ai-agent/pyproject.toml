@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Lab Agent Tools & Skills, stage 04: skill chạy script"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.143.3",
     "langchain>=1.4.3,<2",
     "langchain-openai>=1.6.7,<2",
     "python-dotenv>=1.2.4,<2",

@@ -78,7 +78,13 @@ export default function RoomMapPanel({
               }`}
             >
               <span>#{room.rank}</span>
-              <span>{room.priceNum}tr</span>
+              <span>
+                {room.priceNum >= 1_000_000
+                  ? `${(room.priceNum / 1_000_000).toFixed(1).replace(".0", "")}tr`
+                  : room.priceNum > 0
+                  ? `${room.priceNum}tr`
+                  : room.price}
+              </span>
             </div>
             <div
               className={`w-2 h-2 rotate-45 -mt-1 ${

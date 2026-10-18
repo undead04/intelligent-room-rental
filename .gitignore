@@ -42,3 +42,6 @@ crawler/data/processed/llm_reports/
 .idea/
 .DS_Store
 Thumbs.db
+traces/
+ai-agent/traces/
+*.jsonl

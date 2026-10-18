@@ -7,20 +7,24 @@ import AiChatPanel from "@/app/tim-kiem-ai/_components/AiChatPanel";
 import AiWorkspaceHeader from "@/app/tim-kiem-ai/_components/AiWorkspaceHeader";
 import RoomMapPanel from "@/app/tim-kiem-ai/_components/RoomMapPanel";
 import RoomResultsPanel from "@/app/tim-kiem-ai/_components/RoomResultsPanel";
-import {
-  DEFAULT_FILTER_ID,
-  DEFAULT_ROOM_ID,
-  SAMPLE_ROOMS,
-} from "@/app/tim-kiem-ai/_constants/aiWorkspace";
+import { DEFAULT_FILTER_ID } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 import { useAiChat } from "@/app/tim-kiem-ai/_hooks/useAiChat";
 
 export default function AIChatWorkspacePage() {
-  const [selectedRoomId, setSelectedRoomId] = useState<string>(DEFAULT_ROOM_ID);
   const [activeFilter, setActiveFilter] = useState<string>(DEFAULT_FILTER_ID);
 
-  const { messages, inputValue, setInputValue, isTyping, sendMessage } = useAiChat();
+  const {
+    messages,
+    inputValue,
+    setInputValue,
+    isTyping,
+    sendMessage,
+    rooms,
+    insights,
+    selectedRoomId,
+    setSelectedRoomId,
+  } = useAiChat();
 
-  const rooms = SAMPLE_ROOMS;
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) || rooms[0];
 
   return (
@@ -38,6 +42,7 @@ export default function AIChatWorkspacePage() {
             inputValue={inputValue}
             onInputChange={setInputValue}
             onSubmit={sendMessage}
+            onSelectQuestion={(question) => sendMessage(undefined, question)}
           />
 
           {/* COLUMN 2: KẾT QUẢ DANH SÁCH PHÒNG (Col span 4) */}
@@ -59,11 +64,10 @@ export default function AIChatWorkspacePage() {
             />
 
             {/* BOTTOM CARD: 4. Phân tích & giải thích của Agent (52% height) */}
-            <AgentInsightPanel room={selectedRoom} />
+            <AgentInsightPanel room={selectedRoom} insights={insights} />
           </section>
         </div>
       </main>
-
     </SiteLayout>
   );
 }

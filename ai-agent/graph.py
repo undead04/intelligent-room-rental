@@ -534,6 +534,7 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
         ]
 
     response = AgentResponse(
+        session_id=session_id,
         text_reply=final_text,
         rooms=rooms,
         insights=insights,

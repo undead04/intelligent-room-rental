@@ -9,10 +9,14 @@ import type {
   ResponseDto,
   RoomTypeDto,
   WardDto,
+  AgentChatRequest,
+  AgentResponse,
 } from "@/types/dto";
 const DEFAULT_API_URL = "http://localhost:8000/api/v1";
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL).replace(/\/$/, "");
+const DEFAULT_AGENT_URL = "http://localhost:8001";
+const AGENT_BASE_URL = (process.env.NEXT_PUBLIC_AI_AGENT_URL || DEFAULT_AGENT_URL).replace(/\/$/, "");
 
 class ApiError extends Error {
   constructor(
@@ -105,3 +109,41 @@ export const priceStatsApi = {
     return request<PriceStatsDto>(`/listings/price-stats${buildQuery(params)}`);
   },
 };
+
+async function agentRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${AGENT_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...init?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as {
+      detail?: string;
+      message?: string;
+    } | null;
+    throw new ApiError(
+      error?.detail || error?.message || `AI Agent request failed: ${response.status} ${response.statusText}`,
+      response.status,
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
+export const agentApi = {
+  chat(data: AgentChatRequest) {
+    return agentRequest<AgentResponse>("/api/v1/chat", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  health() {
+    return agentRequest<{ status: string; service: string; version: string }>("/api/v1/health");
+  },
+};
+

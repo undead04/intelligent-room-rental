@@ -7,6 +7,7 @@ interface AiChatPanelProps {
   inputValue: string;
   onInputChange: (value: string) => void;
   onSubmit: (event: React.FormEvent) => void;
+  onSelectQuestion?: (question: string) => void;
 }
 
 export default function AiChatPanel({
@@ -15,11 +16,12 @@ export default function AiChatPanel({
   inputValue,
   onInputChange,
   onSubmit,
+  onSelectQuestion,
 }: AiChatPanelProps) {
   return (
     <section className="lg:col-span-4 bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-[600px] lg:h-full overflow-hidden">
       {/* Section Header */}
-      <div className="p-3.5 px-4 border-b border-[#E8E4DC] flex items-center justify-between bg-white">
+      <div className="p-3.5 px-4 border-b border-[#E8E4DC] flex items-center justify-between bg-white shrink-0">
         <h2 className="text-sm font-bold text-[#0F5F4A] flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-[#0F5F4A]"></span>
           <span>1. Chat / Nhập yêu cầu</span>
@@ -32,7 +34,11 @@ export default function AiChatPanel({
       {/* Chat Conversation Messages Container */}
       <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs leading-relaxed bg-[#FAFBF9]">
         {messages.map((message) => (
-          <ChatMessageItem key={message.id} message={message} />
+          <ChatMessageItem
+            key={message.id}
+            message={message}
+            onSelectQuestion={onSelectQuestion}
+          />
         ))}
 
         {isTyping && (
@@ -46,18 +52,19 @@ export default function AiChatPanel({
       </div>
 
       {/* Chat Input Footer */}
-      <form onSubmit={onSubmit} className="p-3 border-t border-[#E8E4DC] bg-white">
+      <form onSubmit={onSubmit} className="p-3 border-t border-[#E8E4DC] bg-white shrink-0">
         <div className="relative flex items-center">
           <input
             type="text"
             value={inputValue}
             onChange={(e) => onInputChange(e.target.value)}
-            placeholder="Nhập tin nhắn để điều chỉnh yêu cầu..."
+            placeholder="Nhập tin nhắn để điều chỉnh yêu cầu (vd: 'gần UIT dưới 4tr có máy lạnh')..."
             className="w-full pl-4 pr-12 py-2.5 bg-[#FAFBF9] border border-[#E8E4DC] rounded-full text-xs text-[#121E1A] focus:outline-none focus:ring-2 focus:ring-[#0F5F4A]/20 focus:border-[#0F5F4A] transition placeholder-[#6F7974]"
           />
           <button
             type="submit"
-            className="absolute right-1.5 w-8 h-8 bg-[#0F5F4A] hover:bg-[#004635] text-white rounded-full flex items-center justify-center transition shadow-xs"
+            disabled={isTyping}
+            className="absolute right-1.5 w-8 h-8 bg-[#0F5F4A] hover:bg-[#004635] disabled:opacity-50 text-white rounded-full flex items-center justify-center transition shadow-xs cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">send</span>
           </button>
