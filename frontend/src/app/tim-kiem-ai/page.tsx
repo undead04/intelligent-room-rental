@@ -22,9 +22,12 @@ export default function AIChatWorkspacePage() {
     sendMessage,
     rooms,
     insights,
+    preferences,
     selectedRoomId,
     setSelectedRoomId,
     connectionError,
+    resetConversation,
+    hasActiveSession,
   } = useAiChat();
 
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) || rooms[0] || null;
@@ -35,7 +38,10 @@ export default function AIChatWorkspacePage() {
       className="bg-[#F8FAF8] text-[#121E1A] font-sans antialiased h-screen flex flex-col overflow-hidden"
     >
       {/* BREADCRUMB & CONTEXT HEADER */}
-      <AiWorkspaceHeader />
+      <AiWorkspaceHeader
+        onResetConversation={resetConversation}
+        hasActiveSession={hasActiveSession}
+      />
 
       {/* MAIN WORKSPACE LAYOUT (Viewport Fit: No whole-page scroll on desktop) */}
       <main className="flex-1 min-h-0 px-3 sm:px-4 lg:px-6 pb-3 pt-1 max-w-[1600px] w-full mx-auto flex flex-col overflow-y-auto lg:overflow-hidden">
@@ -78,6 +84,7 @@ export default function AIChatWorkspacePage() {
             rooms={rooms}
             selectedRoomId={selectedRoomId}
             activeFilter={activeFilter}
+            preferences={preferences}
             onSelectRoom={setSelectedRoomId}
             onSelectFilter={setActiveFilter}
           />
@@ -89,13 +96,20 @@ export default function AIChatWorkspacePage() {
               <RoomMapPanel
                 rooms={rooms}
                 selectedRoom={selectedRoom}
+                locationText={preferences?.location_text}
+                landmarkLat={preferences?.lat}
+                landmarkLng={preferences?.lng}
                 onSelectRoom={setSelectedRoomId}
               />
             </div>
 
             {/* BOTTOM CARD: 4. Phân tích & giải thích của Agent (fill remaining space) */}
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-              <AgentInsightPanel room={selectedRoom} insights={insights} />
+              <AgentInsightPanel
+                room={selectedRoom}
+                insights={insights}
+                rooms={rooms}
+              />
             </div>
           </section>
         </div>

@@ -98,10 +98,13 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
         </button>
         <Link
           href={`/phong-tro/${room.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
           onClick={(event) => event.stopPropagation()}
-          className="px-4 py-1.5 text-[11px] font-bold text-white bg-[#0F5F4A] hover:bg-[#004635] rounded-full transition shadow-xs"
+          className="px-4 py-1.5 text-[11px] font-bold text-white bg-[#0F5F4A] hover:bg-[#004635] rounded-full transition shadow-xs flex items-center gap-1"
         >
-          Xem chi tiết
+          <span>Xem chi tiết</span>
+          <span className="material-symbols-outlined text-[13px]">open_in_new</span>
         </Link>
       </div>
     </article>

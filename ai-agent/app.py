@@ -447,7 +447,17 @@ def run_turn(text: str, settings, state_box) -> None:
 
     refresh()
     try:
-        agent = build_agent(build_model(settings))
+        import importlib
+        import agent as _agent_mod
+        import tools.housing_tools as _ht_mod
+        importlib.reload(_agent_mod)
+        agent = _agent_mod.build_agent(_agent_mod.build_model(settings))
+        human_texts = [
+            getattr(m, "content", "")
+            for m in working
+            if isinstance(m, HumanMessage) and isinstance(getattr(m, "content", ""), str)
+        ]
+        _ht_mod.set_turn_query_context(text, " ; ".join(human_texts))
         stream = agent.stream(
             {"messages": working},
             config={"recursion_limit": RECURSION_LIMIT},
@@ -475,6 +485,11 @@ def run_turn(text: str, settings, state_box) -> None:
         status.update(label="Lỗi", state="error", expanded=True)
         answer_box.error(turn["error"])
     finally:
+        try:
+            import tools.housing_tools as _ht_mod
+            _ht_mod.clear_turn_query_context()
+        except Exception:
+            pass
         refresh()
     ss.pop("snapshot_choice", None)  # sau lượt mới, mặc định xem snapshot mới nhất
     ss.pop("message_choice", None)

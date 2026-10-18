@@ -11,6 +11,7 @@ import type {
   WardDto,
   AgentChatRequest,
   AgentResponse,
+  AgentTraceEvent,
 } from "@/types/dto";
 const DEFAULT_API_URL = "http://localhost:8000/api/v1";
 
@@ -134,6 +135,12 @@ async function agentRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface AgentStreamCallbacks {
+  onTrace?: (event: AgentTraceEvent) => void;
+  onTextDelta?: (delta: string) => void;
+  onDone?: (response: AgentResponse) => void;
+}
+
 export const agentApi = {
   chat(data: AgentChatRequest) {
     return agentRequest<AgentResponse>("/api/v1/chat", {
@@ -142,8 +149,85 @@ export const agentApi = {
     });
   },
 
+  async chatStream(data: AgentChatRequest, callbacks: AgentStreamCallbacks = {}): Promise<AgentResponse> {
+    const response = await fetch(`${AGENT_BASE_URL}/api/v1/chat/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok || !response.body) {
+      const error = (await response.json().catch(() => null)) as {
+        detail?: string;
+        message?: string;
+      } | null;
+      throw new ApiError(
+        error?.detail || error?.message || `AI Agent stream failed: ${response.status} ${response.statusText}`,
+        response.status,
+      );
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let finalResponse: AgentResponse | null = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() || "";
+
+      for (const block of blocks) {
+        if (!block.trim()) continue;
+        let eventName = "message";
+        const dataLines: string[] = [];
+
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventName = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trim());
+          }
+        }
+
+        const rawData = dataLines.join("\n");
+        if (!rawData) continue;
+
+        try {
+          const parsed = JSON.parse(rawData);
+          if (eventName === "trace") {
+            callbacks.onTrace?.(parsed as AgentTraceEvent);
+          } else if (eventName === "text_delta") {
+            if (typeof parsed.delta === "string") {
+              callbacks.onTextDelta?.(parsed.delta);
+            }
+          } else if (eventName === "done") {
+            finalResponse = parsed as AgentResponse;
+            callbacks.onDone?.(finalResponse);
+          } else if (eventName === "error") {
+            throw new ApiError(parsed.error || "Lỗi trong quá trình stream từ AI Agent", 500);
+          }
+        } catch (err) {
+          if (err instanceof ApiError) throw err;
+        }
+      }
+    }
+
+    if (!finalResponse) {
+      throw new ApiError("Luồng phản hồi kết thúc bất ngờ trước khi hoàn tất", 500);
+    }
+    return finalResponse;
+  },
+
   health() {
     return agentRequest<{ status: string; service: string; version: string }>("/api/v1/health");
   },
 };
+
 

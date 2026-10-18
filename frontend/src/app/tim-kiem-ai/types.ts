@@ -4,7 +4,10 @@ import type {
   TradeOffAnalysis,
   UserPreferenceState,
   AgentResponse,
-} from "@/types/dto";
+  AgentTraceEvent,
+  HitlOption,
+  HitlProposal,
+} from "@/types/dto/agent";
 
 export type {
   DecisionInsight,
@@ -12,6 +15,9 @@ export type {
   TradeOffAnalysis,
   UserPreferenceState,
   AgentResponse,
+  AgentTraceEvent,
+  HitlOption,
+  HitlProposal,
 };
 
 export interface ChatMessage {
@@ -23,4 +29,10 @@ export interface ChatMessage {
   priorityCriteria?: string[];
   summaryCount?: number;
   followUpQuestions?: string[];
+  hitlProposal?: HitlProposal | null;
+  selectedHitlAction?: string;
+  groundingReport?: Record<string, any> | null;
+  traceEvents?: AgentTraceEvent[];
+  isStreaming?: boolean;
+  statusText?: string;
 }

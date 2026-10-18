@@ -27,7 +27,10 @@ def build_model(settings: Settings) -> ChatOpenAI:
 
 
 def system_prompt() -> str:
-    return build_system_prompt()
+    import importlib
+    import prompts as _prompts_mod
+    importlib.reload(_prompts_mod)
+    return _prompts_mod.build_system_prompt()
 
 
 def load_catalog() -> Catalog:
@@ -45,9 +48,14 @@ def capabilities() -> dict:
 
 
 def build_agent(model):
+    import importlib
+    import tools.housing_tools as _ht
+    import tools.registry as _reg
+    importlib.reload(_ht)
+    importlib.reload(_reg)
     return create_agent(
         model=model,
-        tools=TOOLS,
+        tools=_reg.ALL_TOOLS,
         system_prompt=system_prompt(),
         middleware=[
             ModelCallLimitMiddleware(run_limit=MODEL_CALL_LIMIT, exit_behavior="end"),

@@ -31,8 +31,16 @@ class RoomItem(BaseModel):
     explain_match: Optional[dict[str, Any]] = Field(None, description="Chi tiết giải thích từ rerank backend")
 
     @classmethod
-    def from_backend_result(cls, item: dict, rank: int = 1) -> "RoomItem":
+    def from_backend_result(
+        cls,
+        item: dict,
+        rank: int = 1,
+        target_lat: Optional[float] = None,
+        target_lng: Optional[float] = None,
+    ) -> "RoomItem":
         """Chuyển đổi từ VectorSearchResult của Backend sang RoomItem của Agent."""
+        from math import asin, cos, radians, sin, sqrt
+
         listing = item.get("listing", {}) or {}
         explain = item.get("explain_match", {}) or {}
         score = item.get("match_score", 0.0)
@@ -67,6 +75,47 @@ class RoomItem(BaseModel):
         rank_texts = {1: "Top 1 - Tối ưu nhất", 2: "Top 2 - Đề xuất", 3: "Top 3 - Lựa chọn tốt"}
         rank_text = rank_texts.get(rank, f"Top {rank}")
 
+        room_lat = listing.get("lat")
+        room_lng = listing.get("lng")
+        dist_val = listing.get("distance_km") or listing.get("distance")
+
+        if (
+            not isinstance(dist_val, (int, float))
+            and room_lat is not None
+            and room_lng is not None
+            and target_lat is not None
+            and target_lng is not None
+        ):
+            try:
+                lat1, lon1, lat2, lon2 = map(
+                    radians, (float(room_lat), float(room_lng), float(target_lat), float(target_lng))
+                )
+                a = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
+                dist_val = 6371.0 * 2 * asin(sqrt(a))
+            except Exception:
+                dist_val = None
+
+        if isinstance(dist_val, (int, float)):
+            if dist_val < 1.0:
+                meters = max(50, int(round(dist_val * 1000, -1)))
+                dist_str = f"{meters}m"
+            else:
+                dist_str = f"{dist_val:.1f} km"
+        elif isinstance(dist_val, str) and dist_val.strip():
+            dist_str = dist_val.strip().lstrip("~").strip()
+        else:
+            addr_raw = (listing.get("address_raw") or "").strip()
+            if addr_raw:
+                short_parts = [p.strip() for p in addr_raw.split(",") if p.strip()]
+                dist_str = ", ".join(short_parts[:2]) if len(short_parts) >= 2 else addr_raw
+            else:
+                dist_str = "Trong khu vực tìm kiếm"
+
+        # Tinh toan toa do phan bo truc quan
+        room_id_hash = hash(str(listing.get("id", rank))) % 100
+        lat_pct = 40.0 + ((rank * 13 + room_id_hash) % 25)
+        lng_pct = 35.0 + ((rank * 17 + room_id_hash * 2) % 35)
+
         return cls(
             id=str(listing.get("id", f"room-{rank}")),
             rank=rank,
@@ -76,14 +125,14 @@ class RoomItem(BaseModel):
             price=price_str,
             priceNum=price_vnd,
             address=listing.get("address_raw") or "Hồ Chí Minh",
-            distance="Vị trí thuận tiện",
+            distance=dist_str,
             photoCount=4,
             image=img,
             tags=tags,
-            lat=listing.get("lat"),
-            lng=listing.get("lng"),
-            latPercent=45.0 + (rank * 5.0) % 20,
-            lngPercent=40.0 + (rank * 7.0) % 30,
+            lat=room_lat,
+            lng=room_lng,
+            latPercent=round(lat_pct, 1),
+            lngPercent=round(lng_pct, 1),
             source_url=listing.get("url"),
             explain_match=explain,
         )
@@ -141,6 +190,36 @@ class UserPreferenceState(BaseModel):
         return "\n".join(parts) if parts else "Chưa có tiêu chí nào được thiết lập."
 
 
+class HitlOption(BaseModel):
+    """Lựa chọn tương tác trong Human-in-the-Loop kiểu Claude."""
+
+    id: str = Field(..., description="Mã định danh lựa chọn (budget, location, dormitory, amenity, custom, keep)")
+    type: str = Field(..., description="Loại lựa chọn")
+    title: str = Field(..., description="Tiêu đề hiển thị ngắn gọn, rõ ràng")
+    description: str = Field(..., description="Mô tả cụ thể tác động của lựa chọn")
+    badge: Optional[str] = Field(None, description="Nhãn nổi bật (Đề xuất tối ưu, Giữ ngân sách, Tiết kiệm...)")
+    badge_color: Optional[str] = Field("emerald", description="Màu nhãn (emerald, blue, amber, purple, orange, slate)")
+    action_text: str = Field(..., description="Câu lệnh gửi lại khi người dùng click (tương thích backward)")
+    highlight: bool = Field(False, description="Đánh dấu lựa chọn được AI khuyến nghị nhất")
+
+
+class HitlProposal(BaseModel):
+    """Khối đề xuất Human-in-the-Loop hoàn chỉnh dành cho giao diện chuyên nghiệp kiểu Claude."""
+
+    needed: bool = Field(True, description="True khi cần hỏi ý kiến người dùng")
+    title: Optional[str] = Field(None, description="Tiêu đề khối HITL")
+    area_name: Optional[str] = Field(None, description="Tên khu vực đang tìm kiếm")
+    user_budget: Optional[float] = Field(None, description="Ngân sách người dùng đã đặt")
+    user_budget_str: Optional[str] = Field(None, description="Chuỗi hiển thị ngân sách người dùng")
+    market_min_price: Optional[float] = Field(None, description="Mức giá sàn thực tế tại khu vực")
+    market_min_price_str: Optional[str] = Field(None, description="Chuỗi hiển thị giá sàn thực tế")
+    market_avg_price: Optional[float] = Field(None, description="Mức giá trung bình thực tế tại khu vực")
+    market_avg_price_str: Optional[str] = Field(None, description="Chuỗi hiển thị giá trung bình")
+    is_market_gap: bool = Field(False, description="True nếu ngân sách người dùng thấp xa so với giá sàn thực tế")
+    message: Optional[str] = Field(None, description="Thông điệp phân tích thị trường giải thích lý do cần điều chỉnh")
+    options: list[HitlOption] = Field(default_factory=list, description="Danh sách các thẻ lựa chọn tương tác")
+
+
 class AgentResponse(BaseModel):
     """Toàn bộ phản hồi chuẩn hoá của AI Agent gửi về cho Client/UI."""
 
@@ -154,5 +233,13 @@ class AgentResponse(BaseModel):
     grounding_report: Optional[dict[str, Any]] = Field(
         None,
         description="Báo cáo kiểm định RAG Grounding (Context & Answer Groundedness + số lần Corrective Retry)",
+    )
+    hitl_proposal: Optional[HitlProposal] = Field(
+        None,
+        description="Đề xuất Human-in-the-Loop cấu trúc chuyên nghiệp kiểu Claude",
+    )
+    trace_events: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Danh sách các bước suy nghĩ và thực thi tool (model_request, model_response, tool_started, tool_finished) giống Streamlit",
     )
 

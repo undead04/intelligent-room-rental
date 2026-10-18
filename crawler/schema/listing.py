@@ -181,16 +181,20 @@ class ListingExtraction(BaseModel):
     )
     landmarks_nearby: List[str] = Field(
         default_factory=list,
-        description="Các trường đại học, bệnh viện, chợ, trạm metro lân cận được nhắc đến hoặc suy luận được từ vị trí."
+        max_length=5,
+        description="Các trường đại học, bệnh viện, chợ, trạm metro lân cận được nhắc đến hoặc suy luận được từ vị trí (tối đa 5 mục)."
     )
     rules_and_lifestyle: List[str] = Field(
         default_factory=list,
-        description="Quy định và môi trường sống: giờ giấc tự do, không chung chủ, cho nấu ăn, yên tĩnh, an ninh..."
+        max_length=5,
+        description="Quy định và môi trường sống: giờ giấc tự do, không chung chủ, cho nấu ăn, yên tĩnh, an ninh... (tối đa 5 mục)."
     )
     extra_amenities: List[str] = Field(
         default_factory=list,
-        description="Các tiện nghi/đặc điểm khác không nằm trong enum chuẩn (ví dụ: view Landmark 81, cửa sổ trời, hồ bơi). TUYỆT ĐỐI không điền các tiện ích đã có trong enum chuẩn vào đây."
+        max_length=5,
+        description="Các tiện nghi/đặc điểm khác không nằm trong enum chuẩn (ví dụ: view Landmark 81, cửa sổ trời, hồ bơi). TUYỆT ĐỐI không điền các tiện ích đã có trong enum chuẩn vào đây (tối đa 5 mục)."
     )
+
     # ---- Kiểm tra LLM có bịa không ----
     def verify_evidence(self, source_text: str) -> "ListingExtraction":
         """Signal nào có evidence KHÔNG nằm trong text gốc -> hạ về unknown.
