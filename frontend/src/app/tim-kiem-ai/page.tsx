@@ -54,7 +54,20 @@ export default function AIChatWorkspacePage() {
             inputValue={inputValue}
             onInputChange={setInputValue}
             onSubmit={sendMessage}
-            onSelectQuestion={(question) => sendMessage(undefined, question)}
+            onSelectQuestion={(question) => {
+              if (question.includes("Tùy chỉnh tiêu chí") || question.startsWith("✏️")) {
+                setInputValue("Tôi muốn điều chỉnh: ");
+                setTimeout(() => {
+                  const inputEl = document.querySelector('input[type="text"]') as HTMLInputElement;
+                  if (inputEl) {
+                    inputEl.focus();
+                    inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+                  }
+                }, 50);
+              } else {
+                sendMessage(undefined, question);
+              }
+            }}
           />
 
           {/* COLUMN 2: KẾT QUẢ DANH SÁCH PHÒNG (Col span 4) */}

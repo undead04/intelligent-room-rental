@@ -101,6 +101,10 @@ class HousingAgentState(TypedDict, total=False):
     retry_strategy: Optional[str]
     retry_notes: list[str]
     context_grounded: bool
+    needs_user_consent: bool
+    proposed_budget: Optional[float]
+    proposed_budget_str: Optional[str]
+    is_keep_criteria: bool
     answer_retry_count: int
     answer_grounded: bool
     grounding_report: Optional[dict[str, Any]]
@@ -214,22 +218,97 @@ def guardrail_node(state: HousingAgentState) -> dict[str, Any]:
 
 def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
     """Node 2: Bóc tách nhu cầu tích lũy (Memory), Tính Trọng số Động & Dynamic Skill Discovery.
+    Hỗ trợ tiếp nhận phản hồi từ người dùng cho 4 lựa chọn (Nới ngân sách +15%, Mở rộng bán kính, Giữ nguyên tiêu chí, Tùy chỉnh).
     Scope: 0 Tools (Chỉ xử lý logic nội bộ và so khớp trigger).
     """
     user_text = state.get("user_message", "")
     session_id = state.get("session_id", "default_session")
     session = memory_manager.get_or_create_session(session_id)
+    user_lower = user_text.lower().strip()
 
-    # Cập nhật tiêu chí vào session qua LLM-assisted extraction
-    model = _get_llm()
-    updated_pref = memory_manager.update_preferences_from_text(session, user_text, model=model)
+    # 1. Kiểm tra các ý định phản hồi lựa chọn nới lỏng từ lượt trước
+    is_relax_budget = (
+        user_lower.startswith("👍")
+        or "đồng ý nới ngân sách" in user_lower
+        or "nới ngân sách" in user_lower
+        or "tăng ngân sách" in user_lower
+        or "nới giá" in user_lower
+        or "+15%" in user_lower
+    )
+    is_broaden_search = (
+        user_lower.startswith("🧭")
+        or "mở rộng bán kính" in user_lower
+        or "tìm kiếm lân cận" in user_lower
+        or "mở rộng khu vực" in user_lower
+        or "khu vực lân cận" in user_lower
+        or "bán kính lân cận" in user_lower
+    )
+    is_keep_criteria = (
+        user_lower.startswith("❌")
+        or "giữ nguyên tiêu chí" in user_lower
+        or "giữ nguyên" in user_lower
+        or "không nới" in user_lower
+        or "không đồng ý" in user_lower
+    )
 
-    # Phát hiện hệ số nhân theo ý định (Intent Multipliers)
-    accumulated_m = state.get("multipliers")
-    multipliers, explanations = detect_intent_multipliers(user_text, accumulated_multipliers=accumulated_m)
-    if updated_pref.amenities and multipliers.get("amenity", 1.0) < 1.5:
-        multipliers["amenity"] = 1.8
-        explanations.append("ưu tiên tiện nghi theo yêu cầu người dùng (boost 1.8x)")
+    # Nếu người dùng chọn GIỮ NGUYÊN TIÊU CHÍ
+    if is_keep_criteria:
+        reply_keep = (
+            "Dạ Homigo đã ghi nhận bạn muốn giữ nguyên các tiêu chí tìm kiếm ban đầu.\n\n"
+            "Hiện tại trong hệ thống chưa có phòng nào đáp ứng trọn vẹn 100% các tiêu chí này. "
+            "Khi có phòng mới phù hợp được đăng tải, Homigo sẽ cập nhật ngay cho bạn nhé! "
+            "Bạn có thể tùy chỉnh hoặc nới lỏng tiêu chí bất cứ lúc nào."
+        )
+        return {
+            "preferences": session.preferences,
+            "final_text": reply_keep,
+            "is_keep_criteria": True,
+            "retrieved_rooms": [],
+            "needs_clarification": False,
+            "matched_skill": None,
+            "is_contract_query": False,
+        }
+
+    # Nếu người dùng bấm Tùy chỉnh mà chưa nhập nội dung cụ thể
+    clean_custom = user_lower.replace("✏️", "").replace("tùy chỉnh tiêu chí", "").replace("(nhập thông tin mới)", "").strip()
+    if (user_lower.startswith("✏️") or user_lower == "tùy chỉnh tiêu chí") and not clean_custom:
+        reply_custom = (
+            "Bạn có thể nhập trực tiếp tiêu chí bạn muốn điều chỉnh vào ô chat "
+            "(ví dụ: đổi khu vực sang Dĩ An, thêm tiện ích máy lạnh/gác lửng, hoặc mức giá khác) "
+            "để Homigo tìm kiếm lại cho bạn nhé!"
+        )
+        return {
+            "preferences": session.preferences,
+            "final_text": reply_custom,
+            "needs_clarification": True,
+            "retrieved_rooms": [],
+            "is_keep_criteria": False,
+        }
+
+    # Nếu người dùng ĐỒNG Ý NỚI NGÂN SÁCH (+15%)
+    if is_relax_budget:
+        curr_max = session.preferences.max_price or 3000000
+        new_max = round(curr_max * 1.15, 0)
+        session.preferences.max_price = new_max
+        updated_pref = session.preferences
+        explanations = [f"đã nới ngân sách +15% lên {new_max / 1_000_000:.2f} triệu/tháng theo sự đồng ý của bạn"]
+        multipliers = state.get("multipliers") or {"price": 1.5, "location": 1.2, "amenity": 1.0, "safety": 1.0}
+    # Nếu người dùng MỞ RỘNG BÁN KÍNH LÂN CẬN
+    elif is_broaden_search:
+        session.preferences.lat = None
+        session.preferences.lng = None
+        updated_pref = session.preferences
+        explanations = ["mở rộng phạm vi tìm kiếm sang các khu vực lân cận theo yêu cầu của bạn"]
+        multipliers = state.get("multipliers") or {"price": 1.2, "location": 1.0, "amenity": 1.0, "safety": 1.0}
+    else:
+        # Trường hợp bình thường hoặc nhập thông tin tùy chỉnh mới: bóc tách qua LLM
+        model = _get_llm()
+        updated_pref = memory_manager.update_preferences_from_text(session, user_text, model=model)
+        accumulated_m = state.get("multipliers")
+        multipliers, explanations = detect_intent_multipliers(user_text, accumulated_multipliers=accumulated_m)
+        if updated_pref.amenities and multipliers.get("amenity", 1.0) < 1.5:
+            multipliers["amenity"] = 1.8
+            explanations.append("ưu tiên tiện nghi theo yêu cầu người dùng (boost 1.8x)")
 
     # Tính toán vector trọng số chuẩn hóa
     computed_weights = compute_normalized_weights(updated_pref, multipliers)
@@ -252,8 +331,7 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
     has_budget = bool(updated_pref.max_price or updated_pref.min_price)
     has_amenity = bool(updated_pref.amenities)
 
-    # Nếu câu hỏi khớp kỹ năng chuyên sâu -> Không hỏi làm rõ mà chuyển ngay sang advisory_node
-    if matched_skill:
+    if matched_skill or is_relax_budget or is_broaden_search:
         needs_clarification = False
     else:
         needs_clarification = (not has_loc and not has_budget and not has_amenity and len(words) <= 4)
@@ -266,6 +344,7 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         "needs_clarification": needs_clarification,
         "matched_skill": matched_skill,
         "is_contract_query": is_contract,
+        "is_keep_criteria": False,
     }
 
 
@@ -349,14 +428,13 @@ def advisory_node(state: HousingAgentState) -> dict[str, Any]:
 def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
     """Node 5: Truy vấn dữ liệu kết hợp Geocoding, Hybrid Search, Rerank và Context Grounding Check.
     Scope: RETRIEVAL_TOOLS [geocode_location, get_location_hierarchy, search_rooms].
-    Hỗ trợ Corrective RAG Retry: Tự động nới biên độ ngân sách (±15%) hoặc mở rộng phạm vi khi kết quả rỗng.
+    Tuân thủ Context Grounding: Không tự động nới lỏng ngân sách ngầm khi rỗng phòng.
     """
     user_text = state.get("user_message", "")
     pref = state.get("preferences") or UserPreferenceState()
     weights = state.get("computed_weights") or {}
     multipliers = state.get("multipliers") or {}
     retry_count = state.get("retry_count", 0)
-    retry_strategy = state.get("retry_strategy")
     retry_notes = list(state.get("retry_notes") or [])
 
     # 1. Geocoding nếu có địa điểm văn bản mà chưa có toạ độ
@@ -368,31 +446,17 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
                 inner = geo_data.get("data") if isinstance(geo_data.get("data"), dict) else geo_data
                 pref.lat = inner.get("lat")
                 pref.lng = inner.get("lng") if inner.get("lng") is not None else inner.get("lon")
-                # Sau khi có lat, lng -> kích hoạt location weight và tính lại
                 weights = compute_normalized_weights(pref, multipliers)
         except Exception as e:
             logger.warning(f"Lỗi geocode địa điểm {pref.location_text}: {e}")
 
-    # 2. Điều chỉnh tham số lọc theo chiến lược Corrective Retry (nếu đang trong vòng lặp Retry)
+    # 2. Sử dụng chính xác tiêu chí từ người dùng
     eff_min_price = pref.min_price
     eff_max_price = pref.max_price
     eff_amenities = pref.amenities if pref.amenities else None
 
-    if retry_strategy == "relax_budget":
-        if eff_max_price:
-            eff_max_price = round(eff_max_price * 1.15, 0)
-        if eff_min_price:
-            eff_min_price = round(eff_min_price * 0.85, 0)
-        retry_notes.append(f"Retry #{retry_count}: Nới biên độ ngân sách ±15% để tìm các phòng lân cận phù hợp.")
-    elif retry_strategy == "broaden_search":
-        eff_min_price = None
-        eff_max_price = None
-        eff_amenities = None
-        retry_notes.append(f"Retry #{retry_count}: Mở rộng tìm kiếm ngữ nghĩa và chấm điểm mềm qua MCDM Rerank.")
-
     # 3. Gọi công cụ search_rooms kết hợp Rerank với Custom Weights
     rooms: list[RoomItem] = []
-    api_ok = False
     try:
         search_args = {
             "query": user_text,
@@ -407,26 +471,26 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
         res_json = search_rooms.invoke(search_args)
         data = json.loads(res_json)
         if isinstance(data, dict) and data.get("ok"):
-            api_ok = True
             raw_items = data.get("data", [])
             for idx, raw in enumerate(raw_items, 1):
                 rooms.append(RoomItem.from_backend_result(raw, rank=idx))
     except Exception as e:
         logger.warning(f"Lỗi truy vấn search_rooms: {e}")
 
-    # 4. Kiểm định Context Grounding (Chỉ kích hoạt retry khi API kết nối thành công nhưng kết quả chưa đạt)
+    # 4. Kiểm định Context Grounding
     ctx_check = verify_context_grounding(rooms, pref, retry_count=retry_count)
-    next_strategy = ctx_check.retry_strategy if (api_ok and not ctx_check.is_grounded and retry_count < MAX_GROUNDING_RETRIES) else None
-    next_retry_count = retry_count + 1 if next_strategy else retry_count
 
     return {
         "retrieved_rooms": rooms,
         "preferences": pref,
         "computed_weights": weights,
         "context_grounded": ctx_check.is_grounded,
-        "retry_strategy": next_strategy,
-        "retry_count": next_retry_count,
+        "retry_strategy": None,
+        "retry_count": retry_count,
         "retry_notes": retry_notes,
+        "needs_user_consent": ctx_check.needs_user_consent,
+        "proposed_budget": ctx_check.proposed_budget,
+        "proposed_budget_str": ctx_check.proposed_budget_str,
     }
 
 
@@ -443,11 +507,22 @@ def decision_node(state: HousingAgentState) -> dict[str, Any]:
     insights = build_decision_insights(rooms, weights=weights, weight_explanations=explanations)
 
     if not rooms:
-        reply = (
-            "Homigo đã quét cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp hoàn toàn "
-            "với các điều kiện lọc hiện tại. Bạn có thể cân nhắc nới rộng ngân sách thêm 500k "
-            "hoặc tăng bán kính tìm kiếm quanh khu vực mong muốn nhé!"
-        )
+        prop_str = state.get("proposed_budget_str")
+        if prop_str:
+            reply = (
+                "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
+                "với các điều kiện lọc hiện tại của bạn.\n\n"
+                f"💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới ngân sách lên khoảng **{prop_str}** (+15%) "
+                "hoặc mở rộng phạm vi tìm kiếm sang các khu vực lân cận để có thêm lựa chọn tốt.\n\n"
+                "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+            )
+        else:
+            reply = (
+                "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
+                "với các điều kiện lọc hiện tại của bạn.\n\n"
+                "💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới rộng ngân sách hoặc mở rộng phạm vi tìm kiếm sang các khu vực lân cận.\n\n"
+                "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+            )
         return {"insights": None, "final_text": reply}
 
     top_1 = rooms[0]
@@ -511,6 +586,9 @@ def grounding_node(state: HousingAgentState) -> dict[str, Any]:
         "is_grounded": ans_check.is_grounded,
         "groundedness_score": ans_check.groundedness_score,
         "context_grounded": state.get("context_grounded", bool(rooms)),
+        "needs_user_consent": state.get("needs_user_consent", False),
+        "proposed_budget": state.get("proposed_budget"),
+        "proposed_budget_str": state.get("proposed_budget_str"),
         "context_retries": ctx_retries,
         "answer_retries": next_ans_retry,
         "retry_notes": retry_notes,
@@ -537,8 +615,13 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
     session_id = state.get("session_id", "default_session")
     grounding_report = state.get("grounding_report")
 
-    # Tạo câu hỏi gợi mở
-    if need_clarification:
+    # Tạo câu hỏi gợi mở / các nút tương tác
+    if state.get("is_keep_criteria"):
+        follow_up = [
+            "🔍 Thử tìm khu vực khác",
+            "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
+        ]
+    elif need_clarification:
         follow_up = [
             "Ngân sách tối đa của bạn là bao nhiêu triệu/tháng?",
             "Bạn muốn tìm phòng gần trường học hay công ty nào?",
@@ -549,8 +632,18 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
             "Bạn có muốn so sánh chi tiết hơn với phòng Top 2 không?",
         ]
     else:
+        # Không tìm thấy phòng -> Cung cấp đủ 4 lựa chọn tương tác
+        prop_str = state.get("proposed_budget_str")
+        if prop_str:
+            budget_label = f"👍 Đồng ý nới ngân sách lên {prop_str} (+15%)"
+        else:
+            budget_label = "👍 Đồng ý nới ngân sách (+15%)"
+
         follow_up = [
-            "Bạn có muốn mở rộng bán kính tìm kiếm thêm 2-3km không?",
+            budget_label,
+            "🧭 Mở rộng bán kính tìm kiếm lân cận",
+            "❌ Giữ nguyên tiêu chí của tôi",
+            "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
         ]
 
     response = AgentResponse(
@@ -588,10 +681,13 @@ def route_after_guardrail(state: HousingAgentState) -> str:
 
 def route_after_preference(state: HousingAgentState) -> str:
     """Rẽ nhánh sau Preference:
+    - Nếu chọn giữ nguyên tiêu chí -> Chuyển thẳng tới formatter_node.
     - Nếu khớp Kỹ năng chuyên sâu -> Chuyển thẳng tới advisory_node.
     - Nếu quá mơ hồ -> Chuyển tới clarification_node.
     - Nếu đủ thông tin tìm phòng -> Chuyển tới retrieval_node.
     """
+    if state.get("is_keep_criteria"):
+        return "formatter_node"
     if state.get("matched_skill") or state.get("is_contract_query"):
         return "advisory_node"
     if state.get("needs_clarification"):
@@ -600,12 +696,10 @@ def route_after_preference(state: HousingAgentState) -> str:
 
 
 def route_after_retrieval(state: HousingAgentState) -> str:
-    """Rẽ nhánh sau Retrieval (Corrective RAG):
-    - Nếu Context chưa đạt chuẩn Grounding và còn chiến lược retry_strategy -> Quay lại retrieval_node.
-    - Ngược lại -> Sang decision_node để tổng hợp tư vấn.
+    """Rẽ nhánh sau Retrieval:
+    Luôn chuyển sang decision_node để tổng hợp kết quả (hoặc hỏi ý kiến người dùng nếu rỗng phòng).
+    Tuyệt đối không tự ý quay lại retrieval_node nới lỏng ngầm.
     """
-    if state.get("retry_strategy") and state.get("retry_count", 0) <= MAX_GROUNDING_RETRIES:
-        return "retrieval_node"
     return "decision_node"
 
 
@@ -649,15 +743,14 @@ def build_housing_graph() -> StateGraph:
             "advisory_node": "advisory_node",
             "clarification_node": "clarification_node",
             "retrieval_node": "retrieval_node",
+            "formatter_node": "formatter_node",
         },
     )
 
-    # Vòng lặp Corrective RAG ở tầng Retrieval (nếu rỗng/điểm thấp -> tự động nới điều kiện & retry)
     workflow.add_conditional_edges(
         "retrieval_node",
         route_after_retrieval,
         {
-            "retrieval_node": "retrieval_node",
             "decision_node": "decision_node",
         },
     )

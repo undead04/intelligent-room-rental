@@ -25,8 +25,11 @@ class ContextGroundingResult:
 
     is_grounded: bool
     context_score: float
-    retry_strategy: Optional[str] = None  # "relax_budget" | "broaden_search" | None
+    retry_strategy: Optional[str] = None
     reason: str = ""
+    needs_user_consent: bool = False
+    proposed_budget: Optional[float] = None
+    proposed_budget_str: Optional[str] = None
 
 
 @dataclass
@@ -45,46 +48,36 @@ def verify_context_grounding(
     retry_count: int = 0,
 ) -> ContextGroundingResult:
     """Kiểm tra danh sách phòng từ Hybrid Search & Rerank có đạt chuẩn Grounding không.
-    Nếu không tìm thấy phòng nào hoặc điểm matchScore quá thấp trong khi còn lượt retry,
-    đề xuất chiến lược nới lỏng điều kiện (Corrective RAG).
+    Tuyệt đối KHÔNG tự ý retry ngầm làm thay đổi ngân sách của người dùng.
+    Khi kết quả rỗng, đánh dấu needs_user_consent = True để hỏi ý kiến người dùng trước.
     """
     if not rooms:
-        if retry_count == 0 and preferences and (preferences.max_price or preferences.min_price):
-            return ContextGroundingResult(
-                is_grounded=False,
-                context_score=0.0,
-                retry_strategy="relax_budget",
-                reason="Không tìm thấy phòng khớp ngân sách cứng -> Tự động nới biên độ ngân sách ±15% và thử lại.",
-            )
-        if retry_count <= 1:
-            return ContextGroundingResult(
-                is_grounded=False,
-                context_score=0.0,
-                retry_strategy="broaden_search",
-                reason="Không tìm thấy phòng với bộ lọc hiện tại -> Mở rộng phạm vi tìm kiếm ngữ nghĩa.",
-            )
+        prop_budget = None
+        prop_str = None
+        if preferences and preferences.max_price and preferences.max_price > 0:
+            prop_budget = round(preferences.max_price * 1.15, 0)
+            prop_val = prop_budget / 1_000_000
+            prop_str = f"{prop_val:.2f} triệu/tháng".replace(".00", "")
+
         return ContextGroundingResult(
             is_grounded=False,
             context_score=0.0,
-            retry_strategy=None,
-            reason="Đã thử lại tối đa nhưng cơ sở dữ liệu không có phòng khớp yêu cầu.",
+            retry_strategy=None,  # Không tự động lặp ngầm, chuyển sang hỏi ý kiến người dùng
+            needs_user_consent=True,
+            proposed_budget=prop_budget,
+            proposed_budget_str=prop_str,
+            reason="Không tìm thấy phòng khớp chính xác tiêu chí. Cần hỏi ý kiến người dùng để nới lỏng hoặc tùy chỉnh.",
         )
 
     top_score = max((r.matchScore for r in rooms), default=0.0)
-    if top_score < MIN_ACCEPTABLE_MATCH_SCORE and retry_count < MAX_GROUNDING_RETRIES:
-        return ContextGroundingResult(
-            is_grounded=False,
-            context_score=round(top_score, 3),
-            retry_strategy="relax_budget" if retry_count == 0 else "broaden_search",
-            reason=f"Điểm phù hợp cao nhất ({top_score:.2f}) thấp hơn ngưỡng chuẩn ({MIN_ACCEPTABLE_MATCH_SCORE}) -> Thử lại với điều kiện mở rộng.",
-        )
-
     return ContextGroundingResult(
         is_grounded=True,
         context_score=round(top_score, 3),
         retry_strategy=None,
-        reason="Ngữ cảnh phòng trọ hợp lệ và đạt ngưỡng chất lượng.",
+        needs_user_consent=False,
+        reason="Ngữ cảnh phòng trọ hợp lệ và đạt chuẩn.",
     )
+
 
 
 def verify_answer_grounding(
