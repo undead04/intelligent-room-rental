@@ -16,7 +16,7 @@ def test_signal_score_and_validation():
     sig_unknown = Signal(value="unknown", evidence="some text")
     assert sig_unknown.value == "unknown"
     assert sig_unknown.evidence is None
-    assert sig_unknown.score() == 0.4
+    assert sig_unknown.score() == 0.0
 
     # Yes signal preserves evidence
     sig_yes = Signal(value="yes", evidence="WC riêng")
@@ -62,13 +62,13 @@ def test_amenity_overall_score_calculation():
 
 def test_safety_score_calculation():
     extraction = ListingExtraction()
-    # All unknown -> 0.4
-    assert extraction.safety_score() == 0.40
+    # All unknown -> 0.0
+    assert extraction.safety_score() == 0.0
 
-    # Camera (0.30) and Guard (0.30) yes -> 0.3*1.0 + 0.3*1.0 + 0.25*0.4 + 0.15*0.4 = 0.76
+    # Camera (0.30) and Guard (0.30) yes -> 0.3*1.0 + 0.3*1.0 + 0.25*0.0 + 0.15*0.0 = 0.60
     extraction.safety.camera = Signal(value="yes", evidence="camera")
     extraction.safety.guard = Signal(value="yes", evidence="bao ve")
-    assert extraction.safety_score() == 0.76
+    assert extraction.safety_score() == 0.60
 
 
 def test_verify_evidence_anti_hallucination():
@@ -114,10 +114,11 @@ def test_to_concept_scores():
     assert scores["private_wc"] == 1.0
     assert scores["pet_allowed"] == 1.0
     assert scores["camera"] == 1.0
-    assert scores["aircon"] == 0.4  # default unknown
+    assert scores["aircon"] == 0.0  # default unknown/unconfirmed is 0.0
     assert "amenity_overall" in scores
     assert "safety_overall" in scores
     assert scores["amenity_overall"] == 0.20
+    assert scores["safety_overall"] == 0.30
 
 
 def test_amenity_code_normalization():
@@ -133,3 +134,30 @@ def test_amenity_code_normalization():
     assert AmenityCode.normalize("the_tu") == "fingerprint_lock"
     assert AmenityCode.normalize("unknown_code_123") == "unknown_code_123"
     assert AmenityCode.normalize("") is None
+
+
+def test_verify_evidence_reconciles_extra_amenities():
+    """Kiểm tra cơ chế tự động thu hồi tiện ích chuẩn bị LLM nhầm lẫn đưa vào extra_amenities."""
+    source_text = (
+        "Không gian rộng, nhiều ánh sáng tự nhiên. Có bếp riêng, tủ lạnh, máy lạnh mới. "
+        "Nội thất gỗ mới, gác lửng tiện nghi. Khu vực an ninh, view Landmark 81."
+    )
+    # Giả sử LLM bỏ sót amenities và nhét hết vào extra_amenities
+    extraction = ListingExtraction(
+        extra_amenities=[
+            "Nhiều ánh sáng tự nhiên",
+            "Nội thất gỗ mới",
+            "máy lạnh mới",
+            "view Landmark 81",
+        ]
+    )
+
+    verified = extraction.verify_evidence(source_text)
+
+    # Đã được tự động thu hồi về đúng nhóm chuẩn
+    assert verified.amenities.aircon.value == "yes"
+    assert verified.amenities.furniture.value == "yes"
+    assert verified.amenities.window_balcony.value == "yes"
+
+    # Chỉ tiện ích thực sự đặc thù mới được giữ lại trong extra_amenities
+    assert verified.extra_amenities == ["view Landmark 81"]

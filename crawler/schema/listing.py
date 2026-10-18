@@ -3,7 +3,7 @@ import re
 from typing import Literal, Optional, List, Any, Union
 from pydantic import BaseModel, Field, model_validator
 
-STATE_SCORE = {"yes": 1.0, "no": 0.0, "unknown": 0.4}
+STATE_SCORE = {"yes": 1.0, "no": 0.0, "unknown": 0.0}
 
 Tri = Literal["yes", "no", "unknown"]
 
@@ -150,6 +150,26 @@ class Numeric(BaseModel):
         description="Giá nước (đồng/người hoặc /m³). Chỉ điền khi tin ghi rõ."
     )
 
+EXTRA_TO_AMENITY_MAP: list[tuple[str, list[str]]] = [
+    ("private_wc", ["wc riêng", "vệ sinh riêng", "toilet riêng", "toilet trong phòng", "nvs riêng", "khép kín"]),
+    ("aircon", ["máy lạnh", "may lanh", "điều hòa", "dieu hoa", "ml"]),
+    ("mezzanine", ["gác", "gác lửng", "gác xép", "gac"]),
+    ("kitchen", ["bếp", "kệ bếp", "chỗ nấu ăn", "nấu ăn"]),
+    ("fridge", ["tủ lạnh", "tu lanh"]),
+    ("washing_machine", ["máy giặt", "may giat"]),
+    ("window_balcony", ["ban công", "cửa sổ", "ánh sáng tự nhiên", "thoáng mát"]),
+    ("furniture", ["nội thất", "giường", "nệm", "tủ quần áo", "bàn ghế"]),
+    ("parking", ["chỗ để xe", "giữ xe", "hầm xe", "sân để xe", "nhà xe"]),
+    ("elevator", ["thang máy", "thang may"]),
+    ("free_hours", ["giờ giấc tự do", "giờ tự do", "ra vào tự do"]),
+    ("no_shared_landlord", ["không chung chủ", "k chung chủ", "ko chung chủ", "riêng tư"]),
+    ("pet_allowed", ["thú cưng", "nuôi pet", "nuôi mèo", "nuôi chó", "cho nuôi"]),
+    ("camera", ["camera", "cam an ninh"]),
+    ("guard", ["bảo vệ", "bao ve"]),
+    ("fingerprint_lock", ["vân tay", "thẻ từ", "khóa thông minh", "smart lock"]),
+    ("safe_area", ["khu an ninh", "an ninh tốt", "an ninh đảm bảo", "khu vực an ninh"]),
+]
+
 class ListingExtraction(BaseModel):
     amenities: Amenities = Field(default_factory=Amenities)
     rules: Rules = Field(default_factory=Rules)
@@ -169,11 +189,13 @@ class ListingExtraction(BaseModel):
     )
     extra_amenities: List[str] = Field(
         default_factory=list,
-        description="Các tiện nghi/đặc điểm khác không nằm trong enum chuẩn (ví dụ: view Landmark 81, cửa sổ trời, full nội thất gỗ)."
+        description="Các tiện nghi/đặc điểm khác không nằm trong enum chuẩn (ví dụ: view Landmark 81, cửa sổ trời, hồ bơi). TUYỆT ĐỐI không điền các tiện ích đã có trong enum chuẩn vào đây."
     )
     # ---- Kiểm tra LLM có bịa không ----
     def verify_evidence(self, source_text: str) -> "ListingExtraction":
-        """Signal nào có evidence KHÔNG nằm trong text gốc -> hạ về unknown. Trả bản mới."""
+        """Signal nào có evidence KHÔNG nằm trong text gốc -> hạ về unknown.
+        Đồng thời đối soát extra_amenities để thu hồi các tiện ích chuẩn mà LLM vô tình bỏ quên vào extra_amenities.
+        """
         src = _norm(source_text)
         data = self.model_copy(deep=True)
         for group in (data.amenities, data.rules, data.safety):
@@ -181,6 +203,27 @@ class ListingExtraction(BaseModel):
                 sig: Signal = getattr(group, name)
                 if sig.value != "unknown" and (not sig.evidence or _norm(sig.evidence) not in src):
                     setattr(group, name, Signal(value="unknown"))
+
+        # Thu hồi các tiện ích chuẩn bị LLM nhầm lẫn đưa vào extra_amenities
+        cleaned_extra: List[str] = []
+        for extra_item in (data.extra_amenities or []):
+            extra_norm = _norm(extra_item)
+            matched = False
+            for target_field, keywords in EXTRA_TO_AMENITY_MAP:
+                if any(kw in extra_norm for kw in keywords):
+                    for grp in (data.amenities, data.rules, data.safety):
+                        if hasattr(grp, target_field):
+                            current_sig: Signal = getattr(grp, target_field)
+                            if current_sig.value == "unknown" and extra_norm in src:
+                                setattr(grp, target_field, Signal(value="yes", evidence=extra_item))
+                            matched = True
+                            break
+                    if matched:
+                        break
+            if not matched:
+                cleaned_extra.append(extra_item)
+
+        data.extra_amenities = cleaned_extra
         return data
 
     def amenity_overall_score(self) -> float:

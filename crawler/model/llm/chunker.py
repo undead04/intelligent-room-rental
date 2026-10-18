@@ -9,7 +9,7 @@ except ImportError:
 def create_dynamic_chunks(
     articles: List[Dict[str, str]],
     max_tokens_per_chunk: int = 2500,  # Ngưỡng an toàn tối ưu cho Task Extractor
-    max_items_per_chunk: int = 15,     # Giới hạn tối đa 15 bài/chunk để output JSON không vượt quá trần 8192 tokens của Gemini
+    max_items_per_chunk: int = 5,      # Giới hạn tối ưu 5 bài/chunk để LLM trích xuất đầy đủ chi tiết mọi tiện ích, tránh attention degradation
     model_name: str = "gpt-4o",
 ) -> List[List[Dict[str, str]]]:
     """

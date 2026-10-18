@@ -96,7 +96,7 @@ def run_pipeline_chunking(
     system_prompt: str = SYSTEM_PROMPT,
     checkpoint_path: Optional[Path] = None,
     max_tokens_per_chunk: int = DEFAULT_MAX_TOKENS_PER_CHUNK,
-    max_items_per_chunk: int = 15,
+    max_items_per_chunk: int = 5,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Main pipeline trích xuất thông tin qua LLM có hỗ trợ Dynamic Chunking & Checkpoint phục hồi.

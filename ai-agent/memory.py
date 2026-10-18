@@ -77,28 +77,35 @@ class SessionMemoryManager:
                     pref.location_text = cand
                     break
 
-        # 3. Trích xuất tiện ích
-        amenity_map = {
-            "máy lạnh": "ac",
-            "điều hòa": "ac",
-            "gác lửng": "mezzanine",
-            "gác cao": "mezzanine",
-            "nuôi mèo": "pet_allowed",
-            "nuôi chó": "pet_allowed",
-            "thú cưng": "pet_allowed",
-            "pet": "pet_allowed",
-            "wifi": "wifi",
-            "máy giặt": "washing_machine",
-            "tủ lạnh": "fridge",
-            "ban công": "balcony",
-            "không chung chủ": "private_entrance",
-            "giờ giấc tự do": "free_time",
-            "khoá vân tay": "smart_lock",
-            "bảo vệ": "security",
+        # 3. Trích xuất tiện ích với đầy đủ từ đồng nghĩa và biến thể viết tắt
+        amenity_synonyms = {
+            "gác lửng": ["có gác", "gác lửng", "gác cao", "gác xép", "gác lưng", "gác lững", "gác đúc", "gác gỗ", "gác"],
+            "máy lạnh": ["máy lạnh", "điều hòa", "máy điều hòa", "may lanh", "dieu hoa", "ac", "aircon"],
+            "wc riêng": ["wc riêng", "vệ sinh riêng", "toilet riêng", "khép kín", "tolet riêng", "phòng tắm riêng"],
+            "tủ lạnh": ["tủ lạnh", "tu lanh", "fridge"],
+            "máy giặt": ["máy giặt", "may giat", "washing machine"],
+            "kệ bếp": ["bếp", "kệ bếp", "nấu ăn", "cho nấu ăn", "khu bếp", "kitchen"],
+            "ban công": ["ban công", "cửa sổ", "thoáng mát", "view thoáng", "balcony", "window"],
+            "nuôi thú cưng": ["nuôi mèo", "nuôi chó", "thú cưng", "pet", "cho nuôi pet", "nuôi pet"],
+            "wifi": ["wifi", "mạng internet", "internet"],
+            "không chung chủ": ["không chung chủ", "ko chung chủ", "lối đi riêng", "riêng tư"],
+            "giờ giấc tự do": ["giờ giấc tự do", "giờ tự do", "tự do", "24/24", "24/7"],
+            "khoá vân tay": ["khoá vân tay", "khóa vân tay", "vân tay", "thẻ từ", "khoá từ", "khóa từ", "smart lock"],
+            "bảo vệ": ["bảo vệ", "bảo vệ 24/7", "an ninh tốt", "an ninh"],
+            "chỗ để xe": ["chỗ để xe", "giữ xe", "nhà xe", "bãi xe", "để xe", "bãi đỗ xe", "parking"],
+            "thang máy": ["thang máy", "thang may", "elevator"],
+            "nội thất": ["nội thất", "full nội thất", "đầy đủ đồ", "full đồ", "nội thất cao cấp"],
         }
-        for kw, code in amenity_map.items():
-            if kw in clean and kw not in pref.amenities:
-                pref.amenities.append(kw)
+        for label, kw_list in amenity_synonyms.items():
+            matched = False
+            for kw in kw_list:
+                # Tìm kiếm nguyên từ hoặc chuỗi con rõ ràng
+                pattern = rf"(?:^|\b|\s){re.escape(kw)}(?:\b|\s|$)"
+                if re.search(pattern, clean) or kw in clean:
+                    matched = True
+                    break
+            if matched and label not in pref.amenities:
+                pref.amenities.append(label)
 
         # 4. Yêu cầu đặc biệt (nhu cầu mềm)
         special_keywords = ["yên tĩnh", "thoáng mát", "sạch sẽ", "an ninh", "đường không ngập", "nấu ăn"]
