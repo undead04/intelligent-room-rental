@@ -7,6 +7,7 @@ import PriceStatsOverview from "@/app/tra-cuu-gia-tro/_components/PriceStatsOver
 import PriceStatsFilterBar from "@/app/tra-cuu-gia-tro/_components/PriceStatsFilterBar";
 import PriceStatsTable from "@/app/tra-cuu-gia-tro/_components/PriceStatsTable";
 import { usePriceStats } from "@/app/tra-cuu-gia-tro/_hooks/usePriceStats";
+import BackendConnectionError from "@/components/BackendConnectionError";
 
 export default function PriceAnalyticsPage() {
   const {
@@ -26,9 +27,12 @@ export default function PriceAnalyticsPage() {
 
       <main className="max-w-[1500px] mx-auto px-4 lg:px-8 pt-6 pb-16 w-full flex-1">
         {apiError && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {apiError}
-          </div>
+          <BackendConnectionError
+            message={apiError}
+            variant="banner"
+            className="mb-4"
+            onRetry={() => window.location.reload()}
+          />
         )}
 
         {/* Breadcrumb */}

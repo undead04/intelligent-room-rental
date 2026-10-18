@@ -1,7 +1,7 @@
 import type { DecisionInsight, RoomItem } from "@/app/tim-kiem-ai/types";
 
 interface AgentInsightPanelProps {
-  room: RoomItem;
+  room?: RoomItem | null;
   insights?: DecisionInsight | null;
 }
 
@@ -22,7 +22,40 @@ export default function AgentInsightPanel({ room, insights }: AgentInsightPanelP
         </span>
       </div>
 
-      <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs bg-[#FAFBF9]">
+      {!room ? (
+        <div className="flex-1 p-5 overflow-y-auto bg-[#FAFBF9] flex flex-col items-center justify-center text-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#E6F4EE] border border-[#0F5F4A]/20 flex items-center justify-center text-[#0F5F4A] mb-3 shadow-xs">
+            <span className="material-symbols-outlined text-[24px]">psychology</span>
+          </div>
+          <h3 className="text-xs font-bold text-[#121E1A] mb-1">
+            Chưa chọn phòng trọ
+          </h3>
+          <p className="text-[11px] text-[#6F7974] max-w-[270px] leading-relaxed mb-4">
+            Khi AI gợi ý kết quả, chọn một phòng bất kỳ để xem phân tích chi tiết của hệ thống MCDM:
+          </p>
+          <div className="w-full max-w-[290px] space-y-2 text-left">
+            <div className="bg-white p-2.5 rounded-xl border border-[#E8E4DC] flex items-start gap-2 shadow-2xs">
+              <span className="text-[14px]">💡</span>
+              <div className="text-[10px]">
+                <strong className="text-[#0F5F4A]">Lý do đề xuất:</strong> Tiêu chí khớp nhu cầu và điểm tương thích.
+              </div>
+            </div>
+            <div className="bg-white p-2.5 rounded-xl border border-[#E8E4DC] flex items-start gap-2 shadow-2xs">
+              <span className="text-[14px]">🧭</span>
+              <div className="text-[10px]">
+                <strong className="text-[#0F5F4A]">Phân tích đánh đổi:</strong> So sánh ưu và nhược điểm so với các phòng khác.
+              </div>
+            </div>
+            <div className="bg-white p-2.5 rounded-xl border border-[#E8E4DC] flex items-start gap-2 shadow-2xs">
+              <span className="text-[14px]">📋</span>
+              <div className="text-[10px]">
+                <strong className="text-[#D97706]">Checklist kiểm tra:</strong> Những điểm cần hỏi và kiểm tra thực tế khi xem phòng.
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs bg-[#FAFBF9]">
         {/* Insight Box 1: Why this room is recommended */}
         <div className="bg-white rounded-xl p-3 border border-[#E8E4DC] shadow-2xs space-y-2">
           <div className="flex items-center gap-1.5 text-[#0F5F4A] font-bold">
@@ -134,6 +167,7 @@ export default function AgentInsightPanel({ room, insights }: AgentInsightPanelP
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

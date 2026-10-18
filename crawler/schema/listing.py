@@ -255,13 +255,11 @@ class ListingExtraction(BaseModel):
 
     # ---- Chuyển sang đầu vào của match_score ----
     def to_concept_scores(self) -> dict[str, float]:
-        """Xuất dict concept_scores cho cơ sở dữ liệu và thuật toán rerank."""
+        """Xuất dict concept_scores cho cơ sở dữ liệu và thuật toán rerank (chỉ chứa các concept nguyên tử)."""
         scores = {}
         for group in (self.amenities, self.rules, self.safety):
             for name in type(group).model_fields:
                 scores[name] = getattr(group, name).score()
-        scores["amenity_overall"] = self.amenity_overall_score()
-        scores["safety_overall"] = self.safety_score()
         return scores
 
 class SingleListingExtraction(BaseModel):

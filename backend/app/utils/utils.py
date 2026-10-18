@@ -201,42 +201,17 @@ def _location_part(listing: Any, user_pref: Any) -> float:
     return _location_fit(_haversine_km(lat, lng, pref_lat, pref_lng))
 
 
-def _calculate_price_fit(orm: Any, user_pref: Any) -> float:
-    """Tính điểm độ hợp lý và tương thích giá phòng:
-    1. Nếu có price_score từ mô hình ML (CatBoost Residual Pricing) -> kết hợp.
-    2. Đánh giá độ khớp với ngân sách của người dùng (min_price, max_price).
-       Nếu phòng nằm trong hoặc dưới ngân sách tối đa, điểm fit cao (0.80 - 1.0).
-       Nếu phòng vượt ngân sách, điểm fit bị giảm tương ứng.
+def _price_fit(orm: Any) -> float:
+    """Điểm hợp lý giá (price_score) do mô hình Machine Learning (Conformal ML / PriceEvaluator) thẩm định.
+    - price_score >= 0.75: Giá rất hời / rẻ so với giá trị thực tế của phòng.
+    - price_score ≈ 0.50: Giá hợp lý, ngang giá trị thị trường.
+    - price_score <= 0.25: Giá đắt hơn so với mặt bằng.
+    Nếu tin đăng chưa được mô hình ML chấm điểm (price_score IS NULL), mặc định là mức trung bình thị trường 0.50.
     """
-    price_vnd = _get(orm, "price_vnd")
     price_score = _get(orm, "price_score")
-    max_price = _get(user_pref, "max_price")
-    min_price = _get(user_pref, "min_price")
-
-    ml_score = _clamp01(float(price_score)) if price_score is not None else None
-
-    budget_fit = None
-    if price_vnd is not None and price_vnd > 0:
-        if max_price is not None and max_price > 0:
-            if price_vnd <= max_price:
-                # Tiết kiệm hơn ngân sách tối đa -> Điểm cao từ 0.80 đến 1.00
-                ratio = float(price_vnd) / float(max_price)
-                budget_fit = _clamp01(1.0 - (ratio * 0.20))
-            else:
-                # Vượt ngân sách tối đa
-                over_ratio = (float(price_vnd) - float(max_price)) / float(max_price)
-                budget_fit = _clamp01(max(0.0, 0.60 - over_ratio * 2.0))
-        elif min_price is not None and min_price > 0:
-            budget_fit = 0.85 if price_vnd >= min_price else 0.60
-
-    if ml_score is not None and budget_fit is not None:
-        return round(0.5 * ml_score + 0.5 * budget_fit, 3)
-    if budget_fit is not None:
-        return round(budget_fit, 3)
-    if ml_score is not None:
-        return round(ml_score, 3)
-
-    return 0.75
+    if price_score is not None:
+        return _clamp01(float(price_score))
+    return 0.50
 
 
 def _match_breakdown(
@@ -247,7 +222,7 @@ def _match_breakdown(
     """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
     orm = _get(listing, "listing", listing)
     scorers = {
-        "price": lambda: _calculate_price_fit(orm, user_pref),
+        "price": lambda: _price_fit(orm),
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
         "amenity": lambda: _amenity_fit(

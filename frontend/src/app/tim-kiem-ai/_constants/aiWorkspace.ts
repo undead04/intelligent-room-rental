@@ -2,7 +2,7 @@ import type { ChatMessage, RoomItem } from "@/app/tim-kiem-ai/types";
 
 export const USER_AVATAR = "/stitch/1_avatar_user_317ba717e1464aafbe096f8b685c3790.png";
 
-export const DEFAULT_ROOM_ID = "room-1";
+export const DEFAULT_ROOM_ID = "";
 export const DEFAULT_FILTER_ID = "all";
 
 export const SAMPLE_ROOMS: RoomItem[] = [
@@ -58,18 +58,15 @@ export const SAMPLE_ROOMS: RoomItem[] = [
 
 export const INITIAL_MESSAGES: ChatMessage[] = [
   {
-    id: "msg-1",
-    sender: "user",
-    text: "Tìm phòng dưới 5 triệu, gần UIT, có máy lạnh, có gác, ưu tiên phòng mới.",
-    avatar: USER_AVATAR,
-  },
-  {
-    id: "msg-2",
+    id: "msg-welcome",
     sender: "ai",
-    text: "Mình hiểu nhu cầu của bạn:",
-    mandatoryCriteria: ["Giá ≤ 5 triệu", "Gần UIT", "Có máy lạnh"],
-    priorityCriteria: ["Phòng mới", "Có gác"],
-    summaryCount: SAMPLE_ROOMS.length,
+    text: "Xin chào! Mình là Trợ lý AI hỗ trợ tìm phòng trọ thông minh tại Homigo.\n\nBạn đang tìm phòng ở khu vực nào, mức giá ngân sách ra sao và có tiêu chí cụ thể nào (máy lạnh, gác lửng, giờ tự do, gần trường học)? Hãy chia sẻ hoặc bấm vào các câu hỏi gợi ý bên dưới để mình bắt đầu tìm kiếm nhé!",
+    followUpQuestions: [
+      "Tìm phòng gần UIT dưới 5 triệu có máy lạnh",
+      "Phòng trọ gần ĐHQG có gác lửng, giờ tự do",
+      "Phòng mới sạch sẽ tại TP. Thủ Đức dưới 4 triệu",
+      "Tìm phòng trọ Quận 9 có thang máy và an ninh tốt",
+    ],
   },
 ];
 

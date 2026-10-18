@@ -2,7 +2,7 @@ import type { RoomItem } from "@/app/tim-kiem-ai/types";
 
 interface RoomMapPanelProps {
   rooms: RoomItem[];
-  selectedRoom: RoomItem;
+  selectedRoom?: RoomItem | null;
   onSelectRoom: (roomId: string) => void;
 }
 
@@ -60,44 +60,51 @@ export default function RoomMapPanel({
         </div>
 
         {/* Pins for Rooms */}
-        {rooms.map((room) => (
-          <div
-            key={room.id}
-            onClick={() => onSelectRoom(room.id)}
-            style={{ top: `${room.latPercent}%`, left: `${room.lngPercent}%` }}
-            className={`absolute z-20 flex flex-col items-center cursor-pointer transition-transform ${
-              selectedRoom.id === room.id ? "scale-125 z-30" : "hover:scale-110"
-            }`}
-            title={`${room.rankText}: ${room.price} - ${room.distance}`}
-          >
+        {rooms.map((room) => {
+          const isSelected = selectedRoom?.id === room.id;
+          return (
             <div
-              className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md border-2 border-white flex items-center gap-1 ${
-                selectedRoom.id === room.id
-                  ? "bg-[#FF6B4A] text-white ring-2 ring-[#FF6B4A]/50"
-                  : "bg-[#0F5F4A] text-white"
+              key={room.id}
+              onClick={() => onSelectRoom(room.id)}
+              style={{ top: `${room.latPercent}%`, left: `${room.lngPercent}%` }}
+              className={`absolute z-20 flex flex-col items-center cursor-pointer transition-transform ${
+                isSelected ? "scale-125 z-30" : "hover:scale-110"
               }`}
+              title={`${room.rankText}: ${room.price} - ${room.distance}`}
             >
-              <span>#{room.rank}</span>
-              <span>
-                {room.priceNum >= 1_000_000
-                  ? `${(room.priceNum / 1_000_000).toFixed(1).replace(".0", "")}tr`
-                  : room.priceNum > 0
-                  ? `${room.priceNum}tr`
-                  : room.price}
-              </span>
+              <div
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md border-2 border-white flex items-center gap-1 ${
+                  isSelected
+                    ? "bg-[#FF6B4A] text-white ring-2 ring-[#FF6B4A]/50"
+                    : "bg-[#0F5F4A] text-white"
+                }`}
+              >
+                <span>#{room.rank}</span>
+                <span>
+                  {room.priceNum >= 1_000_000
+                    ? `${(room.priceNum / 1_000_000).toFixed(1).replace(".0", "")}tr`
+                    : room.priceNum > 0
+                    ? `${room.priceNum}tr`
+                    : room.price}
+                </span>
+              </div>
+              <div
+                className={`w-2 h-2 rotate-45 -mt-1 ${
+                  isSelected ? "bg-[#FF6B4A]" : "bg-[#0F5F4A]"
+                }`}
+              ></div>
             </div>
-            <div
-              className={`w-2 h-2 rotate-45 -mt-1 ${
-                selectedRoom.id === room.id ? "bg-[#FF6B4A]" : "bg-[#0F5F4A]"
-              }`}
-            ></div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Distance pill at bottom of map */}
         <div className="absolute bottom-2.5 bg-white/95 backdrop-blur-xs border border-[#E8E4DC] text-[#121E1A] text-[10px] font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-1.5 z-20">
           <span className="text-[#0F5F4A]">📍</span>
-          <span>Khoảng cách tới UIT: ~ {selectedRoom.distance}</span>
+          <span>
+            {selectedRoom
+              ? `Khoảng cách tới UIT: ~ ${selectedRoom.distance}`
+              : "Đang định vị mốc trung tâm trường UIT"}
+          </span>
         </div>
 
         {/* Map UI Zoom controls on right */}

@@ -1,15 +1,19 @@
 import json
+import os
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from google import genai
 from google.genai import types
 
-try:
-    from crawler.model.llm.prompt import build_ai_contents
-    from crawler.schema.listing import ChunkExtractionWrapper
-except ImportError:
-    from prompt import build_ai_contents
-    from schema.listing import ChunkExtractionWrapper
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from crawler.model.llm.prompt import build_ai_contents
+from crawler.schema.listing import ChunkExtractionWrapper
+
 
 
 DEFAULT_MAX_RETRIES = 2

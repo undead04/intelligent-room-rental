@@ -15,6 +15,7 @@ import type { FilterValues } from "@/types";
 import { buildSearchUrl, countActiveFilters, parseSearchParams } from "@/lib/utils/filter";
 import { SORT_OPTIONS } from "@/lib/constants/search";
 import { Pagination } from "@/components/pagination/Pagination";
+import BackendConnectionError from "@/components/BackendConnectionError";
 
 function SearchPageContent() {
   const router = useRouter();
@@ -82,14 +83,29 @@ function SearchPageContent() {
               tại Hồ Chí Minh
             </span>
           </div>
-          {apiError && <p className="text-xs text-[#9A3412]">Lỗi tải dữ liệu: {apiError}</p>}
         </div>
+
+        {apiError && (
+          <BackendConnectionError
+            message={apiError}
+            variant="banner"
+            className="mb-6"
+            onRetry={() => navigate(searchText, filters, currentPage)}
+          />
+        )}
 
         {/* Listings */}
         {!isLoading && results.length === 0 ? (
-          <div className="py-16 text-center text-sm text-gray-500 mb-12">
-            Không tìm thấy phòng phù hợp. Hãy thử bỏ bớt bộ lọc hoặc đổi từ khóa.
-          </div>
+          apiError ? (
+            <BackendConnectionError
+              message={apiError}
+              onRetry={() => navigate(searchText, filters, currentPage)}
+            />
+          ) : (
+            <div className="py-16 text-center text-sm text-gray-500 mb-12">
+              Không tìm thấy phòng phù hợp. Hãy thử bỏ bớt bộ lọc hoặc đổi từ khóa.
+            </div>
+          )
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {isLoading

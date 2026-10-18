@@ -1,31 +1,27 @@
+import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-try:
-    from crawler.config.settings import GEMINI_API_KEY
-    from crawler.model.llm.checkpoint import load_checkpoint, save_checkpoint
-    from crawler.model.llm.chunker import create_dynamic_chunks
-    from crawler.model.llm.client import (
-        DEFAULT_MAX_RETRIES,
-        DEFAULT_RPM_DELAY,
-        GeminiRoundRobin,
-        call_gemini_chunk,
-    )
-    from crawler.model.llm.processor import process_chunk_result, process_one_chunk
-    from crawler.model.llm.prompt import SYSTEM_PROMPT
-except ImportError:
-    from config.settings import GEMINI_API_KEY
-    from checkpoint import load_checkpoint, save_checkpoint
-    from chunker import create_dynamic_chunks
-    from client import (
-        DEFAULT_MAX_RETRIES,
-        DEFAULT_RPM_DELAY,
-        GeminiRoundRobin,
-        call_gemini_chunk,
-    )
-    from processor import process_chunk_result, process_one_chunk
-    from prompt import SYSTEM_PROMPT
+
+# Tự động thêm thư mục gốc dự án vào sys.path để luôn import được crawler.*
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from crawler.config.settings import GEMINI_API_KEY
+from crawler.model.llm.checkpoint import load_checkpoint, save_checkpoint
+from crawler.model.llm.chunker import create_dynamic_chunks
+from crawler.model.llm.client import (
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_RPM_DELAY,
+    GeminiRoundRobin,
+    call_gemini_chunk,
+)
+from crawler.model.llm.processor import process_chunk_result, process_one_chunk
+from crawler.model.llm.prompt import SYSTEM_PROMPT
+
 
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
@@ -257,6 +253,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS_PER_CHUNK, help="Ngưỡng token tối đa mỗi chunk")
     parser.add_argument("--rpm-delay", type=float, default=DEFAULT_RPM_DELAY, help="Thời gian nghỉ giữa các request (giây)")
     parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Tên model Gemini sử dụng")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Đường dẫn file checkpoint (mặc định: crawler/data/processed/checkpoint_reports.json)")
     args = parser.parse_args()
 
     raw_keys = GEMINI_API_KEY
@@ -264,6 +261,7 @@ if __name__ == "__main__":
     if not keys:
         raise RuntimeError("Vui lòng cấu hình GEMINI_API_KEYS hoặc GEMINI_API_KEY trong file .env trước khi chạy LLM pipeline.")
 
+    ckpt_p = Path(args.checkpoint) if args.checkpoint else Path(PROJECT_ROOT) / "crawler" / "data" / "processed" / "checkpoint_reports.json"
     records = extract_raw_listings(limit=args.limit)
     run_pipeline_chunking(
         datas=records,
@@ -271,5 +269,7 @@ if __name__ == "__main__":
         model_name=args.model,
         rpm_delay=args.rpm_delay,
         max_tokens_per_chunk=args.max_tokens,
+        checkpoint_path=ckpt_p,
     )
+
 

@@ -1,9 +1,13 @@
+import os
+import sys
 from typing import Dict, List
 
-try:
-    from crawler.utils.count_token import get_token_count
-except ImportError:
-    from utils.count_token import get_token_count
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from crawler.utils.count_token import get_token_count
+
 
 
 def create_dynamic_chunks(

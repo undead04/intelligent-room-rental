@@ -9,6 +9,7 @@ import RoomMapPanel from "@/app/tim-kiem-ai/_components/RoomMapPanel";
 import RoomResultsPanel from "@/app/tim-kiem-ai/_components/RoomResultsPanel";
 import { DEFAULT_FILTER_ID } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 import { useAiChat } from "@/app/tim-kiem-ai/_hooks/useAiChat";
+import BackendConnectionError from "@/components/BackendConnectionError";
 
 export default function AIChatWorkspacePage() {
   const [activeFilter, setActiveFilter] = useState<string>(DEFAULT_FILTER_ID);
@@ -23,9 +24,10 @@ export default function AIChatWorkspacePage() {
     insights,
     selectedRoomId,
     setSelectedRoomId,
+    connectionError,
   } = useAiChat();
 
-  const selectedRoom = rooms.find((room) => room.id === selectedRoomId) || rooms[0];
+  const selectedRoom = rooms.find((room) => room.id === selectedRoomId) || rooms[0] || null;
 
   return (
     <SiteLayout className="bg-[#F8FAF8] text-[#121E1A] font-sans antialiased">
@@ -34,6 +36,16 @@ export default function AIChatWorkspacePage() {
 
       {/* MAIN WORKSPACE LAYOUT (Strict 3-Column / 4-Panel Layout matching Stitch Design) */}
       <main className="flex-1 px-4 lg:px-8 py-3 max-w-[1500px] w-full mx-auto">
+        {connectionError && (
+          <BackendConnectionError
+            message={connectionError}
+            variant="banner"
+            serviceName="AI Agent Microservice"
+            port="8001"
+            className="mb-3"
+            onRetry={() => sendMessage(undefined, inputValue || "Tìm phòng gần UIT dưới 5 triệu có máy lạnh")}
+          />
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-auto lg:h-[720px]">
           {/* COLUMN 1: CHAT / NHẬP YÊU CẦU (Col span 4) */}
           <AiChatPanel

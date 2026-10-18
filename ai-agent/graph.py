@@ -43,7 +43,23 @@ from tools import (
     search_rooms,
 )
 
+from config import load_settings
+from agent import build_model
+
 logger = logging.getLogger(__name__)
+
+_llm_model = None
+
+def _get_llm():
+    global _llm_model
+    if _llm_model is None:
+        try:
+            settings, _ = load_settings()
+            if settings:
+                _llm_model = build_model(settings)
+        except Exception as e:
+            logger.warning(f"Không thể khởi tạo LLM cho extractor: {e}")
+    return _llm_model
 
 
 class HousingAgentState(TypedDict, total=False):
@@ -204,12 +220,16 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
     session_id = state.get("session_id", "default_session")
     session = memory_manager.get_or_create_session(session_id)
 
-    # Cập nhật tiêu chí vào session
-    updated_pref = memory_manager.update_preferences_from_text(session, user_text)
+    # Cập nhật tiêu chí vào session qua LLM-assisted extraction
+    model = _get_llm()
+    updated_pref = memory_manager.update_preferences_from_text(session, user_text, model=model)
 
     # Phát hiện hệ số nhân theo ý định (Intent Multipliers)
     accumulated_m = state.get("multipliers")
     multipliers, explanations = detect_intent_multipliers(user_text, accumulated_multipliers=accumulated_m)
+    if updated_pref.amenities and multipliers.get("amenity", 1.0) < 1.5:
+        multipliers["amenity"] = 1.8
+        explanations.append("ưu tiên tiện nghi theo yêu cầu người dùng (boost 1.8x)")
 
     # Tính toán vector trọng số chuẩn hóa
     computed_weights = compute_normalized_weights(updated_pref, multipliers)
