@@ -231,6 +231,21 @@ class DataLoader:
                 except Exception as e:
                     print(f"[LOAD] Không thể đọc file embedding sẵn có ({e}), bỏ qua fallback.", flush=True)
 
+        def _sync_sequence(table_name: str, id_col: str = "id"):
+            try:
+                session.execute(
+                    text(
+                        f"SELECT setval(pg_get_serial_sequence('{table_name}', '{id_col}'), "
+                        f"COALESCE((SELECT MAX({id_col}) FROM {table_name}), 0) + 1, false);"
+                    )
+                )
+            except Exception:
+                pass
+
+        # Đồng bộ sequence lúc bắt đầu
+        for tbl in ("cities", "districts", "wards", "room_types"):
+            _sync_sequence(tbl)
+
         user_cache: dict[str, User] = {}
         city_cache: dict[str, City] = {}
         district_cache: dict[tuple[int, str], District] = {}
@@ -252,18 +267,20 @@ class DataLoader:
                 reg_id = r.get("region_id")
                 dist_id = r.get("district_id")
                 w_id = r.get("ward_id")
-                c_name = r.get("city")
-                d_name = r.get("district")
-                w_name = r.get("ward")
+                c_name = str(r.get("city")).strip() if r.get("city") else None
+                d_name = str(r.get("district")).strip() if r.get("district") else None
+                w_name = str(r.get("ward")).strip() if r.get("ward") else None
 
                 city_obj = None
                 if c_name:
                     if c_name not in city_cache:
                         city_obj = session.query(City).filter(City.name == c_name).first()
                         if city_obj is None:
-                            city_obj = City(name=c_name, id=reg_id)
+                            safe_id = reg_id if (isinstance(reg_id, int) and reg_id > 0 and session.get(City, reg_id) is None) else None
+                            city_obj = City(id=safe_id, name=c_name) if safe_id else City(name=c_name)
                             session.add(city_obj)
                             session.flush()
+                            _sync_sequence("cities")
                         city_cache[c_name] = city_obj
                     else:
                         city_obj = city_cache[c_name]
@@ -272,11 +289,17 @@ class DataLoader:
                 if d_name and city_obj:
                     key = (city_obj.id, d_name)
                     if key not in district_cache:
-                        dist_obj = session.query(District).filter(District.name == d_name, District.city_id == city_obj.id).first()
+                        dist_obj = session.query(District).filter(
+                            District.name == d_name,
+                            District.city_id == city_obj.id,
+                        ).first()
                         if dist_obj is None:
-                            dist_obj = District(name=d_name, city_id=city_obj.id, id=dist_id)
+                            # Tránh conflict PK nếu dist_id của nguồn cào bị trùng hoặc đã gán cho quận khác
+                            safe_id = dist_id if (isinstance(dist_id, int) and dist_id > 0 and session.get(District, dist_id) is None) else None
+                            dist_obj = District(id=safe_id, city_id=city_obj.id, name=d_name) if safe_id else District(city_id=city_obj.id, name=d_name)
                             session.add(dist_obj)
                             session.flush()
+                            _sync_sequence("districts")
                         district_cache[key] = dist_obj
                     else:
                         dist_obj = district_cache[key]
@@ -285,28 +308,40 @@ class DataLoader:
                 if w_name and dist_obj:
                     key = (dist_obj.id, w_name)
                     if key not in ward_cache:
-                        ward_obj = session.query(Ward).filter(Ward.name == w_name, Ward.district_id == dist_obj.id).first()
+                        ward_obj = session.query(Ward).filter(
+                            Ward.name == w_name,
+                            Ward.district_id == dist_obj.id,
+                        ).first()
                         if ward_obj is None:
-                            ward_obj = Ward(name=w_name, district_id=dist_obj.id, id=w_id)
+                            safe_id = w_id if (isinstance(w_id, int) and w_id > 0 and session.get(Ward, w_id) is None) else None
+                            ward_obj = Ward(id=safe_id, district_id=dist_obj.id, name=w_name) if safe_id else Ward(district_id=dist_obj.id, name=w_name)
                             session.add(ward_obj)
                             session.flush()
+                            _sync_sequence("wards")
                         ward_cache[key] = ward_obj
                     else:
                         ward_obj = ward_cache[key]
 
                 # 2. Room Type Upsert
-                rt_name = r.get("room_type")
+                rt_name = str(r.get("room_type") or "Phòng trọ").strip()
                 cat_id = r.get("category_id") or r.get("room_type_id")
                 rt_id = None
-                if cat_id:
-                    if cat_id not in room_type_cache:
-                        rt_obj = session.query(RoomType).filter(RoomType.id == cat_id).first()
+                if cat_id is not None or rt_name:
+                    cache_key = cat_id if isinstance(cat_id, int) else rt_name
+                    if cache_key not in room_type_cache:
+                        rt_obj = session.get(RoomType, cat_id) if isinstance(cat_id, int) else None
                         if rt_obj is None:
-                            rt_obj = RoomType(id=cat_id, name=str(rt_name or "Phòng trọ"))
+                            rt_obj = session.query(RoomType).filter(RoomType.name == rt_name).first()
+                        if rt_obj is None:
+                            safe_id = cat_id if (isinstance(cat_id, int) and cat_id > 0 and session.get(RoomType, cat_id) is None) else None
+                            rt_obj = RoomType(id=safe_id, name=rt_name) if safe_id else RoomType(name=rt_name)
                             session.add(rt_obj)
                             session.flush()
-                        room_type_cache[cat_id] = rt_obj
-                    rt_id = cat_id
+                            _sync_sequence("room_types")
+                        room_type_cache[cache_key] = rt_obj
+                    else:
+                        rt_obj = room_type_cache[cache_key]
+                    rt_id = rt_obj.id if rt_obj else None
 
                 # 3. User (Poster) Upsert
                 poster_id = r.get("poster_id")
