@@ -11,8 +11,8 @@ export default function AgentInsightPanel({ room, insights }: AgentInsightPanelP
   const hasChecklist = insights?.verification_checklist && insights.verification_checklist.length > 0;
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col flex-1 overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-[#E8E4DC] flex items-center justify-between bg-white shrink-0">
+    <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="px-4 py-2 border-b border-[#E8E4DC] flex items-center justify-between bg-white shrink-0">
         <h2 className="text-sm font-bold text-[#0F5F4A] flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-[#0F5F4A]"></span>
           <span>4. Phân tích & giải thích của Agent</span>
