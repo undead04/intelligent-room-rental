@@ -9,7 +9,7 @@ export default function ListingCard({ item }: ListingCardProps) {
   return (
     <Link
       href={`/phong-tro/${item.id}`}
-      className="bg-white rounded-2xl p-3 border border-[#E8E4DC] shadow-xs hover:shadow-md hover:-translate-y-1 transition-all group flex flex-col"
+      className="bg-white rounded-2xl p-3 border border-[#E8E4DC] shadow-xs hover:shadow-md hover:-translate-y-1 transition-all group flex flex-col min-w-0"
     >
       <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 mb-3">
         <img
@@ -24,7 +24,7 @@ export default function ListingCard({ item }: ListingCardProps) {
           type="button"
           onClick={(event) => event.preventDefault()}
           aria-label={`Lưu ${item.title}`}
-          className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-white/90 text-gray-600 hover:text-[#FF6B4A] flex items-center justify-center shadow-xs"
+          className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-white/90 text-gray-600 hover:text-[#FF6B4A] flex items-center justify-center shadow-xs cursor-pointer"
         >
           <span className="material-symbols-outlined text-[18px]">bookmark</span>
         </button>
@@ -33,7 +33,7 @@ export default function ListingCard({ item }: ListingCardProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col justify-between">
+      <div className="flex-1 flex flex-col justify-between min-w-0">
         <div>
           <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
             {item.area && <span className="font-semibold text-[#0F5F4A]">{item.area}</span>}

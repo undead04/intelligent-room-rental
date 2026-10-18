@@ -71,9 +71,9 @@ export default function Navbar() {
           <Link
             href="/tim-kiem"
             className="relative flex items-center justify-center w-10 h-10 rounded-full border border-[#E8E4DC] bg-white text-[#3F4944] hover:text-[#0F5F4A] hover:border-[#0F5F4A] hover:bg-[#E6F4EE]/40 transition-all shadow-sm cursor-pointer"
-            title="Khám phá phòng trọ"
+            title="Tin đăng đã lưu"
           >
-            <span className="material-symbols-outlined text-[20px]">search</span>
+            <span className="material-symbols-outlined text-[20px]">bookmark</span>
           </Link>
 
           <div className="hidden sm:flex items-center gap-2.5 pl-1.5 pr-3 py-1.5 rounded-full border border-[#E8E4DC] bg-white hover:bg-[#EEF4F1] hover:border-[#0F5F4A]/40 transition-all cursor-pointer shadow-sm">
@@ -81,6 +81,7 @@ export default function Navbar() {
               <span className="material-symbols-outlined text-[20px]">account_circle</span>
             </div>
             <span className="text-xs font-semibold text-[#121E1A]">Tài khoản</span>
+            <span className="material-symbols-outlined text-[18px] text-gray-500">keyboard_arrow_down</span>
           </div>
 
           {/* Mobile Menu Hamburger Button */}
