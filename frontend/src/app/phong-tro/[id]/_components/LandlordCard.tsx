@@ -76,13 +76,24 @@ export default function LandlordCard({ listing, defaultImage, showPhone, onToggl
         </div>
 
         <div className="space-y-3 py-4">
-          <button
-            onClick={onTogglePhone}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-[#0F5F4A] py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#004635]"
-          >
-            <span className="material-symbols-outlined text-[20px]">call</span>
-            <span>{showPhone ? "0784 498 868" : "Gọi điện: 0784 498 ***"}</span>
-          </button>
+          {showPhone ? (
+            <a
+              href="tel:0784498868"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#0F5F4A] py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#004635] cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px]">call</span>
+              <span>Gọi ngay: 0784 498 868</span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={onTogglePhone}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#0F5F4A] py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#004635] cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px]">call</span>
+              <span>Hiện số: 0784 498 ***</span>
+            </button>
+          )}
           {listing?.url && (
             <a
               href={listing.url}

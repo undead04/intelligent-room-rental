@@ -469,5 +469,18 @@ def test_langgraph_corrective_rag_retry_loop(monkeypatch):
     assert resp.grounding_report["context_retries"] == 1
 
 
+def test_llm_and_catalog_amenity_extraction():
+    """Kiểm tra trích xuất tiện ích và tiêu chí tự động thông qua Amenity Catalog (hỗ trợ tiếng lóng, gác lưng, ml, nuôi boss)."""
+    from extractor import extract_preferences_with_llm
 
+    # Test 1: Gác lưng (tiếng lóng / gõ nhanh của gác lửng)
+    p1 = extract_preferences_with_llm("TÌM GIÚP TUI PHÒNG TRỌ CÓ GÁC LƯNG Ở THỦ ĐỨC TẦM 5 TRIỆU ĐỔ XUỐNG ĐI")
+    assert "mezzanine" in p1.amenities or "gác lửng" in p1.amenities
+    assert p1.max_price == 5000000
+    assert "thủ đức" in p1.location_text.lower()
 
+    # Test 2: Các từ viết tắt và tiếng lóng phong phú
+    p2 = extract_preferences_with_llm("Phòng trọ có ml, cho nuôi boss mèo và nấu ăn")
+    assert "aircon" in p2.amenities or "máy lạnh" in p2.amenities
+    assert "pet_allowed" in p2.amenities or "nuôi thú cưng" in p2.amenities
+    assert "kitchen" in p2.amenities or "kệ bếp" in p2.amenities

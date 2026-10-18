@@ -59,7 +59,7 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
             </h3>
 
             <div className="text-sm font-extrabold text-[#FF6B4A] mt-0.5">
-              {room.price}
+              {room.price.replace(/\s*\/\s*(tháng|thang|month)\s*$/i, "")}
               <span className="text-[10px] font-normal text-[#6F7974]">/tháng</span>
             </div>
 

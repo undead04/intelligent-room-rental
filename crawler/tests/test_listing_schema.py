@@ -115,10 +115,10 @@ def test_to_concept_scores():
     assert scores["pet_allowed"] == 1.0
     assert scores["camera"] == 1.0
     assert scores["aircon"] == 0.0  # default unknown/unconfirmed is 0.0
-    assert "amenity_overall" in scores
-    assert "safety_overall" in scores
-    assert scores["amenity_overall"] == 0.20
-    assert scores["safety_overall"] == 0.30
+    assert "amenity_overall" not in scores
+    assert "safety_overall" not in scores
+    assert extraction.amenity_overall_score() == 0.20
+    assert extraction.safety_score() == 0.30
 
 
 def test_amenity_code_normalization():

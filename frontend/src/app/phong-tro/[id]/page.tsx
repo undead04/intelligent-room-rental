@@ -23,6 +23,7 @@ import DetailPageSkeleton from "@/components/skeleton/DetailPageSkeleton";
 import { DEFAULT_PROPERTY_IMAGE } from "@/lib/constants/property";
 import { formatPrice, resolveListingImages } from "@/lib/utils/listing";
 import { toAmenities, toFurnishingLabel } from "@/lib/utils/amenities";
+import BackendConnectionError from "@/components/BackendConnectionError";
 
 export default function PropertyDetailPage() {
   const params = useParams<{ id: string }>();
@@ -52,9 +53,12 @@ export default function PropertyDetailPage() {
       {/* Main Content Layout */}
       <main className="max-w-[1380px] mx-auto px-4 lg:px-8 py-6 w-full flex-1">
         {apiError && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Không thể tải dữ liệu mới nhất của tin đăng. Đang hiển thị thông tin mẫu.
-          </div>
+          <BackendConnectionError
+            message={apiError}
+            variant="banner"
+            className="mb-4"
+            onRetry={() => window.location.reload()}
+          />
         )}
         <button
           type="button"

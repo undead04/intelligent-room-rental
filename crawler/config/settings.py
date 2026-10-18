@@ -1,7 +1,18 @@
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
+# Đảm bảo đọc file .env từ thư mục crawler/ và thư mục gốc của dự án
+_current_file = Path(__file__).resolve()
+_crawler_env = _current_file.parents[1] / ".env"
+_root_env = _current_file.parents[2] / ".env"
+
+if _crawler_env.exists():
+    load_dotenv(_crawler_env)
+if _root_env.exists():
+    load_dotenv(_root_env)
 load_dotenv()
+
 # Cấu hình crawler
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",

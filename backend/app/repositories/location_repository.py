@@ -35,5 +35,5 @@ class LocationRepository:
     def room_types(self, search: Optional[str]) -> list[RoomType]:
         query = self.db.query(RoomType)
         if search:
-            query = query.filter(RoomType.room_type.ilike(f"%{search}%"))
-        return query.order_by(RoomType.room_type).all()
+            query = query.filter(RoomType.name.ilike(f"%{search}%"))
+        return query.order_by(RoomType.name).all()

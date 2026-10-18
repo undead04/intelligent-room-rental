@@ -10,6 +10,7 @@ from typing import Any, Optional
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from schemas import RoomItem, UserPreferenceState
+from extractor import extract_preferences_with_llm
 
 MAX_HISTORY_TURNS = 8  # Tối đa 8 messages gần nhất, phần cũ hơn được nén vào Preference State
 
@@ -37,83 +38,17 @@ class SessionMemoryManager:
         session.last_active = time.time()
         return session
 
-    def update_preferences_from_text(self, session: SessionData, text: str) -> UserPreferenceState:
-        """Cập nhật các tiêu chí mới từ câu nói của người dùng vào Preference State hiện tại."""
-        clean = text.lower()
-        pref = session.preferences
+    def update_preferences_from_text(
+        self, session: SessionData, text: str, model: Any = None
+    ) -> UserPreferenceState:
+        """Cập nhật các tiêu chí mới từ câu nói của người dùng vào Preference State hiện tại thông qua LLM & Amenity Catalog."""
+        session.preferences = extract_preferences_with_llm(
+            user_text=text,
+            model=model,
+            current_pref=session.preferences,
+        )
+        return session.preferences
 
-        # 1. Trích xuất ngân sách tối đa
-        # "dưới 3 triệu", "tối đa 3.5tr", "tầm 3tr", "khoảng 2.5 triệu"
-        max_price_match = re.search(r"(?:dưới|tối đa|khoảng|tầm|tới|dưới mức)\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)", clean)
-        if max_price_match:
-            val = float(max_price_match.group(1).replace(",", ".")) * 1_000_000
-            pref.max_price = val
-        elif "2tr" in clean or "3tr" in clean or "4tr" in clean:
-            quick_m = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)", clean)
-            if quick_m:
-                pref.max_price = float(quick_m.group(1).replace(",", ".")) * 1_000_000
-
-        # Trích xuất ngân sách tối thiểu (nếu có: "từ 2 đến 3 triệu")
-        range_match = re.search(r"từ\s*(\d+(?:[.,]\d+)?)\s*(?:đến|tới|-)\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)", clean)
-        if range_match:
-            pref.min_price = float(range_match.group(1).replace(",", ".")) * 1_000_000
-            pref.max_price = float(range_match.group(2).replace(",", ".")) * 1_000_000
-
-        # 2. Trích xuất vị trí nếu người dùng đề cập rõ
-        # Kiểm tra chuyển khu vực: "đổi sang quận 9", "chuyển qua bình thạnh", "tìm ở linh xuân"
-        loc_patterns = [
-            r"(?:gần|ở|khu vực|tại|phường|quận|đường|quanh)\s+([a-zA-Z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+)",
-        ]
-        for lp in loc_patterns:
-            lm = re.search(lp, text, re.IGNORECASE)
-            if lm:
-                cand = lm.group(1).strip()
-                # Cắt bớt nếu gặp từ khóa giá hoặc tiện ích
-                cand = re.split(r"(?:giá|dưới|có|khoảng|tầm|\d+tr)", cand, flags=re.IGNORECASE)[0].strip()
-                if len(cand) >= 3 and not any(cand.lower().startswith(w) for w in ["máy lạnh", "gác", "nuôi", "tiền"]):
-                    if pref.location_text and pref.location_text.lower() != cand.lower():
-                        pref.lat = None
-                        pref.lng = None
-                    pref.location_text = cand
-                    break
-
-        # 3. Trích xuất tiện ích với đầy đủ từ đồng nghĩa và biến thể viết tắt
-        amenity_synonyms = {
-            "gác lửng": ["có gác", "gác lửng", "gác cao", "gác xép", "gác lưng", "gác lững", "gác đúc", "gác gỗ", "gác"],
-            "máy lạnh": ["máy lạnh", "điều hòa", "máy điều hòa", "may lanh", "dieu hoa", "ac", "aircon"],
-            "wc riêng": ["wc riêng", "vệ sinh riêng", "toilet riêng", "khép kín", "tolet riêng", "phòng tắm riêng"],
-            "tủ lạnh": ["tủ lạnh", "tu lanh", "fridge"],
-            "máy giặt": ["máy giặt", "may giat", "washing machine"],
-            "kệ bếp": ["bếp", "kệ bếp", "nấu ăn", "cho nấu ăn", "khu bếp", "kitchen"],
-            "ban công": ["ban công", "cửa sổ", "thoáng mát", "view thoáng", "balcony", "window"],
-            "nuôi thú cưng": ["nuôi mèo", "nuôi chó", "thú cưng", "pet", "cho nuôi pet", "nuôi pet"],
-            "wifi": ["wifi", "mạng internet", "internet"],
-            "không chung chủ": ["không chung chủ", "ko chung chủ", "lối đi riêng", "riêng tư"],
-            "giờ giấc tự do": ["giờ giấc tự do", "giờ tự do", "tự do", "24/24", "24/7"],
-            "khoá vân tay": ["khoá vân tay", "khóa vân tay", "vân tay", "thẻ từ", "khoá từ", "khóa từ", "smart lock"],
-            "bảo vệ": ["bảo vệ", "bảo vệ 24/7", "an ninh tốt", "an ninh"],
-            "chỗ để xe": ["chỗ để xe", "giữ xe", "nhà xe", "bãi xe", "để xe", "bãi đỗ xe", "parking"],
-            "thang máy": ["thang máy", "thang may", "elevator"],
-            "nội thất": ["nội thất", "full nội thất", "đầy đủ đồ", "full đồ", "nội thất cao cấp"],
-        }
-        for label, kw_list in amenity_synonyms.items():
-            matched = False
-            for kw in kw_list:
-                # Tìm kiếm nguyên từ hoặc chuỗi con rõ ràng
-                pattern = rf"(?:^|\b|\s){re.escape(kw)}(?:\b|\s|$)"
-                if re.search(pattern, clean) or kw in clean:
-                    matched = True
-                    break
-            if matched and label not in pref.amenities:
-                pref.amenities.append(label)
-
-        # 4. Yêu cầu đặc biệt (nhu cầu mềm)
-        special_keywords = ["yên tĩnh", "thoáng mát", "sạch sẽ", "an ninh", "đường không ngập", "nấu ăn"]
-        for sk in special_keywords:
-            if sk in clean and sk not in pref.special_requirements:
-                pref.special_requirements.append(sk)
-
-        return pref
 
     def build_effective_messages(self, session: SessionData, new_user_text: str) -> list[BaseMessage]:
         """Tạo danh sách messages gửi cho model:

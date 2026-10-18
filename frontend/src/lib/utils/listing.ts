@@ -25,6 +25,13 @@ function formatRelativeDate(value: string | null | undefined) {
   return `${Math.floor(diffInDays / 365)} năm trước`;
 }
 
+export function cleanDisplayPrice(rawPrice: string | null | undefined, priceVnd: number | null | undefined): string {
+  if (rawPrice && rawPrice.trim()) {
+    return rawPrice.replace(/\s*\/\s*(tháng|thang|month)\s*$/i, "").trim();
+  }
+  return formatPrice(priceVnd);
+}
+
 // Mapper duy nhất từ ListingDto sang view-model của ListingCard
 export function toListingCard(listing: ListingDto): ListingCardData {
   return {
@@ -32,7 +39,7 @@ export function toListingCard(listing: ListingDto): ListingCardData {
     title: listing.title,
     badge: listing.room_type?.name || "Mới",
     location: listing.address_raw || listing.district?.name || "Đang cập nhật địa chỉ",
-    price: listing.price_string || formatPrice(listing.price_vnd),
+    price: cleanDisplayPrice(listing.price_string, listing.price_vnd),
     area: listing.area_m2 ? `${listing.area_m2}m²` : undefined,
     source: listing.source || "Homigo",
     image: listing.main_image || DEFAULT_PROPERTY_IMAGE,

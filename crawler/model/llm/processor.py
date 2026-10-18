@@ -1,11 +1,15 @@
+import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-try:
-    from crawler.model.llm.client import GeminiRoundRobin, call_gemini_chunk
-    from crawler.schema.listing import ChunkExtractionWrapper
-except ImportError:
-    from client import GeminiRoundRobin, call_gemini_chunk
-    from schema.listing import ChunkExtractionWrapper
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from crawler.model.llm.client import GeminiRoundRobin, call_gemini_chunk
+from crawler.schema.listing import ChunkExtractionWrapper
+
 
 
 def process_chunk_result(

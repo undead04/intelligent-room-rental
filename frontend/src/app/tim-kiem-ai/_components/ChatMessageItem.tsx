@@ -30,7 +30,7 @@ export default function ChatMessageItem({ message, onSelectQuestion }: ChatMessa
         <span className="material-symbols-outlined text-[17px]">auto_awesome</span>
       </div>
       <div className="bg-white border border-[#E8E4DC] rounded-2xl rounded-tl-xs p-4 shadow-sm flex-1 space-y-3">
-        <p className="font-bold text-[#121E1A] whitespace-pre-line">{message.text}</p>
+        <p className="font-normal text-[#121E1A] whitespace-pre-line leading-relaxed">{message.text}</p>
 
         {/* Condition: Bắt buộc */}
         {message.mandatoryCriteria && (

@@ -129,8 +129,6 @@ def extract_amenity_signals(title: str, description: str) -> dict:
         "guard": guard,
         "fingerprint_lock": fingerprint_lock,
         "safe_area": safe_area,
-        "amenity_overall": amenity_overall,
-        "safety_overall": safety_score,
     }
 
     return {

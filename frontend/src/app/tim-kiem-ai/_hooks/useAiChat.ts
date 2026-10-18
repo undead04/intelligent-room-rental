@@ -12,10 +12,11 @@ export function useAiChat() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [rooms, setRooms] = useState<RoomItem[]>(SAMPLE_ROOMS);
+  const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [insights, setInsights] = useState<DecisionInsight | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string>(DEFAULT_ROOM_ID);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const sendMessage = async (event?: React.FormEvent, customText?: string) => {
     event?.preventDefault();
@@ -35,6 +36,7 @@ export function useAiChat() {
 
     setMessages((prev) => [...prev, userMessage]);
     setIsTyping(true);
+    setConnectionError(null);
 
     try {
       const history = messages.map((m) => ({
@@ -95,10 +97,14 @@ export function useAiChat() {
       setMessages((prev) => [...prev, aiMessage]);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Lỗi kết nối tới AI Agent";
+      setConnectionError(errorMsg);
       const fallbackAiMessage: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
         sender: "ai",
-        text: `⚠️ Không thể kết nối tới AI Agent Server (Port 8001): ${errorMsg}. Bạn vui lòng kiểm tra microservice đã khởi chạy bằng lệnh: cd ai-agent; uvicorn service:app --port 8001 --reload`,
+        text: `⚠️ Không thể kết nối tới máy chủ AI Agent (Port 8001): ${errorMsg}.\n\nNếu đang phát triển cục bộ, bạn hãy kiểm tra microservice AI bằng lệnh:\n\`cd ai-agent; uvicorn service:app --port 8001 --reload\``,
+        followUpQuestions: [
+          "Thử gửi lại yêu cầu",
+        ],
       };
       setMessages((prev) => [...prev, fallbackAiMessage]);
     } finally {
@@ -117,5 +123,6 @@ export function useAiChat() {
     selectedRoomId,
     setSelectedRoomId,
     sessionId,
+    connectionError,
   };
 }

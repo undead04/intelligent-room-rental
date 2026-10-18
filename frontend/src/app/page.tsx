@@ -8,6 +8,7 @@ import ListingSection from "@/components/ListingSection";
 import AiSearchPromo from "@/app/_components/AiSearchPromo";
 import HeroSearch from "@/app/_components/HeroSearch";
 import WhyChooseHomigo from "@/app/_components/WhyChooseHomigo";
+import BackendConnectionError from "@/components/BackendConnectionError";
 import { useHomeListings } from "@/app/_hooks/useHomeListings";
 import { useFilterOptions } from "@/hooks/useFilterOptions";
 import type { FilterValues } from "@/types";
@@ -21,7 +22,7 @@ export default function HomePage() {
   const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { listings, isLoading } = useHomeListings();
+  const { listings, isLoading, apiError, reload } = useHomeListings();
   const { cities, roomTypes } = useFilterOptions();
 
   const activeFilterCount = countActiveFilters(filters);
@@ -48,7 +49,9 @@ export default function HomePage() {
         />
 
         <div className="max-w-[1500px] mx-auto px-4 lg:px-8 py-8">
-          {isLoading ? (
+          {apiError ? (
+            <BackendConnectionError message={apiError} onRetry={reload} />
+          ) : isLoading ? (
             <ListingSectionSkeleton />
           ) : (
             <ListingSection

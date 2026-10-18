@@ -100,7 +100,7 @@ export const locationsApi = {
 
 export const roomTypesApi = {
   list() {
-    return request<RoomTypeDto[]>("/room-types/");
+    return request<RoomTypeDto[]>("/room-types");
   },
 };
 
