@@ -42,15 +42,23 @@ export default function AiChatPanel({
 
       {/* Chat Conversation Messages Container */}
       <div className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 text-xs leading-relaxed bg-[#FAFBF9]">
-        {messages.map((message) => (
-          <ChatMessageItem
-            key={message.id}
-            message={message}
-            onSelectQuestion={onSelectQuestion}
-          />
-        ))}
+        {messages.map((message, idx) => {
+          const isLatest =
+            idx === messages.length - 1 ||
+            (idx === messages.length - 2 && messages[messages.length - 1]?.isStreaming);
 
-        {isTyping && (
+          return (
+            <ChatMessageItem
+              key={message.id}
+              message={message}
+              isLatest={Boolean(isLatest)}
+              isTyping={isTyping}
+              onSelectQuestion={onSelectQuestion}
+            />
+          );
+        })}
+
+        {isTyping && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-center gap-2 text-xs text-gray-500 pl-10">
             <span className="w-2 h-2 rounded-full bg-[#0F5F4A] animate-bounce"></span>
             <span className="w-2 h-2 rounded-full bg-[#0F5F4A] animate-bounce delay-100"></span>

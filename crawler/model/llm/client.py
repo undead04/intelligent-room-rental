@@ -135,9 +135,13 @@ def call_gemini_chunk(
 
     while True:
         try:
+            # Lần đầu ưu tiên temperature=0.0 (tuyệt đối xác định). Từ lần retry trở đi dùng 0.1 để bẻ gãy loop.
+            current_temperature = 0.0 if attempt == 0 else 0.1
+
+            temp_log = f" | Temp: {current_temperature}" if attempt > 0 else ""
             print(
                 f"  [API] Key {api_manager.current_key_number}/{api_manager.total_keys} "
-                f"| Model: {api_manager.model_name}"
+                f"| Model: {api_manager.model_name}{temp_log}"
             )
 
             response = (
@@ -150,10 +154,12 @@ def call_gemini_chunk(
                         system_instruction=system_prompt,
                         response_mime_type="application/json",
                         response_schema=ChunkExtractionWrapper,
-                        temperature=0.0,
+                        temperature=current_temperature,
+                        max_output_tokens=8192,
                     ),
                 )
             )
+
 
             raw_text = (response.text or "").strip()
             # Bóc tách nếu response bị model bọc trong ```json ... ```

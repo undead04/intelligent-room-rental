@@ -522,3 +522,190 @@ def test_llm_and_catalog_amenity_extraction():
     assert "aircon" in p2.amenities or "máy lạnh" in p2.amenities
     assert "pet_allowed" in p2.amenities or "nuôi thú cưng" in p2.amenities
     assert "kitchen" in p2.amenities or "kệ bếp" in p2.amenities
+
+
+def test_administrative_vs_specific_location_routing():
+    """Đảm bảo Tỉnh/Thành phố, Quận/Huyện, Phường/Xã KHÔNG trả về lat/lon qua geocode_location,
+    còn địa điểm cụ thể (trường học, KTX, tên đường, chợ...) mới cho phép geocode lat/lon.
+    """
+    import json
+    from tools.housing_tools import _is_administrative_location_query, geocode_location
+
+    admin_queries = [
+        "Quảng Ngãi",
+        "quãng ngãi",
+        "Tỉnh Quảng Ngãi",
+        "TP. Hồ Chí Minh",
+        "TP. Thủ Đức",
+        "Thủ Đức",
+        "Quận 1",
+        "Quận Bình Thạnh",
+        "Phường Linh Trung",
+        "Linh Xuân, Thủ Đức",
+    ]
+    for q in admin_queries:
+        assert _is_administrative_location_query(q) is True, f"Expected '{q}' to be administrative"
+        raw = geocode_location.invoke({"query": q})
+        res = json.loads(raw)
+        assert res["ok"] is False
+        assert res.get("is_administrative") is True
+        assert "lat" not in res and "lon" not in res
+
+    specific_queries = [
+        "Trường Đại học Công nghệ Thông tin",
+        "UIT",
+        "KTX Khu B",
+        "Đường D2 Bình Thạnh",
+        "Chợ Thủ Đức",
+        "Ngã tư Thủ Đức",
+        "Bệnh viện Chợ Rẫy",
+    ]
+    for sq in specific_queries:
+        assert _is_administrative_location_query(sq) is False, f"Expected '{sq}' to be specific location"
+
+
+def test_hitl_only_on_empty_search_rooms_and_streak_limit():
+    """Đảm bảo HITL CHỈ kích hoạt khi search_rooms trả về rỗng (không kích hoạt khi chỉ tra cứu vị trí rỗng),
+    và tự động dừng đề xuất nới lỏng sau tối đa 2 lần liên tiếp (MAX_HITL_STREAK = 2).
+    """
+    import json
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from service import HousingAgentService
+
+    svc = HousingAgentService.__new__(HousingAgentService)
+    svc.session_histories = {}
+    svc.session_hitl_streaks = {}
+
+    # 1. Trường hợp get_location_hierarchy trả về rỗng (chưa gọi search_rooms) -> KHÔNG bật HITL
+    msgs_loc_empty = [
+        HumanMessage(content="Tìm trọ ở Quảng Ngãi giá 5 triệu"),
+        AIMessage(
+            content="",
+            tool_calls=[{"id": "tc1", "name": "get_location_hierarchy", "args": {"city_name": "Quảng Ngãi"}}],
+        ),
+        ToolMessage(
+            content=json.dumps({"ok": True, "data": []}),
+            name="get_location_hierarchy",
+            tool_call_id="tc1",
+        ),
+        AIMessage(content="Hiện tại Homigo chưa có dữ liệu tại Quảng Ngãi."),
+    ]
+    resp_loc = svc._finalize_response("sess_loc", "Tìm trọ ở Quảng Ngãi giá 5 triệu", msgs_loc_empty, 0, [])
+    assert resp_loc.grounding_report is None
+    assert not any("Nới ngân sách" in q for q in resp_loc.follow_up_questions)
+
+    # 2. Trường hợp search_rooms trả về rỗng: Lần 1 & Lần 2 bật HITL linh hoạt, Lần 3 dừng HITL
+    def make_empty_search_turn(user_txt: str):
+        return [
+            HumanMessage(content=user_txt),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "tc_s",
+                        "name": "search_rooms",
+                        "args": {"query": user_txt, "ward_id": 10, "max_price": 2000000, "amenities": ["aircon"]},
+                    }
+                ],
+            ),
+            ToolMessage(
+                content=json.dumps({"ok": True, "data": [], "need_human_in_the_loop": True}),
+                name="search_rooms",
+                tool_call_id="tc_s",
+            ),
+            AIMessage(content="Chưa tìm thấy phòng phù hợp."),
+        ]
+
+    r1 = svc._finalize_response("sess_hitl", "Tìm phòng dưới 2 triệu có máy lạnh", make_empty_search_turn("Tìm phòng dưới 2 triệu có máy lạnh"), 0, [])
+    assert r1.grounding_report is not None and r1.grounding_report["needs_user_consent"] is True
+    assert r1.grounding_report["hitl_streak"] == 1
+    assert any("Nới ngân sách" in q for q in r1.follow_up_questions)
+    assert any("Phường" in q for q in r1.follow_up_questions)
+    assert any("tiện ích" in q for q in r1.follow_up_questions)
+
+    r2 = svc._finalize_response("sess_hitl", "Mở rộng ra toàn Quận", make_empty_search_turn("Mở rộng ra toàn Quận"), 0, [])
+    assert r2.grounding_report is not None and r2.grounding_report["needs_user_consent"] is True
+    assert r2.grounding_report["hitl_streak"] == 2
+
+    # Lần 3 liên tiếp vẫn rỗng -> vượt quá MAX_HITL_STREAK = 2 -> dừng đề xuất nới lỏng
+    r3 = svc._finalize_response("sess_hitl", "Nới tiếp", make_empty_search_turn("Nới tiếp"), 0, [])
+    assert r3.grounding_report is not None
+    assert r3.grounding_report["needs_user_consent"] is False
+    assert r3.grounding_report["hitl_limit_reached"] is True
+    assert not any("Nới ngân sách" in q for q in r3.follow_up_questions)
+
+
+def test_turn_context_canonicalization_for_identical_rerank(monkeypatch):
+    """Đảm bảo cùng một câu hỏi của người dùng, dù LLM ở Streamlit và Frontend sinh tham số query/amenities/weights
+    khác nhau khi gọi search_rooms, request gửi xuống /listings/vector-search vẫn đồng nhất 100%.
+    """
+    import json
+    from tools import housing_tools
+
+    captured_requests = []
+
+    class DummyResp:
+        status_code = 200
+        is_error = False
+        text = "{}"
+
+        def json(self):
+            return {"success": True, "data": []}
+
+    class DummyClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, path, params=None, json=None):
+            captured_requests.append({"path": path, "params": params, "json": json})
+            return DummyResp()
+
+    monkeypatch.setattr(housing_tools, "_client", lambda: DummyClient())
+
+    user_prompt = "Tìm phòng gần UIT dưới 5 triệu có máy lạnh và gác lửng"
+
+    # Lượt chạy 1 (giả lập Streamlit): LLM truyền query rút gọn, amenities thiếu gác lửng, tự bịa weights
+    housing_tools.set_turn_query_context(user_prompt, user_prompt)
+    ctx = housing_tools._get_turn_context()
+    ctx["lat"] = 10.8698118
+    ctx["lng"] = 106.8033668
+    housing_tools.search_rooms.invoke({
+        "query": "phòng trọ gần UIT",
+        "lat": 10.8698118,
+        "lng": 106.8033668,
+        "max_price": 5000000,
+        "amenities": ["ac"],
+        "weights": {"price": 0.5, "location": 0.5},
+        "limit": 10,
+    })
+    housing_tools.clear_turn_query_context()
+
+    # Lượt chạy 2 (giả lập Frontend): LLM truyền query dài, amenities tiếng Việt, không truyền weights
+    housing_tools.set_turn_query_context(user_prompt, user_prompt)
+    ctx2 = housing_tools._get_turn_context()
+    ctx2["lat"] = 10.8698118
+    ctx2["lng"] = 106.8033668
+    housing_tools.search_rooms.invoke({
+        "query": "Tìm kiếm phòng trọ sinh viên quanh Đại học Công nghệ Thông tin giá 5tr",
+        "lat": 10.8698118,
+        "lng": 106.8033668,
+        "city_id": 79,
+        "district_id": 769,
+        "amenities": ["máy lạnh", "có gác"],
+        "limit": 5,
+    })
+    housing_tools.clear_turn_query_context()
+
+    assert len(captured_requests) == 2
+    assert captured_requests[0] == captured_requests[1]
+    assert captured_requests[0]["json"]["query"] == user_prompt
+    assert captured_requests[0]["json"]["amenities"] == ["aircon", "mezzanine"]
+    assert "weights" not in captured_requests[0]["json"]
+    assert captured_requests[0]["params"]["max_price"] == 5000000
+    assert captured_requests[0]["params"]["lat"] == 10.8698118
+    assert "city_id" not in captured_requests[0]["params"]
+
+

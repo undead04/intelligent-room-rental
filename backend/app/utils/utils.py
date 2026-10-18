@@ -258,7 +258,13 @@ def rerank(
     computed_weights = _dynamic_weights(user_pref, base_weights)
 
     scored = [(_match_breakdown(c, user_pref, computed_weights), c) for c in candidates]
-    scored.sort(key=lambda x: x[0]["score"], reverse=True)
+    scored.sort(
+        key=lambda x: (
+            round(float(x[0]["score"]), 8),
+            str(_get(_get(x[1], "listing", x[1]), "id", "")),
+        ),
+        reverse=True,
+    )
     return scored[offset : offset + limit]
 
 

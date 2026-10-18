@@ -11,12 +11,42 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
-from schemas import RoomItem, UserPreferenceState
+from schemas import HitlOption, HitlProposal, RoomItem, UserPreferenceState
 
 MAX_GROUNDING_RETRIES = 2
 MIN_ACCEPTABLE_MATCH_SCORE = 0.30
+
+# Bảng tham chiếu giá sàn thị trường thực tế (VNĐ) theo khu vực để tránh nới lỏng phi thực tế
+DISTRICT_PRICE_FLOORS: dict[str, dict[str, Any]] = {
+    # Khu vực đắt đỏ / trung tâm TP.HCM
+    "quận 1": {"min": 3500000, "avg": 5500000, "name": "Quận 1"},
+    "q1": {"min": 3500000, "avg": 5500000, "name": "Quận 1"},
+    "quận 3": {"min": 3500000, "avg": 5200000, "name": "Quận 3"},
+    "q3": {"min": 3500000, "avg": 5200000, "name": "Quận 3"},
+    "quận 10": {"min": 3000000, "avg": 4500000, "name": "Quận 10"},
+    "q10": {"min": 3000000, "avg": 4500000, "name": "Quận 10"},
+    "phú nhuận": {"min": 3200000, "avg": 4800000, "name": "Phú Nhuận"},
+    "bình thạnh": {"min": 2800000, "avg": 4200000, "name": "Bình Thạnh"},
+    "quận 7": {"min": 3000000, "avg": 4800000, "name": "Quận 7"},
+    "q7": {"min": 3000000, "avg": 4800000, "name": "Quận 7"},
+    "quận 5": {"min": 2800000, "avg": 4200000, "name": "Quận 5"},
+    "tân bình": {"min": 2600000, "avg": 3800000, "name": "Tân Bình"},
+    "tân phú": {"min": 2300000, "avg": 3400000, "name": "Tân Phú"},
+    "gò vấp": {"min": 2200000, "avg": 3300000, "name": "Gò Vấp"},
+    # Khu vực sinh viên & ngoại thành
+    "thủ đức": {"min": 2000000, "avg": 3200000, "name": "TP. Thủ Đức"},
+    "linh trung": {"min": 1800000, "avg": 2800000, "name": "Linh Trung, Thủ Đức"},
+    "linh xuân": {"min": 1800000, "avg": 2600000, "name": "Linh Xuân, Thủ Đức"},
+    "tăng nhơn phú": {"min": 1800000, "avg": 2700000, "name": "Tăng Nhơn Phú, Thủ Đức"},
+    "làng đại học": {"min": 1600000, "avg": 2400000, "name": "Làng Đại học (ĐHQG)"},
+    "uit": {"min": 1800000, "avg": 2700000, "name": "Khu vực ĐH UIT"},
+    "dĩ an": {"min": 1500000, "avg": 2500000, "name": "Dĩ An, Bình Dương"},
+    "quận 12": {"min": 1800000, "avg": 2800000, "name": "Quận 12"},
+    "bình tân": {"min": 1800000, "avg": 2700000, "name": "Bình Tân"},
+    "hóc môn": {"min": 1500000, "avg": 2400000, "name": "Hóc Môn"},
+}
 
 
 @dataclass
@@ -30,6 +60,8 @@ class ContextGroundingResult:
     needs_user_consent: bool = False
     proposed_budget: Optional[float] = None
     proposed_budget_str: Optional[str] = None
+    hitl_proposal: Optional[HitlProposal] = None
+    is_market_gap: bool = False
 
 
 @dataclass
@@ -42,30 +74,259 @@ class AnswerGroundingResult:
     corrected_text: Optional[str] = None
 
 
+def calculate_smart_budget_proposal(
+    preferences: Optional[UserPreferenceState] = None,
+    backend_lowest_price: Optional[float] = None,
+    backend_avg_price: Optional[float] = None,
+    area_name: Optional[str] = None,
+) -> dict[str, Any]:
+    """Tính toán đề xuất ngân sách thông minh dựa trên dữ liệu thị trường thực tế thay vì cộng máy móc +15%."""
+    if not preferences or not preferences.max_price or preferences.max_price <= 0:
+        return {}
+
+    user_max = float(preferences.max_price)
+    loc_text = (preferences.location_text or area_name or "").lower().strip()
+
+    market_min: Optional[float] = None
+    market_avg: Optional[float] = None
+    resolved_area: str = area_name or preferences.location_text or "khu vực bạn chọn"
+
+    if backend_lowest_price and backend_lowest_price > 0:
+        market_min = float(backend_lowest_price)
+        market_avg = float(backend_avg_price) if backend_avg_price else round(market_min * 1.4, 0)
+    else:
+        for k, v in DISTRICT_PRICE_FLOORS.items():
+            if k in loc_text:
+                market_min = float(v["min"])
+                market_avg = float(v["avg"])
+                resolved_area = v["name"]
+                break
+
+    if market_min is None:
+        if user_max < 1500000:
+            market_min = 2000000.0
+            market_avg = 3200000.0
+        else:
+            market_min = user_max
+            market_avg = round(user_max * 1.3, 0)
+
+    is_market_gap = (user_max < market_min * 0.85)
+
+    if is_market_gap:
+        proposed_budget = market_min
+        prop_val = proposed_budget / 1000000.0
+        prop_str = f"{prop_val:.2f} triệu/tháng".replace(".00", "")
+        label = f"👍 Đồng ý nới ngân sách lên {prop_str} (giá sàn {resolved_area})"
+        suggest_dormitory = (user_max <= 2000000)
+        explanation = (
+            f"Tại {resolved_area}, giá phòng thấp nhất ghi nhận từ {prop_str} "
+            f"(trung bình ~{market_avg / 1000000.0:.1f} triệu/tháng). "
+            f"Ngân sách {user_max / 1000000.0:.2f} triệu/tháng hiện chưa đủ để tiếp cận phòng tại đây."
+        )
+    else:
+        proposed_budget = round(user_max * 1.15, 0)
+        prop_val = proposed_budget / 1000000.0
+        prop_str = f"{prop_val:.2f} triệu/tháng".replace(".00", "")
+        label = f"👍 Đồng ý nới ngân sách lên {prop_str} (+15%)"
+        suggest_dormitory = False
+        explanation = f"Có thể cân nhắc nới ngân sách lên khoảng {prop_str} (+15%) để tiếp cận thêm các lựa chọn tốt."
+
+    return {
+        "proposed_budget": proposed_budget,
+        "proposed_budget_str": prop_str,
+        "is_market_gap": is_market_gap,
+        "area_name": resolved_area,
+        "market_min_price": market_min,
+        "market_min_price_str": f"{market_min / 1000000.0:.2f} triệu/tháng".replace(".00", ""),
+        "market_avg_price": market_avg,
+        "market_avg_price_str": f"{market_avg / 1000000.0:.1f} triệu/tháng".replace(".0", ""),
+        "proposal_label": label,
+        "suggest_dormitory": suggest_dormitory,
+        "explanation": explanation,
+        "user_budget": user_max,
+        "user_budget_str": f"{user_max / 1000000.0:.2f} triệu/tháng".replace(".00", ""),
+    }
+
+
+def build_hitl_proposal(
+    rooms: list[RoomItem],
+    preferences: Optional[UserPreferenceState] = None,
+    last_search_args: Optional[dict[str, Any]] = None,
+    backend_lowest_price: Optional[float] = None,
+    backend_avg_price: Optional[float] = None,
+    area_name: Optional[str] = None,
+) -> HitlProposal:
+    """Tạo đối tượng HitlProposal với các tùy chọn tương tác chuyên nghiệp chuẩn Claude UI."""
+    smart = calculate_smart_budget_proposal(
+        preferences=preferences,
+        backend_lowest_price=backend_lowest_price,
+        backend_avg_price=backend_avg_price,
+        area_name=area_name,
+    )
+
+    options: list[HitlOption] = []
+
+    # 1. Option Điều chỉnh ngân sách
+    if smart.get("proposed_budget_str"):
+        if smart.get("is_market_gap"):
+            options.append(
+                HitlOption(
+                    id="adjust_budget",
+                    type="budget",
+                    title="Điều chỉnh ngân sách theo thị trường",
+                    description=f"Nâng ngân sách lên ~{smart['proposed_budget_str']} (giá sàn thực tế tại {smart['area_name']})",
+                    badge="Đề xuất tối ưu",
+                    badge_color="emerald",
+                    action_text=smart["proposal_label"],
+                    highlight=True,
+                )
+            )
+        else:
+            options.append(
+                HitlOption(
+                    id="adjust_budget",
+                    type="budget",
+                    title="Nới nhẹ ngân sách (+15%)",
+                    description=f"Nới ngân sách lên {smart['proposed_budget_str']} để tiếp cận các phòng tốt hơn một chút",
+                    badge="Nới lỏng giá",
+                    badge_color="emerald",
+                    action_text=smart["proposal_label"],
+                    highlight=True,
+                )
+            )
+
+    # 2. Option Mở rộng khu vực
+    if last_search_args and last_search_args.get("ward_id") is not None:
+        options.append(
+            HitlOption(
+                id="broaden_location",
+                type="location",
+                title="Mở rộng ra toàn Quận/Huyện",
+                description="Tìm kiếm trên phạm vi toàn quận thay vì chỉ giới hạn trong một phường",
+                badge="Giữ ngân sách",
+                badge_color="blue",
+                action_text="🧭 Mở rộng ra toàn Quận/Huyện thay vì chỉ 1 Phường",
+            )
+        )
+    elif (
+        (last_search_args and (last_search_args.get("district_id") is not None or last_search_args.get("lat") is not None))
+        or (preferences and preferences.location_text)
+        or not last_search_args
+    ):
+        options.append(
+            HitlOption(
+                id="broaden_location",
+                type="location",
+                title="Mở rộng bán kính tìm kiếm",
+                description="Tìm kiếm ở các khu vực lân cận có mức giá mềm hơn và nhiều phòng trống hơn",
+                badge="Giữ ngân sách",
+                badge_color="blue",
+                action_text="🧭 Mở rộng bán kính tìm kiếm lân cận",
+            )
+        )
+
+    # 3. Option Ký túc xá / Ở ghép / Sleepbox nếu ngân sách thấp
+    if smart.get("suggest_dormitory"):
+        options.append(
+            HitlOption(
+                id="dormitory",
+                type="room_type",
+                title="Chuyển sang Ký túc xá / Ở ghép / Sleepbox",
+                description="Lựa chọn khả thi nhất cho mức ngân sách sinh viên dưới 2 triệu/tháng",
+                badge="Tiết kiệm chi phí",
+                badge_color="amber",
+                action_text="🛌 Tìm ký túc xá hoặc ở ghép (Sleepbox)",
+            )
+        )
+
+    # 4. Option Lược bớt tiện ích nếu có
+    req_amenities = (last_search_args.get("amenities") if last_search_args else None) or (preferences.amenities if preferences else None)
+    if req_amenities:
+        am_preview = ", ".join(str(a) for a in req_amenities[:2])
+        options.append(
+            HitlOption(
+                id="reduce_amenities",
+                type="amenity",
+                title=f"Lược bớt yêu cầu tiện ích ({am_preview})",
+                description="Bớt các tiêu chí khắt khe để tìm kiếm các phòng trọ cơ bản với giá tốt hơn",
+                badge="Tối ưu bộ lọc",
+                badge_color="purple",
+                action_text=f"🪄 Lược bớt yêu cầu tiện ích ({am_preview})",
+            )
+        )
+
+    # 5. Option Giữ nguyên tiêu chí
+    options.append(
+        HitlOption(
+            id="keep_criteria",
+            type="keep",
+            title="Giữ nguyên tiêu chí của tôi",
+            description="Không thay đổi điều kiện lọc, Homigo sẽ lưu nhu cầu và cập nhật khi có phòng mới",
+            badge="Chờ tin mới",
+            badge_color="slate",
+            action_text="❌ Giữ nguyên tiêu chí của tôi",
+        )
+    )
+
+    # 6. Option Tùy chỉnh tiêu chí
+    options.append(
+        HitlOption(
+            id="custom_criteria",
+            type="custom",
+            title="Tùy chỉnh tiêu chí khác",
+            description="Tự nhập lại khu vực mới, khoảng giá hoặc các yêu cầu đặc thù vào ô chat",
+            badge="Linh hoạt",
+            badge_color="orange",
+            action_text="✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
+        )
+    )
+
+    return HitlProposal(
+        needed=True,
+        area_name=smart.get("area_name"),
+        user_budget=smart.get("user_budget"),
+        user_budget_str=smart.get("user_budget_str"),
+        market_min_price=smart.get("market_min_price"),
+        market_min_price_str=smart.get("market_min_price_str"),
+        market_avg_price=smart.get("market_avg_price"),
+        market_avg_price_str=smart.get("market_avg_price_str"),
+        is_market_gap=smart.get("is_market_gap", False),
+        message=smart.get("explanation"),
+        options=options,
+    )
+
+
 def verify_context_grounding(
     rooms: list[RoomItem],
     preferences: Optional[UserPreferenceState] = None,
     retry_count: int = 0,
+    last_search_args: Optional[dict[str, Any]] = None,
+    backend_lowest_price: Optional[float] = None,
+    backend_avg_price: Optional[float] = None,
+    area_name: Optional[str] = None,
 ) -> ContextGroundingResult:
     """Kiểm tra danh sách phòng từ Hybrid Search & Rerank có đạt chuẩn Grounding không.
     Tuyệt đối KHÔNG tự ý retry ngầm làm thay đổi ngân sách của người dùng.
     Khi kết quả rỗng, đánh dấu needs_user_consent = True để hỏi ý kiến người dùng trước.
     """
     if not rooms:
-        prop_budget = None
-        prop_str = None
-        if preferences and preferences.max_price and preferences.max_price > 0:
-            prop_budget = round(preferences.max_price * 1.15, 0)
-            prop_val = prop_budget / 1_000_000
-            prop_str = f"{prop_val:.2f} triệu/tháng".replace(".00", "")
-
+        proposal = build_hitl_proposal(
+            rooms=rooms,
+            preferences=preferences,
+            last_search_args=last_search_args,
+            backend_lowest_price=backend_lowest_price,
+            backend_avg_price=backend_avg_price,
+            area_name=area_name,
+        )
         return ContextGroundingResult(
             is_grounded=False,
             context_score=0.0,
             retry_strategy=None,  # Không tự động lặp ngầm, chuyển sang hỏi ý kiến người dùng
             needs_user_consent=True,
-            proposed_budget=prop_budget,
-            proposed_budget_str=prop_str,
+            proposed_budget=proposal.market_min_price if proposal.is_market_gap else (round(preferences.max_price * 1.15, 0) if preferences and preferences.max_price else None),
+            proposed_budget_str=proposal.market_min_price_str if proposal.is_market_gap else (f"{(preferences.max_price * 1.15) / 1000000:.2f} triệu/tháng".replace(".00", "") if preferences and preferences.max_price else None),
+            hitl_proposal=proposal,
+            is_market_gap=proposal.is_market_gap,
             reason="Không tìm thấy phòng khớp chính xác tiêu chí. Cần hỏi ý kiến người dùng để nới lỏng hoặc tùy chỉnh.",
         )
 

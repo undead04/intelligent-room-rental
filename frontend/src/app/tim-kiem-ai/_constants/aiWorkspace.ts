@@ -60,13 +60,7 @@ export const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: "msg-welcome",
     sender: "ai",
-    text: "Xin chào! Mình là Trợ lý AI hỗ trợ tìm phòng trọ thông minh tại Homigo.\n\nBạn đang tìm phòng ở khu vực nào, mức giá ngân sách ra sao và có tiêu chí cụ thể nào (máy lạnh, gác lửng, giờ tự do, gần trường học)? Hãy chia sẻ hoặc bấm vào các câu hỏi gợi ý bên dưới để mình bắt đầu tìm kiếm nhé!",
-    followUpQuestions: [
-      "Tìm phòng gần UIT dưới 5 triệu có máy lạnh",
-      "Phòng trọ gần ĐHQG có gác lửng, giờ tự do",
-      "Phòng mới sạch sẽ tại TP. Thủ Đức dưới 4 triệu",
-      "Tìm phòng trọ Quận 9 có thang máy và an ninh tốt",
-    ],
+    text: "Xin chào! Mình là Trợ lý AI hỗ trợ tìm phòng trọ thông minh tại Homigo.\n\nBạn đang tìm phòng ở khu vực nào, mức giá ngân sách ra sao và có tiêu chí cụ thể nào (máy lạnh, gác lửng, giờ tự do, gần trường học)? Hãy chia sẻ với mình để bắt đầu tìm kiếm nhé!",
   },
 ];
 

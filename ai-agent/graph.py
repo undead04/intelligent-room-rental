@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Annotated, Any, Mapping, Optional, Sequence, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -27,6 +28,7 @@ from memory import SessionData, memory_manager
 from schemas import (
     AgentResponse,
     DecisionInsight,
+    HitlProposal,
     RoomItem,
     TradeOffAnalysis,
     UserPreferenceState,
@@ -108,6 +110,7 @@ class HousingAgentState(TypedDict, total=False):
     answer_retry_count: int
     answer_grounded: bool
     grounding_report: Optional[dict[str, Any]]
+    hitl_proposal: Optional[HitlProposal]
 
     # Bảng phân tích hỗ trợ ra quyết định
     insights: Optional[DecisionInsight]
@@ -232,6 +235,8 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         or "đồng ý nới ngân sách" in user_lower
         or "nới ngân sách" in user_lower
         or "tăng ngân sách" in user_lower
+        or "nâng ngân sách" in user_lower
+        or "điều chỉnh ngân sách" in user_lower
         or "nới giá" in user_lower
         or "+15%" in user_lower
     )
@@ -242,6 +247,7 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         or "mở rộng khu vực" in user_lower
         or "khu vực lân cận" in user_lower
         or "bán kính lân cận" in user_lower
+        or "toàn quận" in user_lower
     )
     is_keep_criteria = (
         user_lower.startswith("❌")
@@ -249,6 +255,13 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         or "giữ nguyên" in user_lower
         or "không nới" in user_lower
         or "không đồng ý" in user_lower
+    )
+    is_dormitory_choice = (
+        user_lower.startswith("🛌")
+        or "ký túc xá" in user_lower
+        or "ở ghép" in user_lower
+        or "sleepbox" in user_lower
+        or "giường tầng" in user_lower
     )
 
     # Nếu người dùng chọn GIỮ NGUYÊN TIÊU CHÍ
@@ -285,14 +298,28 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
             "is_keep_criteria": False,
         }
 
-    # Nếu người dùng ĐỒNG Ý NỚI NGÂN SÁCH (+15%)
+    # Nếu người dùng ĐỒNG Ý NỚI NGÂN SÁCH (+15% hoặc theo giá sàn thị trường)
     if is_relax_budget:
-        curr_max = session.preferences.max_price or 3000000
-        new_max = round(curr_max * 1.15, 0)
+        m_target = re.search(r"lên\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr|trieu|củ)\b", user_lower)
+        if m_target:
+            val = float(m_target.group(1).replace(",", ".")) * 1_000_000
+            new_max = val
+        elif state.get("proposed_budget"):
+            new_max = float(state["proposed_budget"])
+        else:
+            curr_max = session.preferences.max_price or 3000000
+            new_max = round(curr_max * 1.15, 0)
         session.preferences.max_price = new_max
         updated_pref = session.preferences
-        explanations = [f"đã nới ngân sách +15% lên {new_max / 1_000_000:.2f} triệu/tháng theo sự đồng ý của bạn"]
+        price_disp = f"{new_max / 1_000_000:.2f} triệu/tháng".replace(".00", "")
+        explanations = [f"đã điều chỉnh ngân sách lên {price_disp} theo sự đồng ý của bạn"]
         multipliers = state.get("multipliers") or {"price": 1.5, "location": 1.2, "amenity": 1.0, "safety": 1.0}
+    # Nếu người dùng CHUYỂN SANG KÝ TÚC XÁ / Ở GHÉP / SLEEPBOX
+    elif is_dormitory_choice:
+        session.preferences.special_requirements = list(set(session.preferences.special_requirements + ["ký túc xá", "ở ghép"]))
+        updated_pref = session.preferences
+        explanations = ["chuyển hướng sang tìm kiếm ký túc xá / ở ghép (sleepbox) phù hợp ngân sách sinh viên"]
+        multipliers = state.get("multipliers") or {"price": 1.8, "location": 1.0, "amenity": 1.0, "safety": 1.2}
     # Nếu người dùng MỞ RỘNG BÁN KÍNH LÂN CẬN
     elif is_broaden_search:
         session.preferences.lat = None
@@ -326,15 +353,16 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         matched_skill = "rental-contract-advisor"
 
     # 2. Kiểm tra truy vấn có quá mơ hồ cần hỏi làm rõ hay không
-    words = user_text.strip().split()
     has_loc = bool(updated_pref.location_text or (updated_pref.lat and updated_pref.lng))
     has_budget = bool(updated_pref.max_price or updated_pref.min_price)
-    has_amenity = bool(updated_pref.amenities)
 
-    if matched_skill or is_relax_budget or is_broaden_search:
+    if matched_skill or is_contract or is_relax_budget or is_broaden_search or is_keep_criteria or is_dormitory_choice:
         needs_clarification = False
     else:
-        needs_clarification = (not has_loc and not has_budget and not has_amenity and len(words) <= 4)
+        # Bắt buộc hỏi làm rõ khi người dùng chưa cung cấp cả Vị trí lẫn Ngân sách
+        # Ví dụ: "Tìm phòng trọ giúp tôi", "Có phòng nào không", "Tìm phòng trọ có máy lạnh", "Tìm phòng sinh viên"
+        # Kể cả có tiện nghi nhưng chưa có khu vực/ngân sách thì vẫn phải hỏi làm rõ để tránh gợi ý lan man!
+        needs_clarification = (not has_loc and not has_budget)
 
     return {
         "preferences": updated_pref,
@@ -349,17 +377,34 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
 
 
 def clarification_node(state: HousingAgentState) -> dict[str, Any]:
-    """Node 3: Hỏi làm rõ khi truy vấn người dùng chưa đủ tiêu chí lọc cơ bản.
+    """Node 3: Hỏi làm rõ khi truy vấn người dùng chưa đủ tiêu chí lọc cơ bản (Vị trí & Ngân sách).
     Scope: 0 Tools.
     """
-    clarification_text = (
-        "Chào bạn! Để Homigo có thể lọc và gợi ý những phòng trọ phù hợp nhất cho bạn, "
-        "bạn có thể chia sẻ thêm một vài thông tin như:\n"
-        "1. Khu vực bạn muốn ở (quận, phường hoặc gần trường học/công ty nào)?\n"
-        "2. Mức ngân sách dự kiến mỗi tháng (ví dụ: khoảng 3 triệu)?\n"
-        "3. Các tiện nghi bạn ưu tiên (máy lạnh, gác lửng, giờ giấc tự do, cho nuôi thú cưng...)?\n\n"
-        "Homigo sẽ lập tức tính toán và đề xuất phòng tối ưu cho bạn!"
+    pref = state.get("preferences") or UserPreferenceState()
+
+    parts = []
+    if pref.amenities:
+        parts.append(f"Homigo đã ghi nhận bạn đang tìm phòng ưu tiên: **{', '.join(pref.amenities)}**.")
+
+    parts.append(
+        "Chào bạn! Để Homigo có thể lọc và đề xuất phòng trọ chính xác và tối ưu nhất cho bạn, "
+        "bạn vui lòng chia sẻ thêm một vài thông tin nhé:\n"
     )
+
+    questions = []
+    if not (pref.location_text or (pref.lat and pref.lng)):
+        questions.append("1. **Khu vực bạn muốn ở:** Bạn muốn ở quận/huyện nào hoặc gần trường học/công ty nào (ví dụ: gần ĐH Bách Khoa, gần UIT, Quận Bình Thạnh)?")
+    if not (pref.max_price or pref.min_price):
+        q_num = len(questions) + 1
+        questions.append(f"{q_num}. **Mức ngân sách dự kiến:** Khoảng bao nhiêu triệu/tháng (ví dụ: dưới 3.5 triệu)?")
+    if not pref.amenities:
+        q_num = len(questions) + 1
+        questions.append(f"{q_num}. **Tiện nghi ưu tiên:** Máy lạnh, gác lửng, WC riêng, giờ giấc tự do, cho nuôi thú cưng...?")
+
+    parts.append("\n".join(questions))
+    parts.append("\n\nHomigo sẽ quét cơ sở dữ liệu và đề xuất ngay danh sách phòng tốt nhất cho bạn!")
+    clarification_text = "\n".join(parts)
+
     return {
         "final_text": clarification_text,
         "needs_clarification": True,
@@ -437,7 +482,12 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
     retry_count = state.get("retry_count", 0)
     retry_notes = list(state.get("retry_notes") or [])
 
-    # 1. Geocoding nếu có địa điểm văn bản mà chưa có toạ độ
+    # 1. Xác định vị trí: Địa điểm cụ thể -> geocode (lat, lng); Đơn vị hành chính -> get_location_hierarchy (ID)
+    city_id: Optional[int] = None
+    district_id: Optional[int] = None
+    ward_id: Optional[int] = None
+    admin_not_found = False
+
     if pref.location_text and (pref.lat is None or pref.lng is None):
         try:
             geo_raw = geocode_location.invoke({"query": pref.location_text})
@@ -447,38 +497,69 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
                 pref.lat = inner.get("lat")
                 pref.lng = inner.get("lng") if inner.get("lng") is not None else inner.get("lon")
                 weights = compute_normalized_weights(pref, multipliers)
+            elif isinstance(geo_data, dict) and geo_data.get("is_administrative"):
+                from tools.housing_tools import get_location_hierarchy
+                hier_raw = get_location_hierarchy.invoke({"city_name": pref.location_text})
+                hier_data = json.loads(hier_raw)
+                items = hier_data.get("data") if isinstance(hier_data, dict) else None
+                if isinstance(items, list) and len(items) > 0:
+                    first = items[0]
+                    if hier_data.get("level") == "district" or "city_id" in first:
+                        district_id = first.get("id")
+                        city_id = first.get("city_id")
+                    elif "district_id" in first:
+                        ward_id = first.get("id")
+                        district_id = first.get("district_id")
+                    else:
+                        city_id = first.get("id")
+                else:
+                    admin_not_found = True
         except Exception as e:
-            logger.warning(f"Lỗi geocode địa điểm {pref.location_text}: {e}")
+            logger.warning(f"Lỗi xử lý vị trí {pref.location_text}: {e}")
 
     # 2. Sử dụng chính xác tiêu chí từ người dùng
     eff_min_price = pref.min_price
     eff_max_price = pref.max_price
     eff_amenities = pref.amenities if pref.amenities else None
 
-    # 3. Gọi công cụ search_rooms kết hợp Rerank với Custom Weights
+    # 3. Gọi công cụ search_rooms kết hợp Rerank với Custom Weights (bỏ qua nếu khu vực hành chính chưa có trong DB)
     rooms: list[RoomItem] = []
-    try:
-        search_args = {
-            "query": user_text,
-            "lat": pref.lat,
-            "lng": pref.lng,
-            "min_price": eff_min_price,
-            "max_price": eff_max_price,
-            "amenities": eff_amenities,
-            "weights": weights,
-            "limit": 5,
-        }
-        res_json = search_rooms.invoke(search_args)
-        data = json.loads(res_json)
-        if isinstance(data, dict) and data.get("ok"):
-            raw_items = data.get("data", [])
-            for idx, raw in enumerate(raw_items, 1):
-                rooms.append(RoomItem.from_backend_result(raw, rank=idx))
-    except Exception as e:
-        logger.warning(f"Lỗi truy vấn search_rooms: {e}")
+    if not admin_not_found:
+        try:
+            search_args: dict[str, Any] = {
+                "query": user_text,
+                "lat": pref.lat,
+                "lng": pref.lng,
+                "min_price": eff_min_price,
+                "max_price": eff_max_price,
+                "amenities": eff_amenities,
+                "weights": weights,
+                "limit": 5,
+            }
+            if city_id is not None:
+                search_args["city_id"] = city_id
+            if district_id is not None:
+                search_args["district_id"] = district_id
+            if ward_id is not None:
+                search_args["ward_id"] = ward_id
+
+            res_json = search_rooms.invoke(search_args)
+            data = json.loads(res_json)
+            if isinstance(data, dict) and data.get("ok"):
+                raw_items = data.get("data", [])
+                for idx, raw in enumerate(raw_items, 1):
+                    rooms.append(RoomItem.from_backend_result(raw, rank=idx))
+        except Exception as e:
+            logger.warning(f"Lỗi truy vấn search_rooms: {e}")
 
     # 4. Kiểm định Context Grounding
-    ctx_check = verify_context_grounding(rooms, pref, retry_count=retry_count)
+    ctx_check = verify_context_grounding(
+        rooms,
+        pref,
+        retry_count=retry_count,
+        last_search_args=search_args if "search_args" in locals() else None,
+        area_name=pref.location_text,
+    )
 
     return {
         "retrieved_rooms": rooms,
@@ -491,6 +572,7 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
         "needs_user_consent": ctx_check.needs_user_consent,
         "proposed_budget": ctx_check.proposed_budget,
         "proposed_budget_str": ctx_check.proposed_budget_str,
+        "hitl_proposal": ctx_check.hitl_proposal,
     }
 
 
@@ -507,12 +589,20 @@ def decision_node(state: HousingAgentState) -> dict[str, Any]:
     insights = build_decision_insights(rooms, weights=weights, weight_explanations=explanations)
 
     if not rooms:
+        hitl = state.get("hitl_proposal")
         prop_str = state.get("proposed_budget_str")
-        if prop_str:
+        if hitl and hitl.message:
             reply = (
                 "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
                 "với các điều kiện lọc hiện tại của bạn.\n\n"
-                f"💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới ngân sách lên khoảng **{prop_str}** (+15%) "
+                f"💡 **Thực tế thị trường từ Homigo:** {hitl.message}\n\n"
+                "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+            )
+        elif prop_str:
+            reply = (
+                "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
+                "với các điều kiện lọc hiện tại của bạn.\n\n"
+                f"💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới ngân sách lên khoảng **{prop_str}** "
                 "hoặc mở rộng phạm vi tìm kiếm sang các khu vực lân cận để có thêm lựa chọn tốt.\n\n"
                 "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
             )
@@ -614,6 +704,7 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
     need_clarification = state.get("needs_clarification", False)
     session_id = state.get("session_id", "default_session")
     grounding_report = state.get("grounding_report")
+    hitl_proposal = state.get("hitl_proposal")
 
     # Tạo câu hỏi gợi mở / các nút tương tác
     if state.get("is_keep_criteria"):
@@ -621,6 +712,17 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
             "🔍 Thử tìm khu vực khác",
             "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
         ]
+        hitl_proposal = None
+        rooms = []
+        insights = None
+        grounding_report = {
+            "is_grounded": True,
+            "groundedness_score": 1.0,
+            "context_grounded": False,
+            "needs_user_consent": False,
+            "hitl_streak": 0,
+            "hitl_concluded": True,
+        }
     elif need_clarification:
         follow_up = [
             "Ngân sách tối đa của bạn là bao nhiêu triệu/tháng?",
@@ -632,19 +734,22 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
             "Bạn có muốn so sánh chi tiết hơn với phòng Top 2 không?",
         ]
     else:
-        # Không tìm thấy phòng -> Cung cấp đủ 4 lựa chọn tương tác
-        prop_str = state.get("proposed_budget_str")
-        if prop_str:
-            budget_label = f"👍 Đồng ý nới ngân sách lên {prop_str} (+15%)"
+        # Không tìm thấy phòng -> Cung cấp lựa chọn tương tác thông minh
+        if hitl_proposal and hitl_proposal.options:
+            follow_up = [opt.action_text for opt in hitl_proposal.options]
         else:
-            budget_label = "👍 Đồng ý nới ngân sách (+15%)"
+            prop_str = state.get("proposed_budget_str")
+            if prop_str:
+                budget_label = f"👍 Đồng ý nới ngân sách lên {prop_str} (+15%)"
+            else:
+                budget_label = "👍 Đồng ý nới ngân sách (+15%)"
 
-        follow_up = [
-            budget_label,
-            "🧭 Mở rộng bán kính tìm kiếm lân cận",
-            "❌ Giữ nguyên tiêu chí của tôi",
-            "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
-        ]
+            follow_up = [
+                budget_label,
+                "🧭 Mở rộng bán kính tìm kiếm lân cận",
+                "❌ Giữ nguyên tiêu chí của tôi",
+                "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
+            ]
 
     response = AgentResponse(
         session_id=session_id,
@@ -655,6 +760,7 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
         need_clarification=need_clarification,
         follow_up_questions=follow_up,
         grounding_report=grounding_report,
+        hitl_proposal=hitl_proposal if not rooms else None,
     )
 
     # Cập nhật vào SessionMemoryManager

@@ -16,8 +16,12 @@ export type {
 export type {
   AgentChatRequest,
   AgentResponse,
+  AgentTraceEvent,
   DecisionInsight,
+  HitlOption,
+  HitlProposal,
   RoomItem,
   TradeOffAnalysis,
   UserPreferenceState,
 } from "./agent";
+

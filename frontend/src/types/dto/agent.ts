@@ -45,6 +45,62 @@ export interface RoomItem {
   explain_match?: Record<string, any>;
 }
 
+export interface AgentTraceEvent {
+  type: "model_request" | "model_response" | "tool_started" | "tool_finished" | string;
+  step: number;
+  model_call_index?: number;
+  model_name?: string;
+  message_count?: number;
+  tool_count?: number;
+  system_prompt_chars?: number;
+  message_chars?: number;
+  elapsed_ms?: number;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    output_token_details?: {
+      reasoning?: number;
+    };
+  } | null;
+  tool_calls_requested?: Array<{ id?: string; name?: string }>;
+  requested_tools?: string[];
+  tool_call_id?: string;
+  tool_name?: string;
+  arguments?: Record<string, any>;
+  args?: Record<string, any>;
+  status?: string;
+  result?: any;
+  error?: string;
+}
+
+export interface HitlOption {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  badge?: string;
+  badge_color?: "emerald" | "blue" | "amber" | "purple" | "orange" | "slate" | string;
+  action_text: string;
+  highlight?: boolean;
+}
+
+export interface HitlProposal {
+  needed: boolean;
+  title?: string;
+  area_name?: string;
+  user_budget?: number;
+  user_budget_str?: string;
+  market_min_price?: number;
+  market_min_price_str?: string;
+  market_floor_price_str?: string;
+  market_avg_price?: number;
+  market_avg_price_str?: string;
+  is_market_gap?: boolean;
+  message?: string;
+  options: HitlOption[];
+}
+
 export interface AgentResponse {
   session_id?: string;
   text_reply: string;
@@ -54,6 +110,8 @@ export interface AgentResponse {
   need_clarification?: boolean;
   follow_up_questions?: string[];
   grounding_report?: Record<string, any> | null;
+  hitl_proposal?: HitlProposal | null;
+  trace_events?: AgentTraceEvent[];
 }
 
 export interface AgentChatRequest {
@@ -61,3 +119,4 @@ export interface AgentChatRequest {
   conversation_history?: Array<{ role: string; content: string }>;
   session_id?: string;
 }
+
