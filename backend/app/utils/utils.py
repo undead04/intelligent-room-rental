@@ -12,7 +12,7 @@ from typing import Any, Mapping, Sequence
 __all__ = ["rerank", "explain_match", "component_influence", "DEFAULT_WEIGHTS"]
 
 # --- Constants ---
-UNKNOWN_SCORE = 0.4
+UNKNOWN_SCORE = 0.0
 EARTH_RADIUS_KM = 6371.0
 DEFAULT_WEIGHTS: Mapping[str, float] = {
     "price": 0.2,
@@ -70,11 +70,17 @@ _ALIAS_MAP = {
     "wc riêng": "private_wc",
     "vệ sinh riêng": "private_wc",
     "gac": "mezzanine",
-    "gac_lung": "mezzanine",
-    "gac_xep": "mezzanine",
+    "có gác": "mezzanine",
+    "co gac": "mezzanine",
+    "gác": "mezzanine",
     "gác lửng": "mezzanine",
     "gác cao": "mezzanine",
     "gác xép": "mezzanine",
+    "gác lưng": "mezzanine",
+    "gác lững": "mezzanine",
+    "gác đúc": "mezzanine",
+    "gác gỗ": "mezzanine",
+    "mezzanine": "mezzanine",
     "bep": "kitchen",
     "kitchen_shelf": "kitchen",
     "kệ bếp": "kitchen",
@@ -195,6 +201,44 @@ def _location_part(listing: Any, user_pref: Any) -> float:
     return _location_fit(_haversine_km(lat, lng, pref_lat, pref_lng))
 
 
+def _calculate_price_fit(orm: Any, user_pref: Any) -> float:
+    """Tính điểm độ hợp lý và tương thích giá phòng:
+    1. Nếu có price_score từ mô hình ML (CatBoost Residual Pricing) -> kết hợp.
+    2. Đánh giá độ khớp với ngân sách của người dùng (min_price, max_price).
+       Nếu phòng nằm trong hoặc dưới ngân sách tối đa, điểm fit cao (0.80 - 1.0).
+       Nếu phòng vượt ngân sách, điểm fit bị giảm tương ứng.
+    """
+    price_vnd = _get(orm, "price_vnd")
+    price_score = _get(orm, "price_score")
+    max_price = _get(user_pref, "max_price")
+    min_price = _get(user_pref, "min_price")
+
+    ml_score = _clamp01(float(price_score)) if price_score is not None else None
+
+    budget_fit = None
+    if price_vnd is not None and price_vnd > 0:
+        if max_price is not None and max_price > 0:
+            if price_vnd <= max_price:
+                # Tiết kiệm hơn ngân sách tối đa -> Điểm cao từ 0.80 đến 1.00
+                ratio = float(price_vnd) / float(max_price)
+                budget_fit = _clamp01(1.0 - (ratio * 0.20))
+            else:
+                # Vượt ngân sách tối đa
+                over_ratio = (float(price_vnd) - float(max_price)) / float(max_price)
+                budget_fit = _clamp01(max(0.0, 0.60 - over_ratio * 2.0))
+        elif min_price is not None and min_price > 0:
+            budget_fit = 0.85 if price_vnd >= min_price else 0.60
+
+    if ml_score is not None and budget_fit is not None:
+        return round(0.5 * ml_score + 0.5 * budget_fit, 3)
+    if budget_fit is not None:
+        return round(budget_fit, 3)
+    if ml_score is not None:
+        return round(ml_score, 3)
+
+    return 0.75
+
+
 def _match_breakdown(
     listing: dict[str, Any] | Any,
     user_pref: Any,
@@ -203,7 +247,7 @@ def _match_breakdown(
     """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
     orm = _get(listing, "listing", listing)
     scorers = {
-        "price": lambda: _score_or_unknown(orm, "price_score"),
+        "price": lambda: _calculate_price_fit(orm, user_pref),
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
         "amenity": lambda: _amenity_fit(

@@ -193,7 +193,14 @@ class ListingService:
         if not candidates:
             return []
 
-        user_pref = {"lat": lat, "lng": lng, "amenities": amenities, "query": query}
+        user_pref = {
+            "lat": lat,
+            "lng": lng,
+            "amenities": amenities,
+            "min_price": min_price,
+            "max_price": max_price,
+            "query": query,
+        }
 
         reranked = rerank(
             candidates=candidates,

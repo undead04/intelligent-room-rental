@@ -60,6 +60,11 @@ AMENITY_BOOST_PATTERNS = [
     r"tiện\s*nghi\s*cao",
     r"nội\s*thất\s*(?:xịn|cao\s*cấp|đẹp)",
     r"đủ\s*tiện\s*nghi",
+    r"có\s*gác",
+    r"gác\s*(?:lửng|cao|lưng|lững|đúc|xép|gỗ)",
+    r"máy\s*lạnh",
+    r"điều\s*hòa",
+    r"nuôi\s*(?:chó|mèo|pet|thú\s*cưng)",
 ]
 
 

@@ -69,6 +69,7 @@ Nhiệm vụ: đọc tiêu đề và mô tả của MỘT tin, rồi điền đ�
 - landmarks_nearby: trường đại học, bệnh viện, chợ, trạm metro lân cận được nhắc tới (ví dụ: ["ĐH Bách Khoa", "Chợ Bến Thành"]).
 - rules_and_lifestyle: các quy định & môi trường sống (ví dụ: ["giờ tự do", "không chung chủ"]).
 - extra_amenities: các tiện ích đặc thù khác không nằm trong enum (ví dụ: ["view Landmark 81", "cửa sổ trời"]).
+  LƯU Ý BẮT BUỘC: TUYỆT ĐỐI KHÔNG đưa máy lạnh, tủ lạnh, máy giặt, bếp, gác, WC riêng, nội thất, chỗ để xe, thang máy, camera, bảo vệ, vân tay, khu an ninh vào extra_amenities. Chúng BẮT BUỘC phải điền vào đúng field trong `amenities`, `rules`, hoặc `safety`.
 
 # QUY TẮC CHUNK & OUTPUT
 1. Trích xuất đầy đủ TẤT CẢ các `id` có trong input, giữ nguyên chính xác ID.

@@ -266,7 +266,7 @@ $$\text{amenity\_overall\_score} = \min\left(1.0, \frac{\sum \text{điểm đạ
 ### 7.3. Thang Điểm An Ninh (`safety_score`)
 Điểm an ninh tổng hợp được tính theo trọng số ưu tiên:
 $$\text{safety\_score} = 0.30 \times S_{\text{camera}} + 0.30 \times S_{\text{bảo\_vệ}} + 0.25 \times S_{\text{khóa\_vân\_tay}} + 0.15 \times S_{\text{khu\_vực\_an\_ninh}}$$
-Trong đó: $S_{\text{yes}} = 1.0$, $S_{\text{unknown}} = 0.4$, $S_{\text{no}} = 0.0$.
+Trong đó: $S_{\text{yes}} = 1.0$, $S_{\text{unknown}} = 0.0$, $S_{\text{no}} = 0.0$ (chỉ tính điểm cho các tiện ích/an ninh được xác nhận có bằng chứng `yes`, tránh làm phẳng điểm số Score Flattening).
 
 ### 7.4. Thang Điểm Thẩm Định Giá Thị Trường (`price_score` từ Machine Learning)
 Thay vì sử dụng phép chia đơn giá thô ($price/m^2$) vốn không phản ánh đúng giá trị tiện nghi và vị trí vi mô, hệ thống tích hợp mô hình Machine Learning Conformal Prediction (`PriceEvaluator`):
