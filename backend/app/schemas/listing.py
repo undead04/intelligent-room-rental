@@ -45,9 +45,12 @@ class ListingResponse(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     main_image: Optional[str] = None
+    images: Optional[list[str]] = None
     price_string: Optional[str] = None
     price_score: Optional[float] = None
+    safety_score: Optional[float] = None
     amenity_overall: Optional[float] = None
+    concept_scores: Optional[dict] = None
     city: Optional[CityReference] = None
     district: Optional[DistrictReference] = None
     ward: Optional[WardReference] = None

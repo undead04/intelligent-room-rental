@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Regex phát hiện các mẫu SQL Injection nguy hiểm
 SQLI_PATTERNS = [
-    r"(\%27)|(\')|(\-\-)|(\%23)|(#)",  # Dấu nháy đơn, comment ký tự
+    r"(\%27)|(\')|(\;\s*\-\-)|(\'\s*\-\-)|(\-\-\s*$)",  # Dấu nháy đơn, SQL comment cuối câu
     r"\b(union\s+(all\s+)?select)\b",   # UNION SELECT
     r"\b(select\s+.+\s+from)\b",        # SELECT ... FROM
     r"\b(insert\s+into.+values)\b",     # INSERT INTO

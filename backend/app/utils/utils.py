@@ -154,7 +154,7 @@ def _amenity_fit(
             return _clamp01(scores["amenity_overall"])
         return 1.0
 
-    normalized_req = [_normalize_amenity(a) for a in requested if a]
+    normalized_req = list(dict.fromkeys(_normalize_amenity(a) for a in requested if a))
     if not normalized_req:
         if amenity_overall is not None:
             return _clamp01(amenity_overall)
