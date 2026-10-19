@@ -19,6 +19,14 @@ class SessionData:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.preferences = UserPreferenceState()
+        self.multipliers: dict[str, float] = {
+            "price": 1.0,
+            "location": 1.0,
+            "safety": 1.0,
+            "amenity": 1.0,
+            "semantic": 1.0,
+        }
+        self.proposed_budget: Optional[float] = None
         self.messages: list[BaseMessage] = []
         self.last_rooms: list[RoomItem] = []
         self.last_active: float = time.time()

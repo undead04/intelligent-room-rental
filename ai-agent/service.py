@@ -234,14 +234,25 @@ class HousingAgentService:
         prev_len: int,
         trace_events: list[dict[str, Any]],
     ) -> AgentResponse:
-        from grounding import verify_context_grounding
+        from grounding import verify_answer_grounding, verify_context_grounding
+        from intent_weights import compute_normalized_weights, detect_intent_multipliers
 
         self.session_histories[effective_session_id] = list(all_msgs)
         turn_msgs = all_msgs[prev_len:]
 
         rooms = self._extract_rooms_from_messages(turn_msgs)
-        insights = build_decision_insights(rooms) if rooms else None
         pref = self._extract_preferences_from_tool_calls(all_msgs)
+        multipliers, weight_explanations = detect_intent_multipliers(user_message)
+        computed_weights = compute_normalized_weights(pref, multipliers)
+        insights = (
+            build_decision_insights(
+                rooms,
+                weights=computed_weights,
+                weight_explanations=weight_explanations,
+            )
+            if rooms
+            else None
+        )
 
         called_search_rooms = any(
             isinstance(m, ToolMessage) and m.name == "search_rooms"
@@ -307,6 +318,14 @@ class HousingAgentService:
             }
         elif rooms:
             self.session_hitl_streaks[effective_session_id] = 0
+            ans_check = verify_answer_grounding(final_text, rooms, pref)
+            grounding_report = {
+                "is_grounded": ans_check.is_grounded,
+                "groundedness_score": ans_check.groundedness_score,
+                "context_grounded": True,
+                "needs_user_consent": False,
+                "issues": ans_check.issues,
+            }
             follow_up = [
                 "Bạn có muốn xem chi tiết liên hệ phòng Top 1?",
                 "Bạn có muốn lọc thêm theo tiện ích khác không?",
@@ -421,8 +440,32 @@ class HousingAgentService:
     ) -> AgentResponse:
         """Thực thi một lượt hội thoại qua Core Agent (đồng bộ 100% với Streamlit)."""
         import uuid
+        from guardrails import check_guardrails
 
         effective_session_id = session_id or uuid.uuid4().hex
+        guard = check_guardrails(user_message)
+        if not guard.allowed:
+            safe_reply = guard.safe_response or "Yêu cầu ngoài phạm vi hỗ trợ của Homigo AI."
+            return AgentResponse(
+                session_id=effective_session_id,
+                text_reply=safe_reply,
+                rooms=[],
+                insights=None,
+                current_preferences=UserPreferenceState(),
+                need_clarification=False,
+                follow_up_questions=[
+                    "Khu vực Thủ Đức / Làng Đại học",
+                    "Ngân sách dưới 3.5 triệu/tháng",
+                ],
+                grounding_report={
+                    "is_grounded": True,
+                    "blocked_by_guardrail": True,
+                    "reason": guard.reason,
+                },
+                hitl_proposal=None,
+                trace_events=[],
+            )
+
         history, prev_len = self._prepare_history(user_message, conversation_history, effective_session_id)
         human_texts = [
             getattr(m, "content", "")
@@ -477,8 +520,35 @@ class HousingAgentService:
         - event: done (toàn bộ AgentResponse hoàn chỉnh kèm danh sách phòng & insights)
         """
         import uuid
+        from guardrails import check_guardrails
 
         effective_session_id = session_id or uuid.uuid4().hex
+        guard = check_guardrails(user_message)
+        if not guard.allowed:
+            safe_reply = guard.safe_response or "Yêu cầu ngoài phạm vi hỗ trợ của Homigo AI."
+            yield f"event: text_delta\ndata: {json.dumps({'delta': safe_reply}, ensure_ascii=False)}\n\n"
+            blocked_resp = AgentResponse(
+                session_id=effective_session_id,
+                text_reply=safe_reply,
+                rooms=[],
+                insights=None,
+                current_preferences=UserPreferenceState(),
+                need_clarification=False,
+                follow_up_questions=[
+                    "Khu vực Thủ Đức / Làng Đại học",
+                    "Ngân sách dưới 3.5 triệu/tháng",
+                ],
+                grounding_report={
+                    "is_grounded": True,
+                    "blocked_by_guardrail": True,
+                    "reason": guard.reason,
+                },
+                hitl_proposal=None,
+                trace_events=[],
+            )
+            yield f"event: done\ndata: {blocked_resp.model_dump_json()}\n\n"
+            return
+
         history, prev_len = self._prepare_history(user_message, conversation_history, effective_session_id)
         human_texts = [
             getattr(m, "content", "")

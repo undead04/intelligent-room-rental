@@ -177,18 +177,29 @@ class ListingService:
             raw_vector = model_embedding.encode([query])[0]
         query_vector = raw_vector.tolist() if hasattr(raw_vector, "tolist") else list(raw_vector)
 
-        candidates = self.repository.vector_search(
-            query_vector=query_vector,
-            query_text=query,
-            city_id=city_id,
-            district_id=district_id,
-            ward_id=ward_id,
-            min_price=min_price,
-            max_price=max_price,
-            min_area=min_area,
-            max_area=max_area,
-            limit=50,
-        )
+        repo_kwargs: dict[str, Any] = {
+            "query_vector": query_vector,
+            "query_text": query,
+            "city_id": city_id,
+            "district_id": district_id,
+            "ward_id": ward_id,
+            "min_price": min_price,
+            "max_price": max_price,
+            "min_area": min_area,
+            "max_area": max_area,
+            "limit": 50,
+        }
+        model_name = getattr(model_embedding, "model_name", None)
+        if isinstance(model_name, str) and model_name.strip():
+            import inspect
+            try:
+                sig = inspect.signature(self.repository.vector_search)
+                if "model_name" in sig.parameters:
+                    repo_kwargs["model_name"] = model_name.strip()
+            except (ValueError, TypeError):
+                pass
+
+        candidates = self.repository.vector_search(**repo_kwargs)
 
         if not candidates:
             return []

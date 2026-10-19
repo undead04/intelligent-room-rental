@@ -35,8 +35,18 @@ export default function RoomResultsPanel({
     }
     if (preferences.amenities && preferences.amenities.length > 0) {
       preferences.amenities.forEach((a) => {
-        if (/máy lạnh|điều hòa/i.test(a)) tags.push("❄️ Máy lạnh");
-        else if (/gác/i.test(a)) tags.push("🪜 Gác lửng");
+        const clean = a.trim().toLowerCase();
+        if (/^(aircon|ac)$|máy lạnh|điều hòa/i.test(clean)) tags.push("❄️ Máy lạnh");
+        else if (/^mezzanine$|gác/i.test(clean)) tags.push("🪜 Gác lửng");
+        else if (/^private_wc$|wc riêng|vệ sinh riêng/i.test(clean)) tags.push("🚿 WC riêng");
+        else if (/^free_hours$|giờ giấc tự do|tự do/i.test(clean)) tags.push("🛵 Giờ tự do");
+        else if (/^pet_allowed$|thú cưng|nuôi pet/i.test(clean)) tags.push("🐾 Nuôi thú cưng");
+        else if (/^balcony$|ban công/i.test(clean)) tags.push("🌿 Ban công");
+        else if (/^kitchen$|bếp/i.test(clean)) tags.push("🍳 Kệ bếp");
+        else if (/^fridge$|tủ lạnh/i.test(clean)) tags.push("🧊 Tủ lạnh");
+        else if (/^washing_machine$|máy giặt/i.test(clean)) tags.push("🧺 Máy giặt");
+        else if (/^parking$|chỗ để xe|giữ xe/i.test(clean)) tags.push("🛵 Chỗ để xe");
+        else if (/^security$|an ninh/i.test(clean)) tags.push("🛡️ An ninh");
         else tags.push(`✨ ${a}`);
       });
     }
@@ -47,7 +57,7 @@ export default function RoomResultsPanel({
         else tags.push(`🏷️ ${r}`);
       });
     }
-    return tags;
+    return Array.from(new Set(tags));
   }, [preferences]);
 
   // Client-side filtering & sorting of rooms

@@ -709,3 +709,48 @@ def test_turn_context_canonicalization_for_identical_rerank(monkeypatch):
     assert "city_id" not in captured_requests[0]["params"]
 
 
+def test_grounding_retry_terminates_after_max_retries():
+    """Đảm bảo grounding_node và route_after_grounding không bị lặp vô hạn khi câu trả lời không đạt grounding."""
+    from graph import MAX_GROUNDING_RETRIES, grounding_node, route_after_grounding
+    from schemas import RoomItem, UserPreferenceState
+
+    rooms = [
+        RoomItem(
+            id="nhatot_101",
+            rank=1,
+            matchScore=0.9,
+            title="Phòng trọ Thủ Đức",
+            price="3 triệu/tháng",
+            priceNum=3000000,
+            address="Thủ Đức",
+        )
+    ]
+    state = {
+        "final_text": "Đề xuất phòng nhatot_999999 giá 9.9 triệu/tháng.",
+        "retrieved_rooms": rooms,
+        "preferences": UserPreferenceState(max_price=3500000),
+        "answer_retry_count": 0,
+        "retry_count": 0,
+        "retry_notes": [],
+    }
+
+    # Lần 1 (ans_retry: 0 -> 1 <= 2): quay lại decision_node
+    u1 = grounding_node(state)
+    state.update(u1)
+    assert state["answer_retry_count"] == 1
+    assert route_after_grounding(state) == "decision_node"
+
+    # Lần 2 (ans_retry: 1 -> 2 <= 2): quay lại decision_node
+    u2 = grounding_node(state)
+    state.update(u2)
+    assert state["answer_retry_count"] == 2
+    assert route_after_grounding(state) == "decision_node"
+
+    # Lần 3 (ans_retry: 2 -> 3 > MAX_GROUNDING_RETRIES): thoát ra formatter_node, KHÔNG lặp vô hạn
+    u3 = grounding_node(state)
+    state.update(u3)
+    assert state["answer_retry_count"] == MAX_GROUNDING_RETRIES + 1
+    assert route_after_grounding(state) == "formatter_node"
+
+
+

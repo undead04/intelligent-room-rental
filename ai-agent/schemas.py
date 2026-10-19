@@ -53,7 +53,7 @@ class RoomItem(BaseModel):
         else:
             price_str = listing.get("price_string") or "Thỏa thuận"
 
-        # Trích xuất tags từ tiện ích hoặc explain
+        # Trích xuất tags từ tiện ích, concept_scores ML hoặc explain
         tags = []
         if listing.get("area_m2"):
             tags.append(f"{listing['area_m2']} m²")
@@ -70,7 +70,24 @@ class RoomItem(BaseModel):
                 if name in factor_names:
                     tags.append(factor_names[name])
 
+        concept_scores = listing.get("concept_scores")
+        if isinstance(concept_scores, dict):
+            concept_tag_map = {
+                "aircon": "Có máy lạnh",
+                "mezzanine": "Có gác lửng",
+                "private_wc": "WC riêng",
+                "free_hours": "Giờ tự do",
+                "pet_allowed": "Nuôi thú cưng",
+                "balcony": "Có ban công",
+            }
+            for c_key, c_label in concept_tag_map.items():
+                c_val = concept_scores.get(c_key)
+                if isinstance(c_val, (int, float)) and c_val >= 0.75 and c_label not in tags:
+                    tags.append(c_label)
+
         img = listing.get("main_image") or "/property-placeholder.svg"
+        images_list = listing.get("images")
+        photo_count = len(images_list) if isinstance(images_list, list) and len(images_list) > 0 else 4
 
         rank_texts = {1: "Top 1 - Tối ưu nhất", 2: "Top 2 - Đề xuất", 3: "Top 3 - Lựa chọn tốt"}
         rank_text = rank_texts.get(rank, f"Top {rank}")
@@ -126,7 +143,7 @@ class RoomItem(BaseModel):
             priceNum=price_vnd,
             address=listing.get("address_raw") or "Hồ Chí Minh",
             distance=dist_str,
-            photoCount=4,
+            photoCount=photo_count,
             image=img,
             tags=tags,
             lat=room_lat,

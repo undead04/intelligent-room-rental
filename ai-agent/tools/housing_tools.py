@@ -485,8 +485,12 @@ def search_rooms(
         if min_price is None and ext_turn.min_price is not None:
             min_price = ext_turn.min_price
 
-        ext_session = _fallback_extract(ctx.get("session_text") or ctx["user_query"])
-        amenities = sorted(set(ext_session.amenities)) if ext_session.amenities else []
+        user_q_low = ctx["user_query"].lower()
+        if "lược bớt" in user_q_low or user_q_low.startswith("🪄"):
+            amenities = []
+        else:
+            ext_session = _fallback_extract(ctx.get("session_text") or ctx["user_query"])
+            amenities = sorted(set(ext_session.amenities)) if ext_session.amenities else []
 
         if ctx.get("lat") is not None and ctx.get("lng") is not None:
             lat = ctx["lat"]

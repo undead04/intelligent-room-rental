@@ -263,6 +263,11 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         or "sleepbox" in user_lower
         or "giường tầng" in user_lower
     )
+    is_reduce_amenities = (
+        user_lower.startswith("🪄")
+        or "lược bớt yêu cầu tiện ích" in user_lower
+        or "lược bớt tiện ích" in user_lower
+    )
 
     # Nếu người dùng chọn GIỮ NGUYÊN TIÊU CHÍ
     if is_keep_criteria:
@@ -304,8 +309,8 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         if m_target:
             val = float(m_target.group(1).replace(",", ".")) * 1_000_000
             new_max = val
-        elif state.get("proposed_budget"):
-            new_max = float(state["proposed_budget"])
+        elif state.get("proposed_budget") or session.proposed_budget:
+            new_max = float(state.get("proposed_budget") or session.proposed_budget)
         else:
             curr_max = session.preferences.max_price or 3000000
             new_max = round(curr_max * 1.15, 0)
@@ -320,6 +325,12 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         updated_pref = session.preferences
         explanations = ["chuyển hướng sang tìm kiếm ký túc xá / ở ghép (sleepbox) phù hợp ngân sách sinh viên"]
         multipliers = state.get("multipliers") or {"price": 1.8, "location": 1.0, "amenity": 1.0, "safety": 1.2}
+    # Nếu người dùng LƯỢC BỚT TIỆN ÍCH BẮT BUỘC
+    elif is_reduce_amenities:
+        session.preferences.amenities = []
+        updated_pref = session.preferences
+        explanations = ["đã lược bớt các yêu cầu tiện ích bắt buộc để mở rộng tập ứng viên"]
+        multipliers = state.get("multipliers") or {"price": 1.2, "location": 1.2, "amenity": 1.0, "safety": 1.0}
     # Nếu người dùng MỞ RỘNG BÁN KÍNH LÂN CẬN
     elif is_broaden_search:
         session.preferences.lat = None
@@ -331,11 +342,12 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
         # Trường hợp bình thường hoặc nhập thông tin tùy chỉnh mới: bóc tách qua LLM
         model = _get_llm()
         updated_pref = memory_manager.update_preferences_from_text(session, user_text, model=model)
-        accumulated_m = state.get("multipliers")
+        accumulated_m = state.get("multipliers") or session.multipliers
         multipliers, explanations = detect_intent_multipliers(user_text, accumulated_multipliers=accumulated_m)
         if updated_pref.amenities and multipliers.get("amenity", 1.0) < 1.5:
             multipliers["amenity"] = 1.8
             explanations.append("ưu tiên tiện nghi theo yêu cầu người dùng (boost 1.8x)")
+        session.multipliers = dict(multipliers)
 
     # Tính toán vector trọng số chuẩn hóa
     computed_weights = compute_normalized_weights(updated_pref, multipliers)
@@ -356,7 +368,15 @@ def preference_intent_node(state: HousingAgentState) -> dict[str, Any]:
     has_loc = bool(updated_pref.location_text or (updated_pref.lat and updated_pref.lng))
     has_budget = bool(updated_pref.max_price or updated_pref.min_price)
 
-    if matched_skill or is_contract or is_relax_budget or is_broaden_search or is_keep_criteria or is_dormitory_choice:
+    if (
+        matched_skill
+        or is_contract
+        or is_relax_budget
+        or is_broaden_search
+        or is_keep_criteria
+        or is_dormitory_choice
+        or is_reduce_amenities
+    ):
         needs_clarification = False
     else:
         # Bắt buộc hỏi làm rõ khi người dùng chưa cung cấp cả Vị trí lẫn Ngân sách
@@ -548,7 +568,14 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
             if isinstance(data, dict) and data.get("ok"):
                 raw_items = data.get("data", [])
                 for idx, raw in enumerate(raw_items, 1):
-                    rooms.append(RoomItem.from_backend_result(raw, rank=idx))
+                    rooms.append(
+                        RoomItem.from_backend_result(
+                            raw,
+                            rank=idx,
+                            target_lat=pref.lat,
+                            target_lng=pref.lng,
+                        )
+                    )
         except Exception as e:
             logger.warning(f"Lỗi truy vấn search_rooms: {e}")
 
@@ -560,6 +587,9 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
         last_search_args=search_args if "search_args" in locals() else None,
         area_name=pref.location_text,
     )
+
+    session = memory_manager.get_or_create_session(state.get("session_id", "default_session"))
+    session.proposed_budget = ctx_check.proposed_budget
 
     return {
         "retrieved_rooms": rooms,
@@ -667,7 +697,7 @@ def grounding_node(state: HousingAgentState) -> dict[str, Any]:
     retry_notes = list(state.get("retry_notes") or [])
 
     ans_check = verify_answer_grounding(final_text, rooms, pref)
-    next_ans_retry = ans_retry + 1 if (not ans_check.is_grounded and ans_retry < MAX_GROUNDING_RETRIES) else ans_retry
+    next_ans_retry = ans_retry + 1 if not ans_check.is_grounded else ans_retry
 
     if not ans_check.is_grounded:
         retry_notes.append(f"Answer Grounding Retry #{next_ans_retry}: Phát hiện sai lệch {ans_check.issues} -> Tái tạo phản hồi chuẩn.")
@@ -680,7 +710,7 @@ def grounding_node(state: HousingAgentState) -> dict[str, Any]:
         "proposed_budget": state.get("proposed_budget"),
         "proposed_budget_str": state.get("proposed_budget_str"),
         "context_retries": ctx_retries,
-        "answer_retries": next_ans_retry,
+        "answer_retries": min(next_ans_retry, MAX_GROUNDING_RETRIES),
         "retry_notes": retry_notes,
         "issues": ans_check.issues,
     }

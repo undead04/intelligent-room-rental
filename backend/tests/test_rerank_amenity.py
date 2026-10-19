@@ -142,3 +142,25 @@ def test_room_type_reference_and_listing_response_schema():
     assert res.room_type is not None
     assert res.room_type.name == "Phòng trọ"
 
+
+def test_amenity_fit_deduplicates_canonical_and_vietnamese_aliases():
+    concept_scores = {
+        "aircon": 1.0,
+        "mezzanine": 0.0,
+    }
+    # Passing both 'aircon' and 'máy lạnh' must not double-count aircon:
+    # unique normalized codes are ['aircon', 'mezzanine'] -> (1.0 + 0.0) / 2 = 0.5
+    fit = _amenity_fit(["aircon", "máy lạnh", "mezzanine"], concept_scores)
+    assert fit == 0.5
+
+
+def test_build_or_tsquery_string_for_sparse_fts():
+    from app.repositories.listing_repository import _build_or_tsquery_string
+
+    q = _build_or_tsquery_string("Tìm phòng gần UIT dưới 4 triệu có máy lạnh")
+    assert " | " in q
+    assert "uit" in q
+    assert "tìm" not in q.split(" | ")
+    assert "dưới" not in q.split(" | ")
+
+
