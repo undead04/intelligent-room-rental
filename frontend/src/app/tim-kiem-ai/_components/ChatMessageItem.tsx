@@ -367,7 +367,7 @@ export default function ChatMessageItem({
                         done &&
                         (done.status === "error" ||
                           done.status === "exception" ||
-                          (resObj && typeof resObj === "object" && resObj.ok === false));
+                          (resObj && typeof resObj === "object" && (resObj as Record<string, unknown>).ok === false));
 
                       const argsObj = ev.arguments || ev.args || {};
 

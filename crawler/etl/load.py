@@ -1,182 +1,39 @@
 import os
 import sys
-import csv
+import hashlib
+from pathlib import Path
 from collections import Counter
+from sqlalchemy import text
 
-# Tự động thêm thư mục gốc dự án vào sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+# Đảm bảo root dự án có trong sys.path khi chạy file độc lập
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
-DEFAULT_PROCESSED_CSV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.csv"))
-DEFAULT_PROCESSED_JSON = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.json"))
-DEFAULT_PROCESSED_PARQUET = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed", "listings_clean.parquet"))
+from crawler.schema.enums import CANONICAL_ROOM_TYPES, ROOM_TYPE_CODE_TO_ID
+from crawler.config.settings import DEFAULT_EMBEDDING_MODEL
+from crawler.etl.db_models import (
+    Base,
+    City,
+    District,
+    Listing,
+    ListingEmbedding,
+    RoomType,
+    User,
+    Ward,
+    create_db_session,
+)
+
 
 class DataLoader:
     """
     [LOAD STAGE]
     Chịu trách nhiệm lưu trữ và nạp dữ liệu sạch vào các đích đến (Destinations):
-    1. Parquet (`listings_clean.parquet`) - Định dạng nhị phân chuẩn, tốc độ cao cho nạp DB & huấn luyện ML
-    2. PostgreSQL / Database - Nạp vào CSDL hệ thống (pgvector)
-    3. CSV (`listings_clean.csv`) - Dùng cho phân tích nhanh, báo cáo Excel
-    4. JSON (`listings_clean.json`) - Tùy chọn xuất đối chiếu văn bản
+    Nạp trực tiếp vào CSDL PostgreSQL (pgvector).
     """
 
     def __init__(self):
         pass
-
-    def load_to_json(self, records: list[dict], output_path: str = None) -> str:
-        """Xuất danh sách records ra file JSON (chuẩn UTF-8, hỗ trợ datetime)"""
-        target_path = output_path or DEFAULT_PROCESSED_JSON
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-
-        if not records:
-            print("[LOAD] Không có bản ghi nào để lưu ra JSON.", flush=True)
-            return target_path
-
-        import json
-
-        def default_serializer(o):
-            if hasattr(o, "isoformat"):
-                return o.isoformat()
-            if hasattr(o, "__dict__"):
-                return o.__dict__
-            return str(o)
-
-        with open(target_path, "w", encoding="utf-8") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2, default=default_serializer)
-
-        print(f"[LOAD] Đã lưu thành công {len(records)} bản ghi vào JSON: {target_path}", flush=True)
-        return target_path
-
-    def load_to_csv(self, records: list[dict], output_path: str = None) -> str:
-        """Xuất danh sách records ra file CSV (chuẩn UTF-8 BOM để Excel đọc không lỗi font)"""
-        target_path = output_path or DEFAULT_PROCESSED_CSV
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-
-        if not records:
-            print("[LOAD] Không có bản ghi nào để lưu ra CSV.", flush=True)
-            return target_path
-
-        import json
-
-        # Thu thập đầy đủ các cột dữ liệu
-        fieldnames = list(records[0].keys())
-        for r in records[1:]:
-            for k in r.keys():
-                if k not in fieldnames:
-                    fieldnames.append(k)
-
-        # Chuẩn hóa dict/list sang JSON string trước khi ghi CSV
-        serialized_records = []
-        for r in records:
-            item = {}
-            for k in fieldnames:
-                val = r.get(k)
-                if isinstance(val, (dict, list)):
-                    item[k] = json.dumps(val, ensure_ascii=False)
-                elif hasattr(val, "isoformat"):
-                    item[k] = val.isoformat()
-                else:
-                    item[k] = val
-            serialized_records.append(item)
-
-        with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(serialized_records)
-
-        print(f"[LOAD] Đã lưu thành công {len(records)} bản ghi vào CSV: {target_path}", flush=True)
-        return target_path
-
-    def load_to_parquet(self, records: list[dict], output_path: str = None) -> str:
-        """
-        Xuất danh sách records ra file Parquet nhị phân (tối ưu tốc độ đọc/ghi cho nạp PostgreSQL & huấn luyện ML).
-        - Giữ nguyên kiểu số, chuỗi, mảng `images` và mảng `vector` (float32).
-        - Tự động đóng gói các trường dict có cấu trúc động (`concept_scores`, `report`) sang JSON string
-          để PyArrow không gặp lỗi struct rỗng `{}` giữa các dòng.
-        """
-        target_path = output_path or DEFAULT_PROCESSED_PARQUET
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-        if not records:
-            print("[LOAD] Không có bản ghi nào để lưu ra Parquet.", flush=True)
-            return target_path
-
-        try:
-            import json
-            import pandas as pd
-
-            normalized_rows = []
-            for r in records:
-                row = dict(r)
-                for k, v in list(row.items()):
-                    if isinstance(v, dict):
-                        row[k] = json.dumps(v, ensure_ascii=False)
-                normalized_rows.append(row)
-
-            df = pd.DataFrame(normalized_rows)
-            df.to_parquet(target_path, index=False)
-            print(f"[LOAD] Đã xuất thành công {len(records)} bản ghi vào Parquet: {target_path}", flush=True)
-            return target_path
-        except ImportError:
-            print("[LOAD] Chưa cài đặt pyarrow/pandas. Bỏ qua xuất Parquet.", flush=True)
-            return None
-        except Exception as e:
-            print(f"[LOAD] Lỗi xuất Parquet: {e}", flush=True)
-            return None
-
-    def read_from_parquet(self, parquet_path: str = None) -> list[dict]:
-        """Đọc nhanh danh sách bản ghi từ file Parquet và khôi phục chuẩn kiểu dữ liệu Python."""
-        import json
-        import numpy as np
-        import pandas as pd
-
-        target_path = parquet_path or DEFAULT_PROCESSED_PARQUET
-        df = pd.read_parquet(target_path)
-        records = df.to_dict(orient="records")
-
-        cleaned_records = []
-        for r in records:
-            item = {}
-            for k, v in r.items():
-                if isinstance(v, np.ndarray):
-                    item[k] = v.tolist()
-                elif isinstance(v, float) and np.isnan(v):
-                    item[k] = None
-                elif v is pd.NA:
-                    item[k] = None
-                elif k in ("concept_scores", "report") and isinstance(v, str) and v.strip().startswith("{"):
-                    try:
-                        item[k] = json.loads(v)
-                    except Exception:
-                        item[k] = v
-                else:
-                    item[k] = v
-            cleaned_records.append(item)
-        return cleaned_records
-
-    def read_processed_records(self, input_path: str = None) -> list[dict]:
-        """Đọc dữ liệu đã qua ETL (Ưu tiên đọc từ file Parquet tốc độ cao, fallback sang JSON nếu cần)."""
-        import json
-
-        processed_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "processed"))
-        if not input_path:
-            if os.path.exists(DEFAULT_PROCESSED_PARQUET):
-                input_path = DEFAULT_PROCESSED_PARQUET
-            else:
-                datas_json = os.path.join(processed_dir, "datas.json")
-                input_path = datas_json if os.path.exists(datas_json) else DEFAULT_PROCESSED_JSON
-
-        if not os.path.exists(input_path):
-            raise FileNotFoundError(f"[LOAD] Không tìm thấy file dữ liệu đã xử lý tại: {input_path}")
-
-        if input_path.endswith(".parquet"):
-            print(f"[LOAD] Đang đọc dữ liệu tốc độ cao từ Parquet: {input_path}", flush=True)
-            return self.read_from_parquet(input_path)
-
-        print(f"[LOAD] Đang đọc dữ liệu từ JSON: {input_path}", flush=True)
-        with open(input_path, "r", encoding="utf-8") as f:
-            return json.load(f)
 
     def load_to_postgres(self, records: list[dict], db_url: str = None) -> tuple[int, int]:
         """Nạp trực tiếp dữ liệu phòng và vector embedding vào PostgreSQL (pgvector).
@@ -186,50 +43,13 @@ class DataLoader:
             print("[LOAD] Không có bản ghi nào để nạp vào PostgreSQL.", flush=True)
             return 0, 0
 
-        import hashlib
-        import numpy as np
-        from sqlalchemy import text
-        from crawler.etl.db_models import (
-            DEFAULT_EMBEDDING_MODEL,
-            Base,
-            City,
-            District,
-            Listing,
-            ListingEmbedding,
-            RoomType,
-            User,
-            Ward,
-            create_db_session,
-        )
-
         # Đảm bảo pgvector extension và bảng dữ liệu được khởi tạo độc lập
         engine, session = create_db_session(db_url)
         with engine.connect() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            conn.execute(text("ALTER TABLE room_types ADD COLUMN IF NOT EXISTS code VARCHAR(50);"))
             conn.commit()
         Base.metadata.create_all(bind=engine)
-
-        # Fallback: Nếu records chưa có inline "vector", tự động kiểm tra file .npy/.parquet trong crawler/data/embeddings
-        precomputed_vectors: dict[str, tuple[list[float], str, int]] = {}
-        has_inline_vector = any("vector" in r and r["vector"] for r in records)
-        if not has_inline_vector:
-            emb_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "embeddings"))
-            npy_path = os.path.join(emb_dir, "listing_embeddings.npy")
-            map_path = os.path.join(emb_dir, "listing_embedding_mapping.parquet")
-            if os.path.exists(npy_path) and os.path.exists(map_path):
-                try:
-                    import pandas as pd
-                    vectors_arr = np.load(npy_path)
-                    mapping_df = pd.read_parquet(map_path)
-                    for _, row in mapping_df.iterrows():
-                        idx = int(row["embedding_index"])
-                        lid_key = str(row["id"]).strip()
-                        m_name = str(row.get("model_name") or DEFAULT_EMBEDDING_MODEL)
-                        dim_val = int(row.get("embedding_dim") or vectors_arr.shape[1])
-                        precomputed_vectors[lid_key] = (vectors_arr[idx].astype(np.float32).tolist(), m_name, dim_val)
-                    print(f"[LOAD] Đã tải {len(precomputed_vectors)} vector từ {emb_dir}", flush=True)
-                except Exception as e:
-                    print(f"[LOAD] Không thể đọc file embedding sẵn có ({e}), bỏ qua fallback.", flush=True)
 
         def _sync_sequence(table_name: str, id_col: str = "id"):
             try:
@@ -246,11 +66,22 @@ class DataLoader:
         for tbl in ("cities", "districts", "wards", "room_types"):
             _sync_sequence(tbl)
 
+        # Khởi tạo / cập nhật 5 loại phòng chuẩn canonical (ID: 1..5)
+        for code, (cid, label) in CANONICAL_ROOM_TYPES.items():
+            rt_obj = session.get(RoomType, cid)
+            if rt_obj is None:
+                rt_obj = RoomType(id=cid, code=code, name=label)
+                session.add(rt_obj)
+            else:
+                rt_obj.code = code
+                rt_obj.name = label
+        session.flush()
+        _sync_sequence("room_types")
+
         user_cache: dict[str, User] = {}
         city_cache: dict[str, City] = {}
         district_cache: dict[tuple[int, str], District] = {}
         ward_cache: dict[tuple[int, str], Ward] = {}
-        room_type_cache: dict[int, RoomType] = {}
 
         listing_count = 0
         embedding_count = 0
@@ -263,20 +94,15 @@ class DataLoader:
                 if not lid:
                     continue
 
-                # 1. Location Upsert
-                reg_id = r.get("region_id")
-                dist_id = r.get("district_id")
-                w_id = r.get("ward_id")
-                c_name = str(r.get("city")).strip() if r.get("city") else None
-                d_name = str(r.get("district")).strip() if r.get("district") else None
-                w_name = str(r.get("ward")).strip() if r.get("ward") else None
-
+                # 1. Địa lý: City -> District -> Ward
+                c_name = str(r.get("city") or "").strip()
+                c_id = r.get("region_id") or r.get("city_id")
                 city_obj = None
                 if c_name:
                     if c_name not in city_cache:
                         city_obj = session.query(City).filter(City.name == c_name).first()
                         if city_obj is None:
-                            safe_id = reg_id if (isinstance(reg_id, int) and reg_id > 0 and session.get(City, reg_id) is None) else None
+                            safe_id = c_id if (isinstance(c_id, int) and c_id > 0 and session.get(City, c_id) is None) else None
                             city_obj = City(id=safe_id, name=c_name) if safe_id else City(name=c_name)
                             session.add(city_obj)
                             session.flush()
@@ -285,6 +111,8 @@ class DataLoader:
                     else:
                         city_obj = city_cache[c_name]
 
+                d_name = str(r.get("district") or "").strip()
+                d_id = r.get("district_id")
                 dist_obj = None
                 if d_name and city_obj:
                     key = (city_obj.id, d_name)
@@ -294,8 +122,7 @@ class DataLoader:
                             District.city_id == city_obj.id,
                         ).first()
                         if dist_obj is None:
-                            # Tránh conflict PK nếu dist_id của nguồn cào bị trùng hoặc đã gán cho quận khác
-                            safe_id = dist_id if (isinstance(dist_id, int) and dist_id > 0 and session.get(District, dist_id) is None) else None
+                            safe_id = d_id if (isinstance(d_id, int) and d_id > 0 and session.get(District, d_id) is None) else None
                             dist_obj = District(id=safe_id, city_id=city_obj.id, name=d_name) if safe_id else District(city_id=city_obj.id, name=d_name)
                             session.add(dist_obj)
                             session.flush()
@@ -304,6 +131,8 @@ class DataLoader:
                     else:
                         dist_obj = district_cache[key]
 
+                w_name = str(r.get("ward") or "").strip()
+                w_id = r.get("ward_id")
                 ward_obj = None
                 if w_name and dist_obj:
                     key = (dist_obj.id, w_name)
@@ -322,26 +151,11 @@ class DataLoader:
                     else:
                         ward_obj = ward_cache[key]
 
-                # 2. Room Type Upsert
-                rt_name = str(r.get("room_type") or "Phòng trọ").strip()
-                cat_id = r.get("category_id") or r.get("room_type_id")
-                rt_id = None
-                if cat_id is not None or rt_name:
-                    cache_key = cat_id if isinstance(cat_id, int) else rt_name
-                    if cache_key not in room_type_cache:
-                        rt_obj = session.get(RoomType, cat_id) if isinstance(cat_id, int) else None
-                        if rt_obj is None:
-                            rt_obj = session.query(RoomType).filter(RoomType.name == rt_name).first()
-                        if rt_obj is None:
-                            safe_id = cat_id if (isinstance(cat_id, int) and cat_id > 0 and session.get(RoomType, cat_id) is None) else None
-                            rt_obj = RoomType(id=safe_id, name=rt_name) if safe_id else RoomType(name=rt_name)
-                            session.add(rt_obj)
-                            session.flush()
-                            _sync_sequence("room_types")
-                        room_type_cache[cache_key] = rt_obj
-                    else:
-                        rt_obj = room_type_cache[cache_key]
-                    rt_id = rt_obj.id if rt_obj else None
+                # 2. Room Type Mapping (Decoupled completely from external category_id)
+                rt_id = r.get("room_type_id")
+                if not isinstance(rt_id, int) or rt_id not in (1, 2, 3, 4, 5):
+                    rt_code = str(r.get("room_type") or "").strip().upper()
+                    rt_id = ROOM_TYPE_CODE_TO_ID.get(rt_code, 1)
 
                 # 3. User (Poster) Upsert
                 poster_id = r.get("poster_id")
@@ -401,17 +215,13 @@ class DataLoader:
                         setattr(existing_listing, k, v)
                 listing_count += 1
 
-                # 5. ListingEmbedding Upsert (hỗ trợ cả inline vector từ ETL hoặc file .npy/.parquet từ crawler/data/embeddings)
+                # 5. ListingEmbedding Upsert (lưu vector 768 chiều vào PostgreSQL)
                 vec = r.get("vector")
-                model_name = r.get("embedding_model") or DEFAULT_EMBEDDING_MODEL
-                dim = r.get("embedding_dim") or (len(vec) if vec else None)
-
-                if not vec and lid in precomputed_vectors:
-                    vec, model_name, dim = precomputed_vectors[lid]
-
                 if vec:
-                    vec_bytes = np.array(vec, dtype=np.float32).tobytes()
-                    content_hash = hashlib.sha256(vec_bytes).hexdigest()
+                    model_name = str(r.get("embedding_model") or DEFAULT_EMBEDDING_MODEL)
+                    dim = int(r.get("embedding_dim") or len(vec))
+                    vec_list = list(vec) if not isinstance(vec, list) else vec
+                    content_hash = hashlib.sha256(str(vec_list[:10]).encode("utf-8")).hexdigest()
 
                     emb_obj = (
                         session.query(ListingEmbedding)
@@ -427,12 +237,12 @@ class DataLoader:
                             listing_id=lid,
                             model_name=model_name,
                             dimension=dim,
-                            vector=vec,
+                            vector=vec_list,
                             content_hash=content_hash,
                         ))
                     else:
                         emb_obj.dimension = dim
-                        emb_obj.vector = vec
+                        emb_obj.vector = vec_list
                         emb_obj.content_hash = content_hash
                     embedding_count += 1
 
@@ -482,19 +292,23 @@ class DataLoader:
 
 if __name__ == "__main__":
     import argparse
+    from crawler.etl.extract import extract_raw_listings
+    from crawler.etl.transform import ListingTransformer
 
-    parser = argparse.ArgumentParser(description="Nạp dữ liệu đã xử lý từ Crawler (ưu tiên Parquet) vào PostgreSQL (pgvector)")
-    parser.add_argument(
-        "--input",
-        type=str,
-        default=None,
-        help="Đường dẫn file Parquet/JSON đã qua ETL (mặc định: ưu tiên listings_clean.parquet trong crawler/data/processed/)",
-    )
+    parser = argparse.ArgumentParser(description="Test nạp dữ liệu vào PostgreSQL")
+    parser.add_argument("--limit", type=int, default=3, help="Số bản ghi test")
     args = parser.parse_args()
 
-    loader = DataLoader()
-    records_data = loader.read_processed_records(args.input)
-    loader.load_to_postgres(records_data)
-    loader.print_summary(records_data)
-
-
+    raws = extract_raw_listings(limit=args.limit)
+    if not raws:
+        print("[LOAD] Không có dữ liệu thô trong Staging DB.")
+    else:
+        transformer = ListingTransformer()
+        cleans = transformer.transform(raws)
+        loader = DataLoader()
+        try:
+            counts = loader.load_to_postgres(cleans)
+            loader.print_summary(cleans)
+            print(f"[LOAD DEMO] Hoàn tất nạp dữ liệu: {counts[0]} tin, {counts[1]} vector.")
+        except Exception as e:
+            print(f"[LOAD DEMO] Không thể nạp PostgreSQL (CSDL có thể chưa chạy): {e}")

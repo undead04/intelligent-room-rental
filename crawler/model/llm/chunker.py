@@ -1,37 +1,30 @@
-import os
-import sys
-from typing import Dict, List
+from typing import Any, Dict, List
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
+from crawler.config.settings import (
+    DEFAULT_MAX_ITEMS_PER_CHUNK,
+    DEFAULT_MAX_TOKENS_PER_CHUNK,
+)
+from crawler.schema.listing import extract_listing_full_text
 from crawler.utils.count_token import get_token_count
 
 
-
 def create_dynamic_chunks(
-    articles: List[Dict[str, str]],
-    max_tokens_per_chunk: int = 2500,  # Ngưỡng an toàn tối ưu cho Task Extractor
-    max_items_per_chunk: int = 5,      # Giới hạn tối ưu 5 bài/chunk để LLM trích xuất đầy đủ chi tiết mọi tiện ích, tránh attention degradation
+    articles: List[Dict[str, Any]],
+    max_tokens_per_chunk: int = DEFAULT_MAX_TOKENS_PER_CHUNK,
+    max_items_per_chunk: int = DEFAULT_MAX_ITEMS_PER_CHUNK,
     model_name: str = "gpt-4o",
-) -> List[List[Dict[str, str]]]:
+) -> List[List[Dict[str, Any]]]:
     """
     Gom các bài đăng vào chunk sao cho tổng token không vượt quá max_tokens_per_chunk
     và số bài trong chunk không vượt quá max_items_per_chunk (tránh tràn output tokens của LLM).
     """
-    chunks: List[List[Dict[str, str]]] = []
-    current_chunk: List[Dict[str, str]] = []
+    chunks: List[List[Dict[str, Any]]] = []
+    current_chunk: List[Dict[str, Any]] = []
     current_tokens = 0
 
     for article in articles:
         art_id = str(article.get("listing_id") or article.get("id", ""))
-        content = (
-            article.get("text")
-            or article.get("description")
-            or article.get("title")
-            or ""
-        )
+        content = extract_listing_full_text(article)
         article_text = f"ID: {art_id}\nText: {content}"
         article_tokens = get_token_count(article_text, model_name)
 

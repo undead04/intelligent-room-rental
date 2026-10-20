@@ -6,9 +6,7 @@ sẽ không bị lỗi module '__main__'.
 """
 
 from __future__ import annotations
-import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Tuple
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -16,9 +14,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import BallTree
 import xgboost as xgb
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 DROP_COLS = ["region_price_median", "district_median_price", "ward_median_price"]
 PPM_RANGE = (30_000, 600_000)

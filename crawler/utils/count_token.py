@@ -1,6 +1,4 @@
-
 import tiktoken
-
 def get_token_count(text: str, model_name: str = "gemini-2.5-pro") -> int:
     """Đếm số token thực tế của chuỗi text."""
     try:

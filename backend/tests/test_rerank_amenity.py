@@ -1,11 +1,11 @@
 """Unit tests for backend rerank and amenity fit."""
 import pytest
-from app.utils.utils import (
+from app.services.reranker import (
+    DEFAULT_WEIGHTS,
     _amenity_fit,
     _dynamic_weights,
-    DEFAULT_WEIGHTS,
-    rerank,
     explain_match,
+    rerank,
 )
 
 
@@ -162,5 +162,27 @@ def test_build_or_tsquery_string_for_sparse_fts():
     assert "uit" in q
     assert "tìm" not in q.split(" | ")
     assert "dưới" not in q.split(" | ")
+
+
+def test_listing_schemas_validation():
+    from app.schemas.listing import ListingFilterParams, VectorSearchBody, ListingIdsRequest
+
+    # Test ListingFilterParams validation
+    filters = ListingFilterParams(min_price=1000000, max_price=5000000)
+    assert filters.min_price == 1000000
+
+    # Test invalid range raises ValueError
+    with pytest.raises(ValueError, match="min_price không được lớn hơn max_price"):
+        ListingFilterParams(min_price=5000000, max_price=1000000)
+
+    # Test VectorSearchBody
+    body = VectorSearchBody(query="phòng trọ gần thủ đức", amenities=["aircon"])
+    assert body.query == "phòng trọ gần thủ đức"
+    assert body.amenities == ["aircon"]
+
+    # Test ListingIdsRequest
+    ids_req = ListingIdsRequest(ids=["nhatot_1", "nhatot_2"])
+    assert len(ids_req.ids) == 2
+
 
 

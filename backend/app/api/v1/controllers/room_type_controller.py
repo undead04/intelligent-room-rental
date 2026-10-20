@@ -9,15 +9,9 @@ from app.schemas.room_type import RoomTypeResponse
 
 router = APIRouter()
 
-
-@router.get(
-    "",
-    response_model=ResponseDTO[list[RoomTypeResponse]],
-    responses={422: {"model": ErrorDTO}, 500: {"model": ErrorDTO}},
-)
 @router.get(
     "/",
-    include_in_schema=False,
+    responses={422: {"model": ErrorDTO}, 500: {"model": ErrorDTO}},
     response_model=ResponseDTO[list[RoomTypeResponse]],
 )
 def get_room_types(

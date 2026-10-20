@@ -5,8 +5,6 @@ mà hoàn toàn KHÔNG phụ thuộc vào source code của module `backend` khi
 các Docker container độc lập.
 """
 
-import os
-from dotenv import load_dotenv
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
@@ -24,23 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
-load_dotenv()
-
-DEFAULT_EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-base")
-
-
-def get_database_url(override_url: str | None = None) -> str:
-    url = override_url or os.environ.get("DATABASE_URL")
-    if not url:
-        user = os.environ.get("POSTGRES_USER", "postgres")
-        password = os.environ.get("POSTGRES_PASSWORD", "ny300998")
-        server = os.environ.get("POSTGRES_SERVER", "localhost")
-        port = os.environ.get("POSTGRES_PORT", "5432")
-        db = os.environ.get("POSTGRES_DB", "smart_housing_db")
-        url = f"postgresql+psycopg2://{user}:{password}@{server}:{port}/{db}"
-    elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-    return url
+from crawler.config.settings import get_database_url
 
 
 Base = declarative_base()
@@ -69,6 +51,7 @@ class Ward(Base):
 class RoomType(Base):
     __tablename__ = "room_types"
     id = Column(Integer, primary_key=True)
+    code = Column(String(50), nullable=True, unique=True, index=True)
     name = Column(String, nullable=True)
 
 

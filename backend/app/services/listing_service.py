@@ -10,7 +10,7 @@ from app.models.location import District, Ward
 from app.repositories.listing_repository import ListingRepository
 from app.schemas.analytics import PriceStatsByArea, PriceStatsGeneral, PriceStatsResponse
 from app.schemas.listing import ListingResponse, VectorSearchResult
-from app.utils.utils import DEFAULT_WEIGHTS, explain_match, rerank
+from app.services.reranker import DEFAULT_WEIGHTS, explain_match, rerank
 from app.services.embedding import EmbeddingModel
 
 

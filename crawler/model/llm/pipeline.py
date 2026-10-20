@@ -1,31 +1,23 @@
-import os
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Tự động thêm thư mục gốc dự án vào sys.path để luôn import được crawler.*
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-from crawler.config.settings import GEMINI_API_KEY
+from crawler.config.settings import (
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_MAX_TOKENS_PER_CHUNK,
+    DEFAULT_RPM_DELAY,
+    GEMINI_API_KEYS,
+)
 from crawler.model.llm.checkpoint import load_checkpoint, save_checkpoint
 from crawler.model.llm.chunker import create_dynamic_chunks
-from crawler.model.llm.client import (
-    DEFAULT_MAX_RETRIES,
-    DEFAULT_RPM_DELAY,
-    GeminiRoundRobin,
-    call_gemini_chunk,
-)
-from crawler.model.llm.processor import process_chunk_result, process_one_chunk
+from crawler.model.llm.client import GeminiRoundRobin
+from crawler.model.llm.processor import process_one_chunk
 from crawler.model.llm.prompt import SYSTEM_PROMPT
 
 
-
-DEFAULT_MODEL = "gemini-3.5-flash-lite"
-DEFAULT_MAX_TOKENS_PER_CHUNK = 2500
+DEFAULT_MODEL = DEFAULT_GEMINI_MODEL
 
 
 def retry_failed_chunks(
@@ -42,45 +34,24 @@ def retry_failed_chunks(
         return
 
     print(f"\n[RETRY] Bắt đầu thử lại {len(failed_chunks)} chunk(s) thất bại...")
-    remaining_failed: List[List[Dict[str, Any]]] = []
+    chunks_to_retry = list(failed_chunks)
+    failed_chunks.clear()
 
-    for retry_idx, chunk in enumerate(failed_chunks, 1):
-        label = f"Retry {retry_idx}/{len(failed_chunks)}"
-        pending = [
-            a for a in chunk
-            if str(a.get("listing_id") or a.get("id")) not in checkpoint
-        ]
-
-        if not pending:
-            print(f"[SKIP] [{label}] Toàn bộ bài đã có trong checkpoint.")
-            continue
-
-        print(f"[RETRY] [{label}] Đang chạy lại {len(pending)} bài...")
-        parsed = call_gemini_chunk(
+    for retry_idx, chunk in enumerate(chunks_to_retry, 1):
+        label = f"Retry {retry_idx}/{len(chunks_to_retry)}"
+        process_one_chunk(
+            chunk=chunk,
+            chunk_label=label,
             api_manager=api_manager,
-            chunk=pending,
+            checkpoint=checkpoint,
+            clean_results=clean_results,
+            failed_chunks=failed_chunks,
             system_prompt=system_prompt,
             max_retries=max_retries,
             rpm_delay=rpm_delay,
         )
-
-        if parsed is None:
-            print(f"  [LOI] [{label}] Vẫn thất bại: {[str(a.get('listing_id') or a.get('id')) for a in pending]}")
-            remaining_failed.append(pending)
-        else:
-            process_chunk_result(
-                parsed=parsed,
-                chunk=pending,
-                checkpoint=checkpoint,
-                clean_results=clean_results,
-                chunk_label=label,
-            )
-
-        if retry_idx < len(failed_chunks):
+        if retry_idx < len(chunks_to_retry):
             time.sleep(rpm_delay)
-
-    failed_chunks.clear()
-    failed_chunks.extend(remaining_failed)
 
 
 def run_pipeline_chunking(
@@ -238,38 +209,5 @@ def run_pipeline_chunking(
     )
 
     return clean_results, total_failed_list
-
-
-if __name__ == "__main__":
-    import argparse
-    import os
-    from dotenv import load_dotenv
-    from crawler.etl.extract import extract_raw_listings
-
-    load_dotenv()
-
-    parser = argparse.ArgumentParser(description="Chạy LLM Extraction Pipeline với Dynamic Chunking & Checkpoint")
-    parser.add_argument("--limit", type=int, default=None, help="Giới hạn số lượng bài đăng cần trích xuất")
-    parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS_PER_CHUNK, help="Ngưỡng token tối đa mỗi chunk")
-    parser.add_argument("--rpm-delay", type=float, default=DEFAULT_RPM_DELAY, help="Thời gian nghỉ giữa các request (giây)")
-    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Tên model Gemini sử dụng")
-    parser.add_argument("--checkpoint", type=str, default=None, help="Đường dẫn file checkpoint (mặc định: crawler/data/processed/checkpoint_reports.json)")
-    args = parser.parse_args()
-
-    raw_keys = GEMINI_API_KEY
-    keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
-    if not keys:
-        raise RuntimeError("Vui lòng cấu hình GEMINI_API_KEYS hoặc GEMINI_API_KEY trong file .env trước khi chạy LLM pipeline.")
-
-    ckpt_p = Path(args.checkpoint) if args.checkpoint else Path(PROJECT_ROOT) / "crawler" / "data" / "processed" / "checkpoint_reports.json"
-    records = extract_raw_listings(limit=args.limit)
-    run_pipeline_chunking(
-        datas=records,
-        api_keys=keys,
-        model_name=args.model,
-        rpm_delay=args.rpm_delay,
-        max_tokens_per_chunk=args.max_tokens,
-        checkpoint_path=ckpt_p,
-    )
 
 

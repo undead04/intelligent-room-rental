@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import type { HitlOption, HitlProposal } from "@/app/tim-kiem-ai/types";
 
 interface HitlDecisionCardProps {
@@ -147,6 +147,16 @@ export function HitlDecisionCard({
   onSelect,
 }: HitlDecisionCardProps) {
   const [chosenAction, setChosenAction] = useState<string | null>(selectedAction || null);
+  const [prevSelectedAction, setPrevSelectedAction] = useState<string | undefined>(selectedAction);
+  const [isExpanded, setIsExpanded] = useState<boolean>(!selectedAction);
+
+  if (selectedAction !== prevSelectedAction) {
+    setPrevSelectedAction(selectedAction);
+    if (selectedAction) {
+      setChosenAction(selectedAction);
+      setIsExpanded(false);
+    }
+  }
 
   const options: HitlOption[] =
     proposal?.options && proposal.options.length > 0
@@ -155,14 +165,6 @@ export function HitlDecisionCard({
 
   const hasChosen = Boolean(chosenAction || selectedAction);
   const isResolved = Boolean(hasChosen || isLocked);
-  const [isExpanded, setIsExpanded] = useState<boolean>(!hasChosen);
-
-  useEffect(() => {
-    if (selectedAction) {
-      setChosenAction(selectedAction);
-      setIsExpanded(false);
-    }
-  }, [selectedAction]);
 
   if (!options || options.length === 0) return null;
 

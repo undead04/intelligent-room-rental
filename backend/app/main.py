@@ -1,24 +1,28 @@
-from contextlib import asynccontextmanager
 import logging
 import uuid
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.services.embedding import EmbeddingModel
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
-from app.api.v1.router import api_router
+from app.middleware import (
+    RateLimitMiddleware,
+    RequestLoggingMiddleware,
+    SQLInjectionMiddleware,
+)
 from app.schemas.response import ErrorDTO
+from app.services.embedding import EmbeddingModel
 
 configure_logging()
 logger = logging.getLogger(__name__)
-
 
 
 @asynccontextmanager
@@ -44,7 +48,9 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
-    
+
+
+# Exception Handlers
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
@@ -71,31 +77,12 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     )
 
 
-@app.middleware("http")
-async def request_logging_middleware(request: Request, call_next):
-    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-    request.state.request_id = request_id
-    try:
-        response = await call_next(request)
-    except Exception:
-        logger.exception("Unhandled request error request_id=%s path=%s", request_id, request.url.path)
-        raise
-    response.headers["X-Request-ID"] = request_id
-    logger.info(
-        "request_id=%s method=%s path=%s status=%s",
-        request_id,
-        request.method,
-        request.url.path,
-        response.status_code,
-    )
-    return response
-
-
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
     logger.warning(
         "Application error request_id=%s code=%s message=%s",
-        request.state.request_id,
+        request_id,
         exc.code,
         exc.message,
     )
@@ -104,65 +91,82 @@ async def app_exception_handler(request: Request, exc: AppException):
         code=exc.code,
         message=exc.message,
         details=exc.details,
-        request_id=request.state.request_id,
+        request_id=request_id,
     )
     return JSONResponse(
         status_code=exc.status_code,
         content=payload.model_dump(),
-        headers={"X-Request-ID": request.state.request_id},
+        headers={"X-Request-ID": request_id},
     )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
     payload = ErrorDTO(
         status=422,
         code="VALIDATION_ERROR",
         message="Request validation failed",
         details=exc.errors(),
-        request_id=request.state.request_id,
+        request_id=request_id,
     )
-    logger.warning("Validation error request_id=%s details=%s", request.state.request_id, exc.errors())
-    return JSONResponse(status_code=422, content=payload.model_dump(), headers={"X-Request-ID": request.state.request_id})
+    logger.warning("Validation error request_id=%s details=%s", request_id, exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content=payload.model_dump(),
+        headers={"X-Request-ID": request_id},
+    )
 
 
 @app.exception_handler(SQLAlchemyError)
 async def database_exception_handler(request: Request, exc: SQLAlchemyError):
-    logger.exception("Database error request_id=%s", request.state.request_id)
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    logger.exception("Database error request_id=%s", request_id)
     payload = ErrorDTO(
         status=500,
         code="DATABASE_ERROR",
         message="Database operation failed",
-        request_id=request.state.request_id,
+        request_id=request_id,
     )
-    return JSONResponse(status_code=500, content=payload.model_dump(), headers={"X-Request-ID": request.state.request_id})
+    return JSONResponse(
+        status_code=500,
+        content=payload.model_dump(),
+        headers={"X-Request-ID": request_id},
+    )
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled application error request_id=%s", request.state.request_id)
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    logger.exception("Unhandled application error request_id=%s", request_id)
     payload = ErrorDTO(
         status=500,
         code="INTERNAL_SERVER_ERROR",
         message="An unexpected error occurred",
-        request_id=request.state.request_id,
+        request_id=request_id,
     )
-    return JSONResponse(status_code=500, content=payload.model_dump(), headers={"X-Request-ID": request.state.request_id})
+    return JSONResponse(
+        status_code=500,
+        content=payload.model_dump(),
+        headers={"X-Request-ID": request_id},
+    )
 
-from app.core.security_middleware import RateLimitMiddleware, SQLInjectionMiddleware
 
-# Security & Rate Limiting middlewares
+# Middlewares (thứ tự đăng ký theo cơ chế LIFO: middleware đăng ký sau cùng sẽ được gọi đầu tiên)
+# 1. SQL Injection Middleware
 app.add_middleware(
     SQLInjectionMiddleware,
     enabled=settings.SQL_INJECTION_CHECK_ENABLED,
 )
+
+# 2. Rate Limiting Middleware
 app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=settings.RATE_LIMIT_PER_MINUTE,
     enabled=settings.RATE_LIMIT_ENABLED,
 )
 
-# CORS middleware
+# 3. CORS Middleware
 if settings.CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -172,6 +176,10 @@ if settings.CORS_ORIGINS:
         allow_headers=["*"],
     )
 
+# 4. Request Logging & Request-ID Middleware (Nằm ngoài cùng, xử lý đầu tiên khi request tới)
+app.add_middleware(RequestLoggingMiddleware)
+
+# Routes
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
@@ -180,8 +188,9 @@ def root():
     return {
         "message": f"Welcome to {settings.PROJECT_NAME}",
         "docs": "/docs",
-        "health": f"{settings.API_V1_STR}/health"
+        "health": f"{settings.API_V1_STR}/health",
     }
+
 
 if __name__ == "__main__":
     import uvicorn

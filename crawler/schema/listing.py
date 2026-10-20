@@ -1,11 +1,71 @@
-from crawler.schema.enum import RoomType
+from crawler.schema.enums import RoomType
 import re
-from typing import Literal, Optional, List, Any, Union
+import unicodedata
+from typing import Literal, Optional, List, Union, Dict
 from pydantic import BaseModel, Field, model_validator
 
 STATE_SCORE = {"yes": 1.0, "no": 0.0, "unknown": 0.0}
 
 Tri = Literal["yes", "no", "unknown"]
+
+PUNCT_REGEX = re.compile(r"[\t\r\n\u2022\u2023\u25e6\u2043\u2219\u2705\u274c\u2714\u2713•*+\-–—_\"'“”‘’`~|/\\:;,\(\)\[\]\{\}]+")
+
+def _remove_accents(input_str: str) -> str:
+    """Loại bỏ dấu tiếng Việt để đối soát linh hoạt khi người dùng gõ không dấu hoặc lệch kiểu gõ dấu."""
+    s = unicodedata.normalize('NFD', input_str)
+    s = re.sub(r'[\u0300-\u036f]', '', s)
+    s = s.replace('đ', 'd').replace('Đ', 'D')
+    return s
+
+def _norm(s: str) -> str:
+    """Chuẩn hóa để so khớp evidence: Unicode NFC + thường hóa + làm sạch ký tự phân cách/bullet."""
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFC", s).lower()
+    s = PUNCT_REGEX.sub(" ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+def extract_listing_full_text(a: Dict[str, object]) -> str:
+    """Hợp nhất tiêu đề và mô tả bài đăng để không bỏ sót ngữ cảnh tiện ích."""
+    title = str(a.get("title") or "").strip()
+    desc = str(a.get("description") or a.get("text") or "").strip()
+    if title and desc:
+        return desc if title in desc else f"{title}\n{desc}"
+    return title or desc
+
+def is_evidence_valid(evidence: str, source_text: str, field_keywords: Optional[List[str]] = None) -> bool:
+    """Kiểm tra evidence trích xuất từ LLM có thực sự nằm trong văn bản gốc hay không.
+    Hỗ trợ đối soát chống hallucination nhưng không đánh rơi tiện ích vì lệch dấu câu/dấu thanh.
+    """
+    if not evidence or not source_text:
+        return False
+
+    norm_ev = _norm(evidence)
+    norm_src = _norm(source_text)
+    if not norm_ev or not norm_src:
+        return False
+
+    # 1. Khớp chính xác chuỗi con sau chuẩn hóa
+    if norm_ev in norm_src:
+        return True
+
+    # 2. Khớp không dấu (xử lý lệch vị trí dấu thanh hoà/hòa, hoặc tin viết không dấu)
+    unacc_ev = _remove_accents(norm_ev)
+    unacc_src = _remove_accents(norm_src)
+    if unacc_ev in unacc_src:
+        return True
+
+    # 3. Khớp từ khóa cốt lõi (nếu LLM trích dư chữ 'có', 'phòng', 'trang bị')
+    # Bắt buộc từ khóa phải xuất hiện trong CẢ evidence VÀ source_text
+    if field_keywords:
+        for kw in field_keywords:
+            kw_norm = _norm(kw)
+            kw_unacc = _remove_accents(kw_norm)
+            if (kw_norm in norm_ev or kw_unacc in unacc_ev) and (kw_norm in norm_src or kw_unacc in unacc_src):
+                return True
+
+    return False
+
 
 class Signal(BaseModel):
     """Một tiện ích/quy định: có / không / chưa rõ, kèm câu trích dẫn làm bằng chứng."""
@@ -25,10 +85,6 @@ class Signal(BaseModel):
 
 def _unknown() -> Signal:
     return Signal()
-
-def _norm(s: str) -> str:
-    """Chuẩn hóa để so khớp evidence: thường hóa + gộp khoảng trắng."""
-    return re.sub(r"\s+", " ", s).strip().lower()
 
 
 class Amenities(BaseModel):
@@ -140,15 +196,6 @@ class Numeric(BaseModel):
         description="Số phòng tắm. Chỉ điền khi tin ghi rõ."
     )
 
-    electricity_vnd_per_kwh: Optional[int] = Field(
-        None,
-        description="Giá điện (đồng/kWh). Chỉ điền khi tin ghi rõ."
-    )
-
-    water_vnd: Optional[int] = Field(
-        None,
-        description="Giá nước (đồng/người hoặc /m³). Chỉ điền khi tin ghi rõ."
-    )
 
 EXTRA_TO_AMENITY_MAP: list[tuple[str, list[str]]] = [
     ("private_wc", ["wc riêng", "vệ sinh riêng", "toilet riêng", "toilet trong phòng", "nvs riêng", "khép kín"]),
@@ -184,47 +231,49 @@ class ListingExtraction(BaseModel):
         max_length=5,
         description="Các trường đại học, bệnh viện, chợ, trạm metro lân cận được nhắc đến hoặc suy luận được từ vị trí (tối đa 5 mục)."
     )
-    rules_and_lifestyle: List[str] = Field(
-        default_factory=list,
-        max_length=5,
-        description="Quy định và môi trường sống: giờ giấc tự do, không chung chủ, cho nấu ăn, yên tĩnh, an ninh... (tối đa 5 mục)."
-    )
     extra_amenities: List[str] = Field(
         default_factory=list,
         max_length=5,
-        description="Các tiện nghi/đặc điểm khác không nằm trong enum chuẩn (ví dụ: view Landmark 81, cửa sổ trời, hồ bơi). TUYỆT ĐỐI không điền các tiện ích đã có trong enum chuẩn vào đây (tối đa 5 mục)."
+        description="Các tiện nghi/đặc điểm khác không nằm trong amenities chuẩn (ví dụ: view Landmark 81, cửa sổ trời, hồ bơi). TUYỆT ĐỐI không điền các tiện ích đã có trong enum chuẩn vào đây (tối đa 5 mục)."
     )
-
     # ---- Kiểm tra LLM có bịa không ----
     def verify_evidence(self, source_text: str) -> "ListingExtraction":
         """Signal nào có evidence KHÔNG nằm trong text gốc -> hạ về unknown.
         Đồng thời đối soát extra_amenities để thu hồi các tiện ích chuẩn mà LLM vô tình bỏ quên vào extra_amenities.
         """
-        src = _norm(source_text)
         data = self.model_copy(deep=True)
+        field_kw_map = dict(EXTRA_TO_AMENITY_MAP)
+
         for group in (data.amenities, data.rules, data.safety):
             for name in type(group).model_fields:
                 sig: Signal = getattr(group, name)
-                if sig.value != "unknown" and (not sig.evidence or _norm(sig.evidence) not in src):
-                    setattr(group, name, Signal(value="unknown"))
+                if sig.value != "unknown":
+                    kws = field_kw_map.get(name, [])
+                    if not sig.evidence or not is_evidence_valid(sig.evidence, source_text, kws):
+                        setattr(group, name, Signal(value="unknown"))
 
         # Thu hồi các tiện ích chuẩn bị LLM nhầm lẫn đưa vào extra_amenities
         cleaned_extra: List[str] = []
         for extra_item in (data.extra_amenities or []):
+            reconciled = False
             extra_norm = _norm(extra_item)
-            matched = False
+            extra_unacc = _remove_accents(extra_norm)
             for target_field, keywords in EXTRA_TO_AMENITY_MAP:
-                if any(kw in extra_norm for kw in keywords):
-                    for grp in (data.amenities, data.rules, data.safety):
-                        if hasattr(grp, target_field):
-                            current_sig: Signal = getattr(grp, target_field)
-                            if current_sig.value == "unknown" and extra_norm in src:
-                                setattr(grp, target_field, Signal(value="yes", evidence=extra_item))
-                            matched = True
-                            break
-                    if matched:
-                        break
-            if not matched:
+                if any(kw in extra_norm or _remove_accents(kw) in extra_unacc for kw in keywords):
+                    # Kiểm tra xem tiện ích này có thực sự xuất hiện trong source_text không
+                    if is_evidence_valid(extra_item, source_text, keywords):
+                        for grp in (data.amenities, data.rules, data.safety):
+                            if hasattr(grp, target_field):
+                                current_sig: Signal = getattr(grp, target_field)
+                                if current_sig.value == "unknown":
+                                    setattr(grp, target_field, Signal(value="yes", evidence=extra_item))
+                                reconciled = True
+                                break
+                    else:
+                        # extra_item không nằm trong text gốc -> hallucination, loại bỏ
+                        reconciled = True
+                    break
+            if not reconciled:
                 cleaned_extra.append(extra_item)
 
         data.extra_amenities = cleaned_extra
@@ -289,7 +338,9 @@ class ExtractedRoomData(BaseModel):
     room_type: Union[RoomType, str] = Field(default=RoomType.ROOM, description="Loại hình phòng trọ")
     area: Optional[float] = Field(None, description="Diện tích (m2)")
     price: Optional[float] = Field(None, description="Giá thuê phòng (VNĐ/tháng)")
-    standard_amenities: List[Any] = Field(default_factory=list, description="Tiện ích nội khu chuẩn hóa")
+    standard_amenities: List[str] = Field(default_factory=list, description="Tiện ích nội khu chuẩn hóa")
     extra_amenities: List[str] = Field(default_factory=list, description="Tiện ích bổ sung ngoài danh mục chuẩn")
     rules_and_lifestyle: List[str] = Field(default_factory=list, description="Quy định và môi trường sống")
-    is_pet_allowed: Optional[bool] = Field(None, description="Cho phép nuôi thú cưng (True: có, False: không, None: chưa rõ)")
+    is_pet_allowed: Optional[bool] = Field(None, description="Cho phép nuôi thú cưng (True: có, False: không, None: chưa rõ)")
+    bedrooms: Optional[int] = Field(None, description="Số phòng ngủ")
+    bathrooms: Optional[int] = Field(None, description="Số phòng tắm / WC")

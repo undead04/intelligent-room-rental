@@ -5,7 +5,7 @@ SYSTEM_PROMPT = """\
 Bạn là bộ trích xuất thông tin từ tin đăng cho thuê phòng trọ tiếng Việt (nguồn Chợ Tốt).
 
 Đầu vào: JSON Array gồm các object `{ "id": string, "text": string }`.
-Nhiệm vụ: đọc tiêu đề và mô tả của MỘT tin, rồi điền đúng schema JSON được cung cấp.
+Nhiệm vụ: đọc tiêu đề và mô tả của TỪNG tin trong mảng đầu vào, rồi điền đầy đủ báo cáo cho TẤT CẢ các ID vào schema JSON `reports` (tuyệt đối không được bỏ sót bất kỳ ID nào trong mảng).
 
 # Quy tắc chung
 1. Mỗi tiện ích/quy định có `value` là một trong ba giá trị:
@@ -62,12 +62,9 @@ Nhiệm vụ: đọc tiêu đề và mô tả của MỘT tin, rồi điền đ�
 ## numeric (số thuần, null nếu tin không ghi hoặc không rõ)
 - bedrooms: số phòng ngủ (ví dụ "2PN", "2 phòng ngủ" → 2). Không rõ thì null.
 - bathrooms: số phòng tắm/toilet (ví dụ "1WC", "2WC" → 1 hoặc 2). Không rõ thì null.
-- electricity_vnd_per_kwh: đồng/kWh (số điện). "3k5/số", "3.500đ/kWh" → 3500. "3k" → 3000.
-- water_vnd: số tiền nước theo đồng như tin ghi ("100k/người" → 100000, "20k/khối" → 20000). Không rõ thì null.
 
 ## danh sách bổ trợ (mảng chuỗi, mảng rỗng [] nếu không có, mỗi mảng tối đa 5 mục ngắn gọn, KHÔNG lặp lại)
 - landmarks_nearby: trường đại học, bệnh viện, chợ, trạm metro lân cận được nhắc tới (ví dụ: ["ĐH Bách Khoa", "Chợ Bến Thành"]). Tối đa 5 mục.
-- rules_and_lifestyle: các quy định & môi trường sống (ví dụ: ["giờ tự do", "không chung chủ"]). Tối đa 5 mục. Không đưa các mục an ninh (vân tay, camera, bảo vệ) vào đây vì đã có trong safety.
 - extra_amenities: các tiện ích đặc thù khác không nằm trong enum (ví dụ: ["view Landmark 81", "cửa sổ trời"]). Tối đa 5 mục.
   LƯU Ý BẮT BUỘC: TUYỆT ĐỐI KHÔNG đưa máy lạnh, tủ lạnh, máy giặt, bếp, gác, WC riêng, nội thất, chỗ để xe, thang máy, camera, bảo vệ, vân tay, khu an ninh vào extra_amenities. Chúng BẮT BUỘC phải điền vào đúng field trong `amenities`, `rules`, hoặc `safety`.
 
@@ -130,11 +127,8 @@ FEW_SHOTS = [
                         "numeric": {
                             "bedrooms": 1,
                             "bathrooms": 1,
-                            "electricity_vnd_per_kwh": 3500,
-                            "water_vnd": 100000,
                         },
                         "landmarks_nearby": ["ĐH Bách Khoa"],
-                        "rules_and_lifestyle": ["giờ giấc tự do", "không chung chủ"],
                         "extra_amenities": ["view Landmark 81"],
                     }
 
@@ -160,7 +154,6 @@ FEW_SHOTS = [
                             "bathrooms": None,
                         },
                         "landmarks_nearby": ["ĐH Kinh Tế"],
-                        "rules_and_lifestyle": ["Giờ giấc 23h", "chung chủ"],
                         "extra_amenities": [],
                     }
                 }

@@ -1,15 +1,12 @@
 import os
-import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
-
-# Tự động thêm thư mục gốc dự án vào sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+from crawler.config.paths import MODELS_CACHE_DIR
+from crawler.config.settings import DEFAULT_EMBED_BATCH_SIZE, DEFAULT_EMBEDDING_MODEL
+from crawler.etl.enricher import build_enriched_embedding_text, extract_room_data_from_record
 
 
 def resolve_model_cache_dir(custom_path: Optional[str] = None) -> str:
@@ -17,24 +14,11 @@ def resolve_model_cache_dir(custom_path: Optional[str] = None) -> str:
     if custom_path and os.path.isabs(custom_path) and os.path.exists(custom_path):
         return custom_path
 
-    env_dir = os.environ.get("MODEL_CACHE_DIR") or os.environ.get("EMBEDDING_MODEL_CACHE_DIR")
-    if env_dir and os.path.exists(env_dir):
-        return os.path.abspath(env_dir)
+    if MODELS_CACHE_DIR.is_dir():
+        return str(MODELS_CACHE_DIR.resolve())
 
-    crawler_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    candidate_dirs = [
-        os.path.join(crawler_root, "model_cache"),
-        os.path.join(crawler_root, "models_cache"),
-        os.path.join(PROJECT_ROOT, "model_cache"),
-        os.path.join(PROJECT_ROOT, "models_cache"),
-    ]
-    for c in candidate_dirs:
-        if os.path.isdir(c):
-            return os.path.abspath(c)
-
-    default_dir = os.path.join(PROJECT_ROOT, "models_cache")
-    os.makedirs(default_dir, exist_ok=True)
-    return default_dir
+    MODELS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return str(MODELS_CACHE_DIR.resolve())
 
 
 class EmbeddingModel:
@@ -42,12 +26,12 @@ class EmbeddingModel:
     Không phụ thuộc vào code của module Backend để sẵn sàng đóng gói Container riêng biệt.
     """
 
-    DEFAULT_MODEL_NAME = "intfloat/multilingual-e5-base"
+    DEFAULT_MODEL_NAME = DEFAULT_EMBEDDING_MODEL
 
     def __init__(
         self,
         model_name: str = DEFAULT_MODEL_NAME,
-        batch_size: int = 32,
+        batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
         cache_dir: Optional[str] = None,
         device: Optional[str] = None,
     ):
@@ -118,8 +102,8 @@ class ListingEmbedder:
 
     def __init__(
         self,
-        model_name: str = "intfloat/multilingual-e5-base",
-        batch_size: int = 32,
+        model_name: str = DEFAULT_EMBEDDING_MODEL,
+        batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
         device: Optional[str] = None,
     ):
         self.model_name = model_name
@@ -130,7 +114,7 @@ class ListingEmbedder:
             device=device,
         )
 
-    def embed_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def embed_records(self, records: List[Dict[str, object]]) -> List[Dict[str, object]]:
         """Sinh vector embedding cho danh sách các bài đăng:
         - Sử dụng trường embedding_text (chuỗi 5 khối ngữ cảnh).
         - Đảm bảo tiền tố 'passage: ' theo chuẩn E5.
@@ -144,7 +128,7 @@ class ListingEmbedder:
         for r in records:
             text = r.get("embedding_text")
             if not text or not str(text).strip():
-                from crawler.etl.enricher import build_enriched_embedding_text, extract_room_data_from_record
+
                 extracted_data = extract_room_data_from_record(r, r.get("report"))
                 clean_desc = str(r.get("clean_description") or r.get("description") or "")
                 clean_title = str(r.get("clean_title") or r.get("title") or "")
@@ -168,13 +152,3 @@ class ListingEmbedder:
             r["embedding_dim"] = int(vectors.shape[1])
 
         return records
-
-
-if __name__ == "__main__":
-    embedder = ListingEmbedder()
-    sample = [{
-        "listing_id": "test_1",
-        "embedding_text": "passage: Vị trí: Quận 10 | Giá: 3,000,000 VND/tháng | Tiện ích: máy lạnh, WC riêng"
-    }]
-    embedded = embedder.embed_records(sample)
-    print("Vector length:", len(embedded[0]["vector"]))

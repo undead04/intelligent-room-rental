@@ -22,19 +22,18 @@ const FACTOR_ORDER = ["price", "location", "safety", "amenity", "semantic"];
 
 export default function AgentInsightPanel({
   room,
-  insights,
   rooms = [],
 }: AgentInsightPanelProps) {
   const explainBreakdown = useMemo(() => {
     if (!room?.explain_match) return null;
     const rawFactors = Array.isArray(room.explain_match.top_factors)
-      ? room.explain_match.top_factors
+      ? (room.explain_match.top_factors as Record<string, unknown>[])
       : [];
     const weakFactors: string[] = Array.isArray(room.explain_match.weak_factors)
-      ? room.explain_match.weak_factors
+      ? (room.explain_match.weak_factors as string[])
       : [];
 
-    const factors = rawFactors.map((f: any) => {
+    const factors = rawFactors.map((f: Record<string, unknown>) => {
       const key = String(f.name || "");
       const meta = FACTOR_LABELS[key] || { label: key, icon: "analytics" };
       const fitPct = Math.round(Number(f.fit || 0) * 100);

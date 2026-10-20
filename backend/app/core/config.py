@@ -1,5 +1,9 @@
-from typing import  Optional
+from pathlib import Path
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+ENV_FILE_PATH = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -17,25 +21,32 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
-    # Security & Rate Limiting
+    # Security & Rate Limiting (load từ .env)
     RATE_LIMIT_PER_MINUTE: int = 120
     RATE_LIMIT_ENABLED: bool = True
     SQL_INJECTION_CHECK_ENABLED: bool = True
 
-    # Embedding Configuration
+    # Embedding Configuration (load từ .env)
     EMBEDDING_MODEL_NAME: str = "intfloat/multilingual-e5-base"
     EMBEDDING_DIMENSION: int = 768
     EMBEDDING_BATCH_SIZE: int = 32
 
-    # PostgreSQL Database Configuration
+    # PostgreSQL Database Configuration (load từ .env)
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "ny300998"
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = "smart_housing_db"
 
-    # Database URL Override
+    # Database URL Override (nếu set thì ưu tiên sử dụng)
     DATABASE_URL: Optional[str] = None
+
+    # Database Connection Pool Settings (load từ .env)
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+    DB_POOL_PRE_PING: bool = True
 
     @property
     def sync_database_url(self) -> str:
@@ -46,10 +57,10 @@ class Settings(BaseSettings):
         return f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(str(ENV_FILE_PATH), ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore"
+        extra="ignore",
     )
 
 

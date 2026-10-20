@@ -42,7 +42,7 @@ export interface RoomItem {
   latPercent: number; // For map pin positioning
   lngPercent: number;
   source_url?: string;
-  explain_match?: Record<string, any>;
+  explain_match?: Record<string, unknown>;
 }
 
 export interface AgentTraceEvent {
@@ -67,10 +67,10 @@ export interface AgentTraceEvent {
   requested_tools?: string[];
   tool_call_id?: string;
   tool_name?: string;
-  arguments?: Record<string, any>;
-  args?: Record<string, any>;
+  arguments?: Record<string, unknown>;
+  args?: Record<string, unknown>;
   status?: string;
-  result?: any;
+  result?: unknown;
   error?: string;
 }
 
@@ -109,7 +109,7 @@ export interface AgentResponse {
   current_preferences?: UserPreferenceState | null;
   need_clarification?: boolean;
   follow_up_questions?: string[];
-  grounding_report?: Record<string, any> | null;
+  grounding_report?: Record<string, unknown> | null;
   hitl_proposal?: HitlProposal | null;
   trace_events?: AgentTraceEvent[];
 }

@@ -1,4 +1,3 @@
-import os
 import sys
 import argparse
 
@@ -8,11 +7,6 @@ if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-
-# Tự động thêm thư mục gốc dự án vào sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
 from crawler.spiders.nhatot import NhaTotSpider
 from crawler.spiders.phongtro123 import PhongTro123Spider
@@ -25,48 +19,66 @@ SPIDERS = {
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Module Thu Thập Dữ Liệu Phòng Trọ Đa Nguồn (Multi-source Crawler & Verifier)"
+        description="Homigo Crawler & ETL Pipeline Runner"
     )
     parser.add_argument(
-        "--source",
+        "--pages",
+        type=int,
+        default=5,
+        help="Số trang cần cào (mặc định: 5 trang ~ 250 tin)."
+    )
+    parser.add_argument(
+        "--region",
         type=str,
-        default="nhatot",
-        choices=["nhatot", "phongtro123", "all"],
-        help="Nguồn dữ liệu muốn chạy: 'nhatot', 'phongtro123', hoặc 'all'."
+        default="all",
+        choices=["hcm", "hanoi", "danang", "binhduong", "dongnai", "cantho", "all"],
+        help="Khu vực cào (mặc định: 'hcm')."
     )
     parser.add_argument(
         "--mode",
         type=str,
         default="resume",
         choices=["resume", "update", "verify"],
-        help="Chế độ: 'resume' (cào tiếp từ checkpoint), 'update' (quét tin mới từ trang 1), 'verify' (kiểm tra tin cũ còn sống hay hết hạn)."
+        help="Chế độ: 'resume' (cào tiếp), 'update' (quét tin mới), 'verify' (kiểm tra tin cũ)."
     )
     parser.add_argument(
-        "--pages",
-        type=int,
-        default=5,
-        help="Số trang tối đa muốn cào (áp dụng cho resume/update)."
+        "--full",
+        action="store_true",
+        help="Trọn gói từ A-Z: Cào + LLM + ML Price Score + Embedding E5 + Nạp DB (PostgreSQL)."
+    )
+    parser.add_argument(
+        "--no-clean",
+        action="store_true",
+        help="Tắt ETL (chỉ cào thô và lưu vào staging.db)."
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=50,
-        help="Số lượng tin cũ muốn kiểm tra trạng thái hết hạn (áp dụng cho verify)."
+        help="Số tin cũ cần kiểm tra khi dùng --mode verify (mặc định: 50)."
     )
     parser.add_argument(
-        "--region",
+        "--source",
         type=str,
-        default="all",
-        choices=["all", "hcm", "hanoi", "danang", "binhduong", "dongnai", "cantho"],
-        help="Vùng/Thành phố muốn cào."
-    )
-    parser.add_argument(
-        "--no-clean",
-        action="store_true",
-        help="Tắt tự động chạy pipeline ETL làm sạch sau khi hoàn tất."
+        default="nhatot",
+        choices=["nhatot", "phongtro123", "all"],
+        help="Nguồn dữ liệu (mặc định: 'nhatot')."
     )
 
     args = parser.parse_args()
+
+    # Cấu hình tự động theo preset --full
+    extract_llm = args.full
+    eval_price = args.full   # <-- Kích hoạt Machine Learning PriceEvaluator tính price_score
+    embed = args.full        # <-- Kích hoạt E5 Embedding
+
+    if args.full:
+        print("[PRESET --full] Kích hoạt toàn bộ Pipeline:")
+        print("  1. Cào dữ liệu phòng trọ")
+        print("  2. Bóc tách thuộc tính LLM (Gemini)")
+        print("  3. Thẩm định giá Machine Learning (Price Score)")
+        print("  4. Sinh vector ngữ nghĩa Embedding (E5)")
+        print("  5. Nạp trực tiếp vào PostgreSQL (pgvector)")
 
     active_spiders = []
     if args.source == "all":
@@ -85,7 +97,13 @@ def main():
 
     if not args.no_clean:
         print("\n>>> TỔNG HỢP VÀ LÀM SẠCH TOÀN BỘ DỮ LIỆU ĐA NGUỒN (ETL)...", flush=True)
-        run_pipeline()
+        run_pipeline(
+            destinations=["db"],
+            unprocessed_only=True,
+            embed=embed,
+            extract_llm=extract_llm,
+            eval_price=eval_price,
+        )
 
 if __name__ == "__main__":
     main()

@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="Nội dung câu hỏi hoặc yêu cầu tìm kiếm phòng của người dùng")
     conversation_history: Optional[list[dict]] = Field(default=None, description="Lịch sử chat các lượt trước")
     session_id: Optional[str] = Field(default=None, description="Mã phiên làm việc để tích lũy tiêu chí đa lượt")
+    use_graph: Optional[bool] = Field(default=False, description="Tùy chọn sử dụng LangGraph State Machine (housing_graph) thay vì React Agent")
 
 
 def _compact_trace_event(event_type: str, data: dict[str, Any], step: int, model_calls: int) -> dict[str, Any]:
@@ -508,6 +509,31 @@ class HousingAgentService:
             trace_events=trace_events,
         )
 
+    def run_graph(
+        self,
+        user_message: str,
+        session_id: Optional[str] = None,
+    ) -> AgentResponse:
+        """Thực thi qua LangGraph State Machine (housing_graph) 8 nodes."""
+        import uuid
+        from graph import housing_graph
+
+        effective_session_id = session_id or uuid.uuid4().hex
+        state = {
+            "user_message": user_message,
+            "session_id": effective_session_id,
+        }
+        result = housing_graph.invoke(state)
+        resp = result.get("final_response")
+        if isinstance(resp, AgentResponse):
+            return resp
+        return AgentResponse(
+            session_id=effective_session_id,
+            text_reply=result.get("final_text", ""),
+            rooms=result.get("retrieved_rooms", []),
+            insights=result.get("insights"),
+        )
+
     def run_stream(
         self,
         user_message: str,
@@ -640,6 +666,11 @@ def health_check() -> dict[str, str]:
 def chat_endpoint(request: ChatRequest) -> AgentResponse:
     """Endpoint chính nhận tin nhắn từ giao diện người dùng và trả về phản hồi kèm danh sách phòng & insight."""
     try:
+        if request.use_graph:
+            return service.run_graph(
+                user_message=request.message,
+                session_id=request.session_id,
+            )
         return service.run(
             user_message=request.message,
             conversation_history=request.conversation_history,

@@ -1,12 +1,5 @@
-import os
-import sys
-import time
 from crawler.spiders.base import BaseSpider
 
-# Tự động thêm thư mục gốc dự án vào sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
 class PhongTro123Spider(BaseSpider):
     """

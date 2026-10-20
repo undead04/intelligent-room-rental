@@ -1,32 +1,23 @@
 import os
 import sys
-import re
 import json
-import unicodedata
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Optional, Union
 import pandas as pd
 
-# Tự động thêm thư mục gốc dự án vào sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+# Đảm bảo root dự án có trong sys.path khi chạy file độc lập
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
-from crawler.schema.enum import RoomType, AmenityCode
-from crawler.schema.listing import (
-    ListingExtraction,
-    ExtractedRoomData,
-)
+from crawler.schema.enums import RoomType, ROOM_TYPE_CODE_TO_ID
+from crawler.schema.listing import ListingExtraction
 from crawler.etl.text_cleaner import clean_room_description
 from crawler.etl.enricher import (
-    AMENITY_VIETNAMESE_MAP,
-    SAFETY_VIETNAMESE_MAP,
-    ROOM_TYPE_LABELS,
     build_enriched_embedding_text,
     extract_room_data_from_record,
 )
-
 
 class ListingTransformer:
     """
@@ -34,7 +25,7 @@ class ListingTransformer:
     Chịu trách nhiệm:
     1. Làm sạch, chuẩn hóa kiểu dữ liệu số và thời gian.
     2. Khử trùng lặp bản ghi.
-    3. Tích hợp báo cáo LLM: tính điểm safety_score, amenity_overall_score, concept_scores.
+    3. Tích hợp báo cáo LLM: tính điểm safety_score, amenity_overall_score, concept_scores, room_type.
     4. Giữ price_score = None (để chờ mô hình ML định giá).
     5. Sinh chuỗi văn bản giàu ngữ cảnh embedding_text cho mô hình Embedding.
     6. Xuất cấu trúc tương thích 100% với model Listing và ListingEmbedding.
@@ -42,42 +33,80 @@ class ListingTransformer:
 
     def __init__(
         self,
-        llm_reports: Optional[Union[dict, list, str, Path]] = None,
+        llm_reports: Optional[Union[dict[str, object], list[dict[str, object]], str, Path]] = None,
         enable_price_evaluator: bool = False,
-        **kwargs: Any,
-    ):
+    ) -> None:
         self.llm_reports = self._load_reports(llm_reports)
         self.enable_price_evaluator = enable_price_evaluator
 
-    def _load_reports(self, reports_source: Any) -> dict[str, Any]:
-        """Tải báo cáo LLM từ dict, list hoặc đường dẫn file checkpoint.json / datas.json."""
+    def _load_reports(
+        self,
+        reports_source: Optional[Union[dict[str, object], list[dict[str, object]], str, Path]] = None,
+    ) -> dict[str, object]:
+        """Tải báo cáo LLM từ dict, list hoặc đường dẫn file checkpoint (.jsonl / .json)."""
         if not reports_source:
             return {}
-        if isinstance(reports_source, dict):
-            if "results" in reports_source:
-                return {
-                    str(r.get("listing_id") or r.get("id")): r.get("report")
-                    for r in reports_source["results"]
-                }
-            return {str(k): v for k, v in reports_source.items()}
-        if isinstance(reports_source, list):
-            res = {}
-            for r in reports_source:
-                lid = str(r.get("listing_id") or r.get("id") or "")
-                if lid:
-                    res[lid] = r.get("report") or r
-            return res
-        if isinstance(reports_source, (str, Path)):
-            path = Path(reports_source)
-            if path.exists():
-                try:
-                    data = json.loads(path.read_text(encoding="utf-8"))
-                    return self._load_reports(data)
-                except Exception as e:
-                    print(f"[TRANSFORM] Không thể đọc báo cáo từ {path}: {e}")
-        return {}
 
-    def clean_number(self, value: Any, default: Optional[float] = 0.0) -> Optional[float]:
+        raw_data = reports_source
+        if isinstance(reports_source, (str, Path)):
+            path_str = str(reports_source)
+            if not os.path.exists(path_str):
+                return {}
+
+            # Ưu tiên đọc định dạng JSONL (tốc độ cao)
+            if path_str.endswith(".jsonl"):
+                reports = {}
+                try:
+                    with open(path_str, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                item = json.loads(line)
+                            except Exception:
+                                continue
+                            if "__meta__" in item or ("metadata" in item and len(item) == 1):
+                                continue
+                            lid = str(item.get("listing_id") or item.get("id") or "").strip()
+                            rep = item.get("report") or item
+                            if lid:
+                                reports[lid] = rep
+                                if "_" in lid:
+                                    reports[lid.split("_", 1)[-1]] = rep
+                                else:
+                                    reports[f"nhatot_{lid}"] = rep
+                    return reports
+                except Exception as e:
+                    print(f"[TRANSFORM] Lỗi đọc file checkpoint JSONL {path_str}: {e}", flush=True)
+                    return {}
+
+            # Đọc JSON truyền thống
+            try:
+                with open(path_str, "r", encoding="utf-8") as f:
+                    raw_data = json.load(f)
+            except Exception as e:
+                print(f"[TRANSFORM] Lỗi đọc file checkpoint báo cáo LLM {path_str}: {e}", flush=True)
+                return {}
+
+        # Xử lý khi raw_data là dict hoặc list
+        reports = {}
+        items = raw_data.get("results", []) if isinstance(raw_data, dict) else (raw_data if isinstance(raw_data, list) else [])
+        if isinstance(raw_data, dict) and "results" not in raw_data:
+            items = [{"listing_id": k, "report": v} for k, v in raw_data.items()]
+
+        for item in items:
+            lid = str(item.get("listing_id") or item.get("id") or "").strip()
+            rep = item.get("report") or item
+            if lid:
+                reports[lid] = rep
+                if "_" in lid:
+                    reports[lid.split("_", 1)[-1]] = rep
+                else:
+                    reports[f"nhatot_{lid}"] = rep
+        return reports
+
+    def clean_number(self, value: Optional[Union[str, int, float]], default: Optional[float] = 0.0) -> Optional[float]:
         """Ép kiểu số thực an toàn."""
         if value is None or value == "":
             return default
@@ -86,7 +115,7 @@ class ListingTransformer:
         except (ValueError, TypeError):
             return default
 
-    def clean_int(self, value: Any, default: Optional[int] = None) -> Optional[int]:
+    def clean_int(self, value: Optional[Union[str, int, float]], default: Optional[int] = None) -> Optional[int]:
         """Ép kiểu số nguyên an toàn."""
         if value is None or value == "":
             return default
@@ -95,7 +124,7 @@ class ListingTransformer:
         except (ValueError, TypeError):
             return default
 
-    def to_datetime(self, date_string: Any) -> Optional[datetime]:
+    def to_datetime(self, date_string: Optional[Union[str, int, float, datetime]]) -> Optional[datetime]:
         """Chuẩn hóa trường ngày giờ."""
         if not date_string:
             return None
@@ -106,9 +135,13 @@ class ListingTransformer:
         except Exception:
             return None
 
-    def clean_record(self, item: dict, report: Optional[Union[ListingExtraction, dict]] = None) -> dict:
+    def clean_record(
+        self,
+        item: dict[str, object],
+        report: Optional[Union[ListingExtraction, dict[str, object]]] = None,
+    ) -> dict[str, object]:
         """Chuẩn hóa từng bản ghi khớp schema của model Listing và ListingEmbedding."""
-        record = dict(item)
+        record: dict[str, object] = dict(item)
 
         # 1. ID định danh thống nhất
         lid = str(record.get("listing_id") or record.get("id") or "")
@@ -125,8 +158,8 @@ class ListingTransformer:
 
         record["clean_title"] = clean_title
         record["clean_description"] = clean_desc
-        record["title"] = clean_title or raw_title or "Untitled"
-        record["description"] = clean_desc or raw_desc
+        record["title"] = raw_title or "Untitled"
+        record["description"] = raw_desc
 
         # 3. Chuẩn hóa số học tài chính
         price_vnd = self.clean_number(record.get("price_vnd"))
@@ -174,8 +207,6 @@ class ListingTransformer:
         record["ward_id"] = self.clean_int(record.get("ward_id"))
         record["district_id"] = self.clean_int(record.get("district_id"))
         record["region_id"] = self.clean_int(record.get("region_id"))
-        record["room_type_id"] = self.clean_int(record.get("room_type_id"))
-        record["category_id"] = self.clean_int(record.get("category_id"))
         record["poster_id"] = str(record.get("poster_id") or "") or None
 
         # 7. Trạng thái và thời gian
@@ -185,9 +216,15 @@ class ListingTransformer:
         record["crawled_at"] = self.to_datetime(record.get("crawled_at")) or datetime.now()
 
         # 8. Tích hợp báo cáo trích xuất LLM (Safety, Amenities, Concept Scores)
-        rep = report or self.llm_reports.get(lid) or record.get("report")
+        rep = (
+            report
+            or self.llm_reports.get(lid)
+            or (self.llm_reports.get(lid.split("_", 1)[-1]) if "_" in lid else None)
+            or self.llm_reports.get(f"nhatot_{lid}")
+            or record.get("report")
+        )
+        rep_obj = None
         if rep:
-            rep_obj = None
             if isinstance(rep, dict):
                 try:
                     rep_obj = ListingExtraction.model_validate(rep)
@@ -201,32 +238,57 @@ class ListingTransformer:
                 record["amenity_overall"] = rep_obj.amenity_overall_score()
                 record["concept_scores"] = rep_obj.to_concept_scores()
                 record["report"] = rep_obj.model_dump(mode="json")
-                if hasattr(rep_obj.room_type, "value"):
-                    record["room_type"] = rep_obj.room_type.value
+                if getattr(rep_obj, "numeric", None):
+                    if rep_obj.numeric.bedrooms is not None:
+                        record["num_bedrooms"] = rep_obj.numeric.bedrooms
+                    if rep_obj.numeric.bathrooms is not None:
+                        record["num_bathrooms"] = rep_obj.numeric.bathrooms
             elif isinstance(rep, dict):
                 record["safety_score"] = self.clean_number(rep.get("safety_score"), default=None)
                 record["amenity_overall"] = self.clean_number(rep.get("amenity_overall_score") or rep.get("amenity_overall"), default=None)
                 record["concept_scores"] = rep.get("concept_scores")
                 record["report"] = rep
+                num_dict = rep.get("numeric") or {}
+                if isinstance(num_dict, dict):
+                    if num_dict.get("bedrooms") is not None:
+                        record["num_bedrooms"] = num_dict.get("bedrooms")
+                    if num_dict.get("bathrooms") is not None:
+                        record["num_bathrooms"] = num_dict.get("bathrooms")
         else:
             record["safety_score"] = self.clean_number(record.get("safety_score"), default=None)
             record["amenity_overall"] = self.clean_number(record.get("amenity_overall"), default=None)
             record["concept_scores"] = record.get("concept_scores")
 
-        # 9. Giữ price_score (nếu đã có thì giữ nguyên, ngược lại để None chờ ML định giá)
+        # 9. Chuẩn hóa phân loại phòng (room_type & room_type_id) theo canonical 1..5
+        room_type_val = None
+        if rep_obj and rep_obj.room_type:
+            room_type_val = rep_obj.room_type.value if hasattr(rep_obj.room_type, "value") else str(rep_obj.room_type)
+        elif isinstance(rep, dict) and rep.get("room_type"):
+            room_type_val = rep.get("room_type")
+        elif record.get("room_type"):
+            room_type_val = record.get("room_type")
+
+        norm_code = str(room_type_val).strip().upper() if room_type_val else RoomType.ROOM.value
+        if norm_code not in ROOM_TYPE_CODE_TO_ID:
+            norm_code = RoomType.ROOM.value
+
+        record["room_type"] = norm_code
+        record["room_type_id"] = ROOM_TYPE_CODE_TO_ID[norm_code]
+
+        # 10. Giữ price_score (nếu đã có thì giữ nguyên, ngược lại để None chờ ML định giá)
         record["price_score"] = self.clean_number(record.get("price_score"), default=None)
 
         # 10. Tạo chuỗi văn bản giàu ngữ cảnh cho mô hình Embedding
         extracted_data = extract_room_data_from_record(record, rep)
-        desc_for_embed = f"{clean_title}\n{clean_desc}".strip() if clean_title and clean_title not in clean_desc else clean_desc
+        desc_for_embed = f"{clean_title}\n{clean_desc}".strip()
         record["embedding_text"] = build_enriched_embedding_text(extracted_data, clean_desc=desc_for_embed)
 
         return record
 
-    def deduplicate(self, records: list[dict]) -> list[dict]:
+    def deduplicate(self, records: list[dict[str, object]]) -> list[dict[str, object]]:
         """Khử trùng lặp dựa trên listing_id hoặc id gốc."""
-        seen_ids = set()
-        unique_records = []
+        seen_ids: set[str] = set()
+        unique_records: list[dict[str, object]] = []
 
         for r in records:
             lid = str(r.get("listing_id") or r.get("id") or "")
@@ -240,10 +302,10 @@ class ListingTransformer:
 
     def transform(
         self,
-        raw_records: list[dict],
-        llm_reports: Optional[Union[dict, list, str, Path]] = None,
+        raw_records: list[dict[str, object]],
+        llm_reports: Optional[Union[dict[str, object], list[dict[str, object]], str, Path]] = None,
         active_only: bool = False,
-    ) -> list[dict]:
+    ) -> list[dict[str, object]]:
         """Chạy toàn bộ quy trình Transform:
         1. Nạp báo cáo trích xuất LLM (nếu có).
         2. Khử trùng lặp dữ liệu thô.
@@ -303,12 +365,30 @@ class ListingTransformer:
 
 
 if __name__ == "__main__":
+    import argparse
+    import json
     from crawler.etl.extract import extract_raw_listings
 
-    raws = extract_raw_listings()
-    transformer = ListingTransformer()
-    cleans = transformer.transform(raws)
-    if cleans:
-        print(f"Bản ghi mẫu đầu tiên: {cleans[0]['title']} - Giá: {cleans[0]['price_vnd']} VNĐ")
-        print("\n--- Embedding Text Mẫu ---")
-        print(cleans[0].get("embedding_text"))
+    parser = argparse.ArgumentParser(description="Chạy Transform làm sạch dữ liệu.")
+    parser.add_argument("--limit", type=int, default=5, help="Số bản ghi test")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Đường dẫn file báo cáo LLM")
+    parser.add_argument("--eval-price", action="store_true", help="Bật PriceEvaluator ML")
+    args = parser.parse_args()
+
+    raws = extract_raw_listings(limit=args.limit)
+    if not raws:
+        print("[TRANSFORM] Không có dữ liệu thô trong Staging DB.")
+    else:
+        transformer = ListingTransformer(llm_reports=args.checkpoint, enable_price_evaluator=args.eval_price)
+        cleans = transformer.transform(raws)
+        print(f"\n[TRANSFORM DEMO] Đã xử lý {len(cleans)}/{len(raws)} bản ghi.")
+        if cleans:
+            sample = {
+                "listing_id": cleans[0].get("listing_id"),
+                "title": cleans[0].get("title"),
+                "room_type": cleans[0].get("room_type"),
+                "embedding_text": (cleans[0].get("embedding_text") or "")[:200] + "...",
+            }
+            print("Mẫu kết quả:\n", json.dumps(sample, ensure_ascii=False, indent=2))
+
+

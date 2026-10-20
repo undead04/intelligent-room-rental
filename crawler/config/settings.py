@@ -1,19 +1,27 @@
-from dotenv import load_dotenv
 import os
-from pathlib import Path
+import sys
+from dotenv import load_dotenv
+from crawler.config.paths import CRAWLER_ENV_PATH, ROOT_ENV_PATH
 
-# Đảm bảo đọc file .env từ thư mục crawler/ và thư mục gốc của dự án
-_current_file = Path(__file__).resolve()
-_crawler_env = _current_file.parents[1] / ".env"
-_root_env = _current_file.parents[2] / ".env"
+# 1. Tự động chuẩn hóa console output UTF-8 trên Windows
+def setup_windows_encoding() -> None:
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
 
-if _crawler_env.exists():
-    load_dotenv(_crawler_env)
-if _root_env.exists():
-    load_dotenv(_root_env)
-load_dotenv()
+setup_windows_encoding()
 
-# Cấu hình crawler
+# 2. Đảm bảo đọc file .env từ thư mục crawler/ và thư mục gốc của dự án
+if CRAWLER_ENV_PATH.exists():
+    load_dotenv(CRAWLER_ENV_PATH)
+if ROOT_ENV_PATH.exists():
+    load_dotenv(ROOT_ENV_PATH)
+
+
+# 3. Cấu hình cào dữ liệu Chợ Tốt (NhaTot Spider)
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
@@ -24,10 +32,7 @@ DELAY_MIN = 2.0
 DELAY_MAX = 5.0
 TIMEOUT = 15
 
-# Chotot API & LLM Config
 CHOTOT_API_URL = "https://gateway.chotot.com/v1/public/ad-listing"
-GEMINI_API_KEYS = os.getenv("GEMINI_API_KEYS") or os.getenv("GEMINI_API_KEY") or ""
-GEMINI_API_KEY = GEMINI_API_KEYS
 CATEGORY_PHONGTRO = 1050
 LIMIT_PER_PAGE = 50
 
@@ -40,3 +45,33 @@ REGIONS = {
     "dongnai": 2015,       # Đồng Nai
     "cantho": 9047,        # Cần Thơ
 }
+
+
+# 4. Cấu hình CSDL PostgreSQL & SQLAlchemy
+def get_database_url(override_url: str | None = None) -> str:
+    url = override_url or os.environ.get("DATABASE_URL")
+    if url:
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return url
+
+    user = os.environ.get("POSTGRES_USER", "postgres")
+    password = os.environ.get("POSTGRES_PASSWORD", "")
+    server = os.environ.get("POSTGRES_SERVER", "localhost")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "smart_housing_db")
+    return f"postgresql+psycopg2://{user}:{password}@{server}:{port}/{db}"
+
+
+# 5. Cấu hình Gemini LLM & Dynamic Chunker
+GEMINI_API_KEYS = os.environ.get("GEMINI_API_KEYS", "")
+DEFAULT_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+DEFAULT_MAX_TOKENS_PER_CHUNK = 2500
+DEFAULT_MAX_ITEMS_PER_CHUNK = 5
+DEFAULT_RPM_DELAY = 1.0
+DEFAULT_MAX_RETRIES = 5
+
+
+# 6. Cấu hình Vector Embedding
+DEFAULT_EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-base")
+DEFAULT_EMBED_BATCH_SIZE = 32

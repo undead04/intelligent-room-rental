@@ -13,27 +13,29 @@ backend/
 ├── app/
 │   ├── api/v1/
 │   │   ├── controllers/               # Định nghĩa HTTP Endpoints & Query/Body Validation
-│   │   │   ├── listings_controller.py # /api/v1/listings (CRUD, Filter, Vector Search, Price Stats)
-│   │   │   ├── locations_controller.py# /api/v1/locations (Cities, Districts, Wards)
+│   │   │   ├── listings_controller.py # /api/v1/listings (Filter, Vector Search, Price Stats)
+│   │   │   ├── location_controller.py # /api/v1/locations (Cities, Districts, Wards)
 │   │   │   ├── room_type_controller.py# /api/v1/room-types
-│   │   │   ├── geocode.py             # /api/v1/geocode (Nominatim OSM Geocoding)
+│   │   │   ├── geocoding_controller.py# /api/v1/geocode (OSM Nominatim / Photon Geocoding)
 │   │   │   └── health_controller.py   # /api/v1/health
 │   │   └── router.py                  # Router tổng hợp API v1
 │   ├── core/
-│   │   ├── config.py                  # Cấu hình biến môi trường (Pydantic Settings)
-│   │   ├── database.py                # Quản lý kết nối SQLAlchemy Session
+│   │   ├── config.py                  # Cấu hình biến môi trường & Connection Pool (Pydantic Settings)
+│   │   ├── database.py                # Quản lý kết nối & Connection Pool SQLAlchemy Session
 │   │   ├── exceptions.py              # Custom HTTP Exceptions & Global Error Handlers
-│   │   └── security.py                # Middleware chống SQL Injection & Sliding-Window Rate Limit
+│   │   └── logging.py                 # Cấu hình logging hệ thống
+│   ├── middleware/                    # Middlewares bảo vệ & quan sát hệ thống
+│   │   ├── logging_middleware.py      # Gắn Request ID duy nhất & ghi log
+│   │   ├── rate_limit_middleware.py   # Sliding-Window Rate Limiting theo IP
+│   │   └── security_middleware.py     # Chống SQL Injection trong query và đường dẫn
 │   ├── models/                        # SQLAlchemy ORM Models (Listing, ListingEmbedding, Location, RoomType, User)
 │   ├── repositories/                  # Truy vấn CSDL & Hybrid Search (70% Dense pgvector + 30% Sparse FTS)
-│   ├── schemas/                       # Pydantic v2 DTOs (ResponseDTO, ListingResponse, VectorSearchResult...)
+│   ├── schemas/                       # Pydantic v2 DTOs & Request Params (ListingQueryParams, VectorSearchBody...)
 │   ├── services/                      # Logic nghiệp vụ (ListingService, EmbeddingModel, GeocodeService)
+│   │   └── reranker.py                # MCDM Dynamic Reranking Engine (rerank, explain_match, component_influence)
 │   ├── utils/
-│   │   └── utils.py                   # Thuật toán MCDM Rerank 5 tiêu chí & Explainable AI (explain_match)
-│   └── main.py                        # FastAPI App Entrypoint & Lifespan (nạp sẵn Vietnamese-SBERT)
-├── scripts/
-│   ├── init_db.py                     # Khởi tạo extension pgvector & toàn bộ bảng CSDL
-│   └── load_data.py                   # Wrapper tương thích ngược gọi sang crawler.etl.load.DataLoader
+│   │   └── utils.py                   # Tiện ích tương thích ngược (re-export từ app.services.reranker)
+│   └── main.py                        # FastAPI App Entrypoint & Lifespan (nạp sẵn multilingual-e5-base)
 ├── tests/                             # Bộ Unit Tests (Embedding, MCDM Rerank, Security Middleware)
 ├── requirements.txt
 └── run.py                             # Script khởi chạy nhanh Uvicorn server
@@ -48,7 +50,7 @@ backend/
 2. **Chấm điểm Hybrid Search**: Kết hợp độ tương đồng Cosine trên vector 768 chiều (`keepitreal/vietnamese-sbert`) và điểm khớp từ khóa PostgreSQL Full-Text Search để lấy Top 50 ứng viên tiềm năng nhất:
    $$\text{CandidateScore} = 0.70 \times \text{DenseScore} + 0.30 \times \text{SparseScore}$$
 
-### 2.2. Giai đoạn 2 — 5-Factor Dynamic MCDM Reranking (`app/utils/utils.py`)
+### 2.2. Giai đoạn 2 — 5-Factor Dynamic MCDM Reranking (`app/services/reranker.py`)
 Top 50 ứng viên được xếp hạng lại theo 5 tiêu chí với trọng số thích ứng động ($\sum w_k = 1.0$):
 - **`price`**: Điểm hợp lý giá `price_score` $\in [0.0, 1.0]$ từ mô hình ML Conformal Prediction.
 - **`safety`**: Điểm an ninh `safety_score` $\in [0.0, 1.0]$ trích xuất từ bằng chứng thực tế trong mô tả.

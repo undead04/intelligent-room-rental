@@ -75,7 +75,7 @@ crawler/
 │   ├── transform.py             # Chuẩn hóa schema, xử lý số liệu, tính đơn giá, tích hợp LLM report
 │   ├── embed.py                 # Batch offline embedder dùng intfloat/multilingual-e5-base
 │   ├── load.py                  # Bộ nạp đa đích: PostgreSQL (pgvector), Parquet, CSV, JSON
-│   ├── clean.py                 # Script tương thích ngược (Clean wrapper)
+│   ├── db_models.py             # Định nghĩa ORM SQLAlchemy & kết nối PostgreSQL (pgvector) độc lập
 │   └── pipeline.py              # CLI điều phối toàn bộ chu trình ETL (Extract -> Load)
 ├── model/
 │   ├── llm/
@@ -87,7 +87,8 @@ crawler/
 │   │   └── pipeline.py          # Runner bóc tách LLM độc lập
 │   └── ml/                      # Module huấn luyện Machine Learning (định giá, ranking)
 ├── schema/
-│   ├── enum.py                  # Danh mục chuẩn (RoomType, AmenityType, SafetyFeature, Rules)
+│   ├── enums.py                 # Danh mục chuẩn canonical (RoomType, AmenityCode, Amenities)
+│   ├── enum.py                  # Shim tương thích ngược (re-export từ schema/enums.py)
 │   └── listing.py               # Pydantic schemas (Signal, Amenities, Safety, ConceptScores)
 ├── spiders/
 │   ├── base.py                  # Lớp Base Spider trừu tượng
@@ -118,89 +119,125 @@ pip install -r crawler/requirements.txt
 ```
 
 ### 4.3. Cấu hình biến môi trường
-Tạo file `.env` tại thư mục gốc dự án:
+Tạo file `.env` tại thư mục gốc dự án hoặc trong thư mục `crawler/`:
 ```env
-# API Keys Google Gemini (ngăn cách bằng dấu phẩy để chạy xoay vòng round-robin)
+# API Keys Google Gemini (lấy từ Google AI Studio, tiền tố AIzaSy..., ngăn cách bằng dấu phẩy để chạy xoay vòng round-robin)
 GEMINI_API_KEYS="AIzaSyA...,AIzaSyB...,AIzaSyC..."
 
 # Kết nối cơ sở dữ liệu PostgreSQL (chứa extension pgvector)
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/smart_room_db"
 ```
 
+> [!NOTE]
+> - `GEMINI_API_KEYS`: Bắt buộc là API key hợp lệ lấy từ [Google AI Studio](https://aistudio.google.com/). Nếu chỉ có 1 key, bạn có thể gán `GEMINI_API_KEY="AIzaSy..."`.
+> - Hệ thống có cơ chế Round-Robin tự động phát hiện chạm hạn ngạch (Rate Limit/429) để chuyển sang key tiếp theo.
+
 ---
 
 ## 🚀 5. Hướng Dẫn Sử Dụng Chi Tiết
 
-Quy trình vận hành dữ liệu gồm 3 bước tuần tự:
+Hệ thống hỗ trợ 2 cách vận hành: **Chạy trọn gói (End-to-End)** hoặc **Chạy tách biệt từng bước (Step-by-Step)**.
 
-### 🔹 Bước 1: Thu thập dữ liệu thô (Data Crawling)
+---
 
-Sử dụng `crawler/main.py` để cào dữ liệu vào kho lưu trữ đệm `crawler/data/raw/staging.db`.
+### 🌟 Lựa chọn 1: Chạy nhanh bằng Preset hoặc Menu tương tác (Khuyến nghị - Không cần nhớ cờ lệnh)
 
+#### Cách 1.1: Bấm đúp chuột chạy Menu tương tác trên Windows
+Chỉ cần bấm đúp chuột vào file [`run_crawler.bat`](run_crawler.bat) (hoặc gõ `.\run_crawler.bat` trong Terminal), hệ thống sẽ hiển thị Menu trực quan:
+```text
+================================================================
+     HOMIGO - SMART HOUSING DECISION SUPPORT SYSTEM
+            TRÌNH KHỞI CHẠY CRAWLER & ETL PIPELINE
+================================================================
+
+  [1] Cào cơ bản (5 trang TP.HCM -> Lưu Staging DB & Xuất CSV, Parquet)
+  [2] Cào + Bóc tách tiện ích LLM Gemini (--llm)
+  [3] Full Pipeline từ A-Z (Cào + LLM + Sinh Embedding E5 + Nạp DB) (--full)
+  [4] Cào nhanh tin mới nhất (2 trang TP.HCM) (--quick)
+  [5] Kiểm tra tin cũ còn hạn hay đã hết hạn (Verify 50 tin)
+  [0] Thoát
+```
+👉 **Chỉ cần gõ `1`, `2`, `3` hoặc nhấn `Enter` là chạy ngay!**
+
+#### Cách 1.2: Sử dụng các Preset ngắn gọn qua Terminal
+Không cần phải nhớ cả dãy argument dài, bạn chỉ cần gõ:
 ```bash
-# 1. Cào tiếp nối từ checkpoint lịch sử (Resume mode):
-python crawler/main.py --source nhatot --mode resume --pages 50
+# 1. Cào cơ bản (Mặc định: 5 trang TP.HCM, tự động lưu staging & xuất CSV, Parquet):
+python crawler/main.py
 
-# 2. Quét cập nhật tin mới hằng ngày (Update mode - tự dừng khi gặp tin cũ):
-python crawler/main.py --source nhatot --mode update --pages 10
+# 2. Cào kèm bóc tách thuộc tính ngữ nghĩa qua LLM Gemini:
+python crawler/main.py --llm
 
-# 3. Kiểm tra tính khả dụng của tin cũ (Verify mode):
+# 3. Trọn gói từ A-Z (Cào + LLM + ML Price Score + Embedding E5 + Nạp PostgreSQL & Parquet/CSV):
+python crawler/main.py --full
+
+# 4. Tùy chỉnh số trang hoặc khu vực:
+python crawler/main.py --pages 10 --region hanoi
+```
+
+> **Bảng tham số tối giản `crawler/main.py`:**
+> | Tham số | Ý nghĩa | Mặc định |
+> |---|---|---|
+> | `--full` | **Trọn gói A-Z**: Tự động bật **LLM Gemini** + **ML Price Score** + **Embedding E5** + **Nạp PostgreSQL** (`db`) & xuất CSV, Parquet | `False` |
+> | `--llm` | **Bật LLM Gemini** bóc tách tiện ích, an ninh & kiểm định bằng chứng | `False` |
+> | `--pages` | Số trang cần cào (mỗi trang ~50 tin) | `5` |
+> | `--region` | Khu vực tỉnh/thành (`hcm`, `hanoi`, `danang`, `binhduong`...) | `hcm` |
+> | `--mode` | Chế độ: `resume` (cào tiếp), `update` (tin mới), `verify` (kiểm tra tin cũ) | `resume` |
+> | `--no-clean` | Tắt ETL (chỉ cào thô và lưu vào staging.db) | `False` |
+> | `--limit` | Số lượng tin cũ kiểm tra khi chạy `--mode verify` | `50` |
+> | `--source` | Nguồn dữ liệu (`nhatot`, `phongtro123`, `all`) | `nhatot` |
+
+---
+
+### 🧩 Lựa chọn 2: Chạy tách rời từng bước (Step-by-Step Modular)
+
+Thích hợp khi muốn debug riêng lẻ từng module hoặc tiết kiệm token LLM:
+
+#### 🔹 Bước 1: Thu thập dữ liệu thô (Data Crawling)
+```bash
+# Cào tin lưu vào crawler/data/raw/staging.db (tắt clean tự động để xử lý sau):
+python crawler/main.py --source nhatot --mode resume --region hcm --pages 10 --no-clean
+
+# Quét cập nhật tin mới hằng ngày (Update mode - tự dừng khi gặp tin cũ):
+python crawler/main.py --source nhatot --mode update --region hcm --pages 5 --no-clean
+
+# Kiểm tra tính khả dụng của tin cũ trong database (Verify mode):
 python crawler/main.py --source nhatot --mode verify --limit 100
 ```
 
-> **Các tham số tùy chọn:**
-> - `--source`: Nguồn dữ liệu (`nhatot`, `phongtro123`, `all`). Mặc định: `nhatot`.
-> - `--mode`: Chế độ cào (`resume`, `update`, `verify`).
-> - `--pages`: Số trang tối đa cần quét.
-> - `--region`: Khu vực cần cào (`all`, `hcm`, `hanoi`, `danang`, `binhduong`...).
-> - `--no-clean`: Tắt tự động chạy ETL sau khi cào xong.
-
----
-
-### 🔹 Bước 2: Bóc tách thuộc tính ngữ nghĩa bằng LLM (LLM Extraction)
-
-Sử dụng LLM (Gemini 2.5 Flash / 2.0 Flash Lite) để bóc tách tiện ích, an ninh, quy định phòng và kiểm định bằng chứng:
-
+#### 🔹 Bước 2: Bóc tách thuộc tính ngữ nghĩa bằng LLM (LLM Extraction)
+Sử dụng LLM (`gemini-2.5-flash` / `gemini-2.0-flash`) với Dynamic Token Chunking và Checkpoint chịu lỗi:
 ```bash
-python -m crawler.model.llm.pipeline
+python -m crawler.model.llm.pipeline --max-tokens 2500 --rpm-delay 4.0
 ```
+- **Dynamic Token Chunking**: Gom tự động các tin đăng thành từng chunk tối đa 2500 tokens để tối ưu chi phí và bám sát ngữ cảnh.
+- **Round-Robin Multi-Key**: Xoay vòng các API key tự động khi chạm rate limit/quota.
+- **Fault-Tolerant Checkpoint**: Lưu trạng thái vào `checkpoint_reports.json`. Nếu bị ngắt kết nối mạng hoặc tắt giữa chừng, lần chạy sau sẽ tự động bỏ qua các bài đã xong mà không tốn thêm token hay thời gian gọi lại.
 
-- **Dynamic Token Chunking**: Gom tự động các tin đăng thành từng chunk tối đa 2500 tokens để tối ưu chi phí và giới hạn context.
-- **Round-Robin Multi-Key**: Xoay vòng các API key tự động để vượt ngưỡng RPM (Requests Per Minute) của gói miễn phí.
-- **Fault-Tolerant Checkpoint**: Lưu trạng thái xử lý sau mỗi chunk vào file checkpoint JSON. Nếu mất kết nối mạng hoặc dừng tiến trình, lần chạy sau sẽ bỏ qua các chunk đã hoàn thành mà không phải tốn thêm token hay thời gian gọi lại.
-
----
-
-### 🔹 Bước 3: Chạy Pipeline ETL, Sinh Embedding & Nạp Dữ Liệu (ETL Pipeline)
-
-Điều phối toàn bộ luồng dữ liệu thông qua CLI `crawler/etl/pipeline.py`:
-
+#### 🔹 Bước 3: Chạy Pipeline ETL, Sinh Embedding & Nạp Dữ Liệu
+Điều phối qua CLI `crawler/etl/pipeline.py`:
 ```bash
-# Nạp dữ liệu vào PostgreSQL (tự động sinh vector pgvector và upsert danh mục)
-python crawler/etl/pipeline.py --dest db --embed
+# Nạp đồng thời ra PostgreSQL, Parquet và CSV kèm sinh vector embedding:
+python crawler/etl/pipeline.py --dest db parquet csv --embed
 
-# Nạp đồng thời ra nhiều đích đến: PostgreSQL, CSV, JSON và Parquet (cho ML)
-python crawler/etl/pipeline.py --dest db csv json parquet --embed
+# Chế độ lũy tiến (Incremental): Chỉ xử lý các bài đăng MỚI chưa qua ETL:
+python crawler/etl/pipeline.py --dest parquet csv --incremental
 
-# Chế độ lũy tiến (Incremental): Chỉ xử lý các bài đăng MỚI chưa qua ETL
-python crawler/etl/pipeline.py --dest db --embed --incremental
-
-# Tự động tính toán điểm price_score bằng mô hình Machine Learning PriceEvaluator
-python crawler/etl/pipeline.py --dest db --embed --eval-price
-
-# Tích hợp kết quả bóc tách từ LLM Checkpoint
-python crawler/etl/pipeline.py --dest db --embed --checkpoint crawler/model/llm/checkpoint_reports.json
+# Kèm trích xuất LLM và tích hợp checkpoint:
+python crawler/etl/pipeline.py --dest db --embed --extract-llm --checkpoint crawler/data/processed/checkpoint_reports.json
 ```
 
 > **Bảng tham số `crawler/etl/pipeline.py`:**
 > | Tham số | Ý nghĩa | Mặc định |
 > |---|---|---|
-> | `--dest` | Danh sách đích nạp: `csv`, `json`, `parquet`, `db` | `csv` |
+> | `--dest` | Danh sách đích nạp: `parquet`, `csv`, `json`, `db`, `postgres` | `parquet` |
 > | `--embed` | Kích hoạt mô hình `intfloat/multilingual-e5-base` sinh vector 768 chiều | `False` |
-> | `--incremental` | Chỉ xử lý các bài đăng chưa qua ETL (`is_processed = 0`) | `False` |
-> | `--active-only` | Chỉ giữ các tin đang hoạt động (`is_active = True`) | `False` |
-> | `--checkpoint` | Đường dẫn file JSON checkpoint chứa báo cáo trích xuất LLM | `None` |
+> | `--extract-llm` | Tự động gọi LLM Gemini bóc tách ngữ nghĩa cho các bài thô | `False` |
+> | `--incremental` | Chỉ xử lý các bài đăng chưa qua ETL (`is_processed == 0`) | `False` |
+> | `--active-only` | Chỉ giữ các tin đang hoạt động (`is_active == True`) | `False` |
+> | `--checkpoint` | Đường dẫn file JSON checkpoint chứa báo cáo trích xuất LLM | Tự động tìm |
 > | `--eval-price` | Kích hoạt mô hình ML `PriceEvaluator` tự động tính điểm `price_score` | `False` |
+> | `--output-parquet`| Tùy chỉnh đường dẫn file Parquet xuất ra | `crawler/data/processed/listings_clean.parquet` |
 > | `--output-csv` | Tùy chỉnh đường dẫn file CSV xuất ra | `crawler/data/processed/listings_clean.csv` |
 > | `--output-json` | Tùy chỉnh đường dẫn file JSON xuất ra | `crawler/data/processed/listings_clean.json` |
 
@@ -225,11 +262,11 @@ Mô hình E5 áp dụng kiến trúc bi-encoder bất đối xứng, bắt buộ
 Trước khi đưa vào mô hình embedding, dữ liệu được hàm `build_enriched_embedding_text` chuẩn hóa và đóng gói thành 5 khối ngữ cảnh. Đặc biệt, các **Embedding Metadata** (`landmarks_nearby`, `extra_amenities`, `rules_and_lifestyle`) được tự động khử trùng lặp bảo toàn thứ tự:
 ```text
 passage: Vị trí: Đường Quang Trung, Phường 10, Quận Gò Vấp, Hồ Chí Minh (Gần: ĐH Văn Lang, Chợ Hạnh Thông Tây)
-Loại phòng: Phòng trọ | Diện tích: 25.0m2 | Giá thuê: 3,500,000 VND/tháng
+Loại phòng: Căn hộ chung cư | 2 phòng ngủ | 2 phòng tắm | Diện tích: 65.0m2 | Giá thuê: 8,500,000 VND/tháng
 Tiện ích: máy lạnh, gác lửng, toilet riêng, kệ bếp, chỗ để xe, view Landmark 81
 Quy định & Môi trường: giờ giấc tự do, không chung chủ, cho nuôi thú cưng
 Mô tả chi tiết:
-Phòng trọ mới xây sạch đẹp, giờ giấc tự do, có máy lạnh inverter tiết kiệm điện...
+Căn hộ mới bàn giao sạch đẹp, giờ giấc tự do, có máy lạnh inverter tiết kiệm điện...
 ```
 
 ---

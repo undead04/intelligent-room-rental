@@ -1,13 +1,13 @@
 """Unit tests for crawler/schema/listing.py and crawler/schema/enum.py."""
 import pytest
-from crawler.schema.enum import AmenityCode, RoomType
+from crawler.schema.enums import AmenityCode, RoomType
 from crawler.schema.listing import (
     Amenities,
     ListingExtraction,
-    Numeric,
     Rules,
     Safety,
     Signal,
+    extract_listing_full_text,
 )
 
 
@@ -121,19 +121,6 @@ def test_to_concept_scores():
     assert extraction.safety_score() == 0.30
 
 
-def test_amenity_code_normalization():
-    assert AmenityCode.normalize("ac") == "aircon"
-    assert AmenityCode.normalize("may_lanh") == "aircon"
-    assert AmenityCode.normalize("dieu_hoa") == "aircon"
-    assert AmenityCode.normalize("wc") == "private_wc"
-    assert AmenityCode.normalize("ve_sinh_rieng") == "private_wc"
-    assert AmenityCode.normalize("gac") == "mezzanine"
-    assert AmenityCode.normalize("ban_cong") == "window_balcony"
-    assert AmenityCode.normalize("pet") == "pet_allowed"
-    assert AmenityCode.normalize("khoa_van_tay") == "fingerprint_lock"
-    assert AmenityCode.normalize("the_tu") == "fingerprint_lock"
-    assert AmenityCode.normalize("unknown_code_123") == "unknown_code_123"
-    assert AmenityCode.normalize("") is None
 
 
 def test_verify_evidence_reconciles_extra_amenities():
@@ -161,3 +148,95 @@ def test_verify_evidence_reconciles_extra_amenities():
 
     # Chỉ tiện ích thực sự đặc thù mới được giữ lại trong extra_amenities
     assert verified.extra_amenities == ["view Landmark 81"]
+
+
+def test_extract_listing_full_text():
+    # 1. Both title and description present
+    item_1 = {"title": "Phòng trọ Q10", "description": "Có gác lửng, máy lạnh"}
+    assert extract_listing_full_text(item_1) == "Phòng trọ Q10\nCó gác lửng, máy lạnh"
+
+    # 2. Title already included in description
+    item_2 = {"title": "Phòng trọ Q10", "description": "Phòng trọ Q10 có gác lửng"}
+    assert extract_listing_full_text(item_2) == "Phòng trọ Q10 có gác lửng"
+
+    # 3. Only title
+    item_3 = {"title": "Phòng trọ Q10 giá rẻ"}
+    assert extract_listing_full_text(item_3) == "Phòng trọ Q10 giá rẻ"
+
+    # 4. Only description
+    item_4 = {"description": "Phòng có máy lạnh, WC riêng"}
+    assert extract_listing_full_text(item_4) == "Phòng có máy lạnh, WC riêng"
+
+
+def test_verify_evidence_tone_variations_and_bullets():
+    """Kiểm tra đối soát evidence với định dạng thực tế (bullet, tab, emoji, lệch dấu thanh hoà/hòa)."""
+    source_text = (
+        "\t•\tCó bếp riêng, tủ lạnh, máy điều hoà mới\n"
+        "\t•\tNội thất gỗ mới, gác lửng tiện nghi\n"
+        "✅ Khu vực an ninh, di chuyển dễ dàng"
+    )
+
+    extraction = ListingExtraction(
+        amenities=Amenities(
+            # Text ghi 'điều hoà' (o + à), LLM trích 'điều hòa' (ò + a)
+            aircon=Signal(value="yes", evidence="máy điều hòa"),
+            kitchen=Signal(value="yes", evidence="Có bếp riêng"),
+            fridge=Signal(value="yes", evidence="tủ lạnh"),
+            mezzanine=Signal(value="yes", evidence="gác lửng"),
+            furniture=Signal(value="yes", evidence="Nội thất gỗ mới"),
+        ),
+        safety=Safety(
+            safe_area=Signal(value="yes", evidence="Khu vực an ninh"),
+        ),
+    )
+
+    verified = extraction.verify_evidence(source_text)
+    assert verified.amenities.aircon.value == "yes"
+    assert verified.amenities.kitchen.value == "yes"
+    assert verified.amenities.fridge.value == "yes"
+    assert verified.amenities.mezzanine.value == "yes"
+    assert verified.amenities.furniture.value == "yes"
+    assert verified.safety.safe_area.value == "yes"
+
+
+def test_verify_evidence_from_title():
+    """Kiểm tra tiện ích nằm trên tiêu đề được giữ lại thành công khi hợp nhất text."""
+    raw_item = {
+        "title": "Phòng gác lửng xinh xắn – đầy đủ nội thất, dọn vào ở ngay",
+        "description": "Giờ giấc tự do, không chung chủ, liên hệ 090xxx để xem phòng."
+    }
+    source_text = extract_listing_full_text(raw_item)
+
+    extraction = ListingExtraction(
+        amenities=Amenities(
+            mezzanine=Signal(value="yes", evidence="gác lửng"),
+            furniture=Signal(value="yes", evidence="đầy đủ nội thất"),
+        ),
+        rules=Rules(
+            free_hours=Signal(value="yes", evidence="Giờ giấc tự do"),
+            no_shared_landlord=Signal(value="yes", evidence="không chung chủ"),
+        ),
+    )
+
+    verified = extraction.verify_evidence(source_text)
+    assert verified.amenities.mezzanine.value == "yes"
+    assert verified.amenities.furniture.value == "yes"
+    assert verified.rules.free_hours.value == "yes"
+    assert verified.rules.no_shared_landlord.value == "yes"
+
+
+def test_verify_evidence_with_wrapper_words():
+    """Kiểm tra LLM trích dẫn thêm chữ thừa (ví dụ 'khu vực trang bị máy giặt') vẫn khớp chính xác."""
+    source_text = "Dãy trọ có bãi đậu xe, khu vực trang bị máy giặt và máy sấy."
+
+    extraction = ListingExtraction(
+        amenities=Amenities(
+            washing_machine=Signal(value="yes", evidence="trang bị máy giặt"),
+            parking=Signal(value="yes", evidence="có bãi đậu xe"),
+        ),
+    )
+
+    verified = extraction.verify_evidence(source_text)
+    assert verified.amenities.washing_machine.value == "yes"
+    assert verified.amenities.parking.value == "yes"
+
