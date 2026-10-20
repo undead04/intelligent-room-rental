@@ -152,6 +152,15 @@ class ListingRepository:
             func.avg(Listing.price_vnd),
         ).filter(*filters).one()
 
+    def price_aggregates(self, filters: list) -> tuple[int, Optional[float], Optional[float], Optional[float]]:
+        row = self.db.query(
+            func.count(Listing.id),
+            func.avg(Listing.price_vnd),
+            func.min(Listing.price_vnd),
+            func.max(Listing.price_vnd),
+        ).filter(*filters).one()
+        return row[0], row[1], row[2], row[3]
+
     def get_by_ids(self, ids: list[str], preserve_order: bool = True) -> list[Listing]:
         """
         Lấy danh sách Listing dựa theo danh sách listing_id.
@@ -192,57 +201,46 @@ class ListingRepository:
         - Sparse: ts_rank_cd trên (title, address_raw, description) bắt chính xác tên đường, địa danh, từ khóa
         - Linear Fusion: alpha * dense + (1 - alpha) * sparse
         """
-        use_hybrid = bool(query_text and query_text.strip())
 
         # Biến đổi cosine distance sang column expression
         distance_col = ListingEmbedding.vector.cosine_distance(
             query_vector
         ).label("distance")
 
-        if use_hybrid:
-            clean_query = query_text.strip()
-            text_content = func.concat_ws(
-                " ",
-                func.coalesce(Listing.title, ""),
-                func.coalesce(Listing.address_raw, ""),
-                func.coalesce(Listing.description, ""),
-            )
-            ts_vector = func.to_tsvector("simple", text_content)
-            or_query_str = _build_or_tsquery_string(clean_query)
-            if or_query_str:
-                ts_query = func.to_tsquery("simple", or_query_str)
-            else:
-                ts_query = func.plainto_tsquery("simple", clean_query)
-            sparse_score_col = func.ts_rank_cd(ts_vector, ts_query).label("sparse_score")
+        clean_query = query_text.strip()
+        text_content = func.concat_ws(
+            " ",
+            func.coalesce(Listing.title, ""),
+            func.coalesce(Listing.address_raw, ""),
+            func.coalesce(Listing.description, ""),
+        )
+        ts_vector = func.to_tsvector("simple", text_content)
+        or_query_str = _build_or_tsquery_string(clean_query)
 
-            # Chuẩn hoá Dense similarity: [0..1]
-            dense_sim = func.greatest(0.0, func.least(1.0, 1.0 - distance_col))
-            # Chuẩn hoá Sparse rank: clamp(rank * 3.0, 0, 1)
-            sparse_norm = func.greatest(0.0, func.least(1.0, sparse_score_col * 3.0))
-            # Điểm tổng hợp Hybrid Fusion
-            hybrid_score_col = (alpha * dense_sim + (1.0 - alpha) * sparse_norm).label("hybrid_score")
-
-            query = (
-                self.db.query(Listing, distance_col, sparse_score_col)
-                .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
-                .options(
-                    joinedload(Listing.city),
-                    joinedload(Listing.district),
-                    joinedload(Listing.ward),
-                    joinedload(Listing.room_type),
-                )
-            )
+        if or_query_str:
+            ts_query = func.to_tsquery("simple", or_query_str)
         else:
-            query = (
-                self.db.query(Listing, distance_col)
-                .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
-                .options(
-                    joinedload(Listing.city),
-                    joinedload(Listing.district),
-                    joinedload(Listing.ward),
-                    joinedload(Listing.room_type),
-                )
+            ts_query = func.plainto_tsquery("simple", clean_query)
+        
+        sparse_score_col = func.ts_rank_cd(ts_vector, ts_query).label("sparse_score")
+
+        # Chuẩn hoá Dense similarity: [0..1]
+        dense_sim = func.greatest(0.0, func.least(1.0, 1.0 - distance_col))
+        # Chuẩn hoá Sparse rank: clamp(rank * 3.0, 0, 1)
+        sparse_norm = func.greatest(0.0, func.least(1.0, sparse_score_col * 3.0))
+        # Điểm tổng hợp Hybrid Fusion
+        hybrid_score_col = (alpha * dense_sim + (1.0 - alpha) * sparse_norm).label("hybrid_score")
+
+        query = (
+            self.db.query(Listing, distance_col, sparse_score_col)
+            .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
+            .options(
+                joinedload(Listing.city),
+                joinedload(Listing.district),
+                joinedload(Listing.ward),
+                joinedload(Listing.room_type),
             )
+        )
 
         # Filters
         if model_name:
@@ -264,23 +262,15 @@ class ListingRepository:
         if max_area is not None:
             query = query.filter(Listing.area_m2 <= max_area)
 
-        if use_hybrid:
-            rows = query.order_by(hybrid_score_col.desc()).limit(limit).all()
-        else:
-            rows = query.order_by(distance_col.asc()).limit(limit).all()
+        rows = query.order_by(hybrid_score_col.desc()).limit(limit).all()
 
         results = []
         for row in rows:
-            if use_hybrid:
-                listing, dist, sparse_val = row
-                dist_val = float(dist) if dist is not None else 1.0
-                dense_sim = max(0.0, min(1.0, 1.0 - dist_val))
-                sparse_norm = max(0.0, min(1.0, float(sparse_val or 0.0) * 3.0))
-                similarity_score = alpha * dense_sim + (1.0 - alpha) * sparse_norm
-            else:
-                listing, dist = row
-                dist_val = float(dist) if dist is not None else 1.0
-                similarity_score = max(0.0, min(1.0, 1.0 - dist_val))
+            listing, dist, sparse_val = row
+            dist_val = float(dist) if dist is not None else 1.0
+            dense_sim = max(0.0, min(1.0, 1.0 - dist_val))
+            sparse_norm = max(0.0, min(1.0, float(sparse_val or 0.0) * 3.0))
+            similarity_score = alpha * dense_sim + (1.0 - alpha) * sparse_norm
 
             results.append(
                 {

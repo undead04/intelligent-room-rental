@@ -27,6 +27,7 @@ class SessionData:
             "semantic": 1.0,
         }
         self.proposed_budget: Optional[float] = None
+        self.hitl_streak: int = 0
         self.messages: list[BaseMessage] = []
         self.last_rooms: list[RoomItem] = []
         self.last_active: float = time.time()
@@ -45,6 +46,10 @@ class SessionMemoryManager:
         session = self._sessions[sid]
         session.last_active = time.time()
         return session
+
+    def clear_session(self, session_id: str) -> None:
+        """Xóa session khỏi bộ nhớ khi bắt đầu phiên hội thoại mới."""
+        self._sessions.pop(session_id, None)
 
     def update_preferences_from_text(
         self, session: SessionData, text: str, model: Any = None

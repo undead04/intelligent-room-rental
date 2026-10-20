@@ -12,6 +12,7 @@ from tools.housing_tools import (
     geocode_location,
     get_listing_detail,
     get_location_hierarchy,
+    get_market_price_stats,
     list_housing_skills,
     search_rooms,
 )
@@ -21,6 +22,7 @@ RETRIEVAL_TOOLS: List[BaseTool] = [
     geocode_location,
     get_location_hierarchy,
     search_rooms,
+    get_market_price_stats,
 ]
 
 # 2. Phân vùng công cụ phân tích sâu thông tin phòng (Dành cho decision_node)

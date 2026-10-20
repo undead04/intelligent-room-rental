@@ -213,6 +213,8 @@ def set_turn_query_context(user_query: str, session_text: Optional[str] = None) 
         "city_id": None,
         "district_id": None,
         "ward_id": None,
+        "room_type": None,
+        "room_type_id": None,
     }
     _TURN_CONTEXT_VAR.set(ctx)
     _FALLBACK_TURN_CONTEXT = ctx
@@ -230,6 +232,7 @@ def _get_turn_context() -> Optional[dict[str, Any]]:
 
 
 def _normalize_amenity_list(raw_amenities: Optional[list[str]]) -> list[str]:
+    """Lọc danh sách tiện ích, đảm bảo đúng định dạng canonical AmenityCode của hệ thống."""
     if not raw_amenities:
         return []
     out: list[str] = []
@@ -237,16 +240,8 @@ def _normalize_amenity_list(raw_amenities: Optional[list[str]]) -> list[str]:
         if not item:
             continue
         clean = item.strip().lower()
-        if clean in CANONICAL_AMENITIES:
-            if clean not in out:
-                out.append(clean)
-            continue
-        for code, desc in AMENITY_CATALOG.items():
-            kws = [k.strip().lower() for k in desc.split(",")]
-            if clean in kws or clean == code:
-                if code not in out:
-                    out.append(code)
-                break
+        if clean in CANONICAL_AMENITIES and clean not in out:
+            out.append(clean)
     return sorted(out)
 
 
@@ -441,6 +436,8 @@ def search_rooms(
     city_id: Optional[int] = None,
     district_id: Optional[int] = None,
     ward_id: Optional[int] = None,
+    room_type: Optional[str] = None,
+    room_type_id: Optional[int] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     min_area: Optional[float] = None,
@@ -451,7 +448,7 @@ def search_rooms(
 ) -> str:
     """Tìm kiếm phòng trọ bằng Vector Search kết hợp Rerank đa tiêu chí từ Backend.
 
-    Hệ thống sẽ lọc theo các ràng buộc cứng (giá, vị trí/toạ độ, diện tích) và tính toán điểm phù hợp
+    Hệ thống sẽ lọc theo các ràng buộc cứng (giá, loại phòng, vị trí/toạ độ, diện tích) và tính toán điểm phù hợp
     (match_score) kèm bản giải thích chi tiết (explain_match: điểm giá, an ninh, tiện ích, vị trí, ngữ nghĩa).
 
     Args:
@@ -461,11 +458,13 @@ def search_rooms(
         city_id: ID thành phố (lấy từ get_location_hierarchy).
         district_id: ID quận/huyện.
         ward_id: ID phường/xã.
+        room_type: Mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE).
+        room_type_id: ID loại phòng (1: ROOM, 2: STUDIO, 3: APARTMENT, 4: SLEEPBOX, 5: WHOLE_HOUSE).
         min_price: Giá tối thiểu bằng VNĐ (ví dụ: 1500000).
         max_price: Giá tối đa bằng VNĐ (ví dụ: 3500000).
         min_area: Diện tích tối thiểu (m²).
         max_area: Diện tích tối đa (m²).
-        amenities: Danh sách tiện ích yêu cầu (ví dụ: ['wifi', 'parking', 'ac']).
+        amenities: Danh sách tiện ích yêu cầu theo format AmenityCode (ví dụ: ['aircon', 'mezzanine', 'pet_allowed']).
         weights: Trọng số động tùy chỉnh (e.g. {'price': 0.35, 'location': 0.35, ...}).
         limit: Số lượng phòng tối đa cần lấy (mặc định 5).
 
@@ -477,20 +476,23 @@ def search_rooms(
         # Đồng nhất 100% các tham số đầu vào của Vector Search + Rerank giữa Streamlit và Frontend
         query = ctx["user_query"]
         limit = 5
-        weights = None
-
-        ext_turn = _fallback_extract(ctx["user_query"])
-        if max_price is None and ext_turn.max_price is not None:
-            max_price = ext_turn.max_price
-        if min_price is None and ext_turn.min_price is not None:
-            min_price = ext_turn.min_price
+        weights = ctx.get("weights")
 
         user_q_low = ctx["user_query"].lower()
         if "lược bớt" in user_q_low or user_q_low.startswith("🪄"):
             amenities = []
         else:
             ext_session = _fallback_extract(ctx.get("session_text") or ctx["user_query"])
-            amenities = sorted(set(ext_session.amenities)) if ext_session.amenities else []
+            amenities = sorted(set(ext_session.amenities)) if ext_session.amenities else (_normalize_amenity_list(amenities) if amenities else [])
+
+        if max_price is None or min_price is None or room_type is None:
+            ext_turn = _fallback_extract(ctx["user_query"])
+            if max_price is None and ext_turn.max_price is not None:
+                max_price = ext_turn.max_price
+            if min_price is None and ext_turn.min_price is not None:
+                min_price = ext_turn.min_price
+            if room_type is None and ext_turn.room_type is not None:
+                room_type = ext_turn.room_type
 
         if ctx.get("lat") is not None and ctx.get("lng") is not None:
             lat = ctx["lat"]
@@ -508,27 +510,34 @@ def search_rooms(
     else:
         amenities = _normalize_amenity_list(amenities) if amenities else None
 
-    params: dict[str, Any] = {"limit": limit, "offset": 0}
+    # Toàn bộ tham số được gửi qua JSON Body (không dùng query params)
+    body: dict[str, Any] = {
+        "query": query,
+        "limit": limit,
+        "offset": 0,
+    }
     if lat is not None:
-        params["lat"] = lat
+        body["lat"] = lat
     if lng is not None:
-        params["lng"] = lng
+        body["lng"] = lng
     if city_id is not None:
-        params["city_id"] = city_id
+        body["city_id"] = city_id
     if district_id is not None:
-        params["district_id"] = district_id
+        body["district_id"] = district_id
     if ward_id is not None:
-        params["ward_id"] = ward_id
+        body["ward_id"] = ward_id
+    if room_type is not None:
+        body["room_type"] = room_type
+    if room_type_id is not None:
+        body["room_type_id"] = room_type_id
     if min_price is not None:
-        params["min_price"] = min_price
+        body["min_price"] = min_price
     if max_price is not None:
-        params["max_price"] = max_price
+        body["max_price"] = max_price
     if min_area is not None:
-        params["min_area"] = min_area
+        body["min_area"] = min_area
     if max_area is not None:
-        params["max_area"] = max_area
-
-    body: dict[str, Any] = {"query": query}
+        body["max_area"] = max_area
     if amenities:
         body["amenities"] = amenities
     if weights:
@@ -536,7 +545,7 @@ def search_rooms(
 
     try:
         with _client() as client:
-            resp = client.post("/listings/vector-search", params=params, json=body)
+            resp = client.post("/listings/vector-search", json=body)
             if resp.is_error:
                 return json.dumps({
                     "ok": False,
@@ -707,4 +716,36 @@ def consult_housing_skill(
         }, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"ok": False, "error": f"Lỗi đọc nội dung kỹ năng: {str(e)}"}, ensure_ascii=False)
+
+@tool
+def get_market_price_stats(
+    city_id: int = 79,
+    district_id: Optional[int] = None,
+    room_type_id: Optional[int] = None,
+) -> str:
+    """Tra cứu thống kê giá phòng trọ và giá sàn thị trường thực tế từ cơ sở dữ liệu Backend.
+
+    Args:
+        city_id: ID Tỉnh/Thành phố (mặc định 79 cho TP.HCM).
+        district_id: ID Quận/Huyện nếu muốn tra cứu chi tiết theo quận.
+        room_type_id: ID loại phòng (1: ROOM, 2: STUDIO, 3: APARTMENT, 4: SLEEPBOX, 5: WHOLE_HOUSE).
+
+    Returns:
+        JSON string chứa price_stats_general (total_listings, average_price_vnd, minimum_price_vnd, maximum_price_vnd)
+        và danh sách price_stats_by_area.
+    """
+    params: dict[str, Any] = {"city_id": city_id}
+    if district_id is not None:
+        params["district_id"] = district_id
+    if room_type_id is not None:
+        params["room_type_id"] = room_type_id
+
+    try:
+        with _client() as client:
+            resp = client.get("/api/v1/listings/price-stats", params=params)
+            data = _unwrap_response(resp)
+            return json.dumps(data, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f"Lỗi khi tra cứu thống kê giá phòng /price-stats: {e}")
+        return json.dumps({"ok": False, "error": str(e), "data": None}, ensure_ascii=False)
 

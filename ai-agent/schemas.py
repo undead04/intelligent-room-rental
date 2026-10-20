@@ -70,6 +70,10 @@ class RoomItem(BaseModel):
                 if name in factor_names:
                     tags.append(factor_names[name])
 
+        room_type_obj = listing.get("room_type")
+        if isinstance(room_type_obj, dict) and room_type_obj.get("name") and room_type_obj["name"] not in tags:
+            tags.insert(0, room_type_obj["name"])
+
         concept_scores = listing.get("concept_scores")
         if isinstance(concept_scores, dict):
             concept_tag_map = {
@@ -182,10 +186,15 @@ class UserPreferenceState(BaseModel):
     location_text: Optional[str] = Field(None, description="Địa điểm hoặc khu vực (ví dụ: 'Linh Xuân, Thủ Đức')")
     lat: Optional[float] = Field(None, description="Vĩ độ mục tiêu")
     lng: Optional[float] = Field(None, description="Kinh độ mục tiêu")
+    city_id: Optional[int] = Field(None, description="ID Tỉnh/Thành phố")
+    district_id: Optional[int] = Field(None, description="ID Quận/Huyện")
+    ward_id: Optional[int] = Field(None, description="ID Phường/Xã")
     min_price: Optional[float] = Field(None, description="Ngân sách tối thiểu (VNĐ)")
     max_price: Optional[float] = Field(None, description="Ngân sách tối đa (VNĐ)")
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m2)")
     max_area: Optional[float] = Field(None, description="Diện tích tối đa (m2)")
+    room_type: Optional[str] = Field(None, description="Loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE)")
+    room_type_id: Optional[int] = Field(None, description="ID loại phòng (1..5)")
     amenities: list[str] = Field(default_factory=list, description="Danh sách tiện ích yêu cầu")
     special_requirements: list[str] = Field(default_factory=list, description="Nhu cầu mềm (yên tĩnh, nuôi thú cưng, ban công...)")
 
@@ -194,6 +203,8 @@ class UserPreferenceState(BaseModel):
         if self.location_text:
             coords = f" (Toạ độ: {self.lat:.4f}, {self.lng:.4f})" if self.lat and self.lng else ""
             parts.append(f"- Vị trí mục tiêu: {self.location_text}{coords}")
+        if self.room_type:
+            parts.append(f"- Loại phòng: {self.room_type}")
         if self.max_price:
             price_str = f"{self.max_price / 1_000_000:.1f} tr/tháng".replace(".0", "")
             parts.append(f"- Ngân sách tối đa: {price_str} ({self.max_price:,.0f} VNĐ)")

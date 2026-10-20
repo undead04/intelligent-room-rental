@@ -12,7 +12,7 @@ import paths
 from config import MODEL_CALL_LIMIT, TOOL_CALL_LIMIT, Settings
 from observer import ObserverMiddleware
 from prompts import build_system_prompt
-from skill_catalog import Catalog, scan_skills
+from skills_discovery import discover_housing_skills
 from tools.registry import ALL_TOOLS
 
 # Tập hợp toàn bộ công cụ dùng chung cho monolithic fallback / catalog
@@ -33,16 +33,12 @@ def system_prompt() -> str:
     return _prompts_mod.build_system_prompt()
 
 
-def load_catalog() -> Catalog:
-    return scan_skills(paths.SKILLS_DIR)
-
-
 def capabilities() -> dict:
-    catalog = load_catalog()
+    skills_dict = discover_housing_skills()
     return {
         "tools": [t.name for t in TOOLS],
-        "skills": catalog.metadata(),
-        "skill_diagnostics": catalog.diagnostics,
+        "skills": [s.__dict__ for s in skills_dict.values()],
+        "skill_diagnostics": [],
         "system": "Homigo Smart Housing Decision Support Agent",
     }
 
@@ -58,8 +54,8 @@ def build_agent(model):
         tools=_reg.ALL_TOOLS,
         system_prompt=system_prompt(),
         middleware=[
-            ModelCallLimitMiddleware(run_limit=MODEL_CALL_LIMIT, exit_behavior="end"),
-            ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT),
             ObserverMiddleware(),
+            ModelCallLimitMiddleware(run_limit=MODEL_CALL_LIMIT),
+            ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT),
         ],
     )
