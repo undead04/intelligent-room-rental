@@ -14,6 +14,46 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from schemas import HitlOption, HitlProposal, RoomItem, UserPreferenceState
+import json
+import logging
+import time
+
+logger = logging.getLogger(__name__)
+
+_PRICE_STATS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+CACHE_TTL_SECONDS: float = 600.0  # Cache 10 phút
+
+
+def fetch_market_price_stats(
+    city_id: int = 79,
+    district_id: Optional[int] = None,
+    room_type_id: Optional[int] = None,
+) -> Optional[dict[str, Any]]:
+    """Tra cứu thống kê giá phòng trực tiếp từ Backend API với in-memory cache TTL 10 phút."""
+    cache_key = f"{city_id}:{district_id}:{room_type_id}"
+    now = time.time()
+    if cache_key in _PRICE_STATS_CACHE:
+        cached_time, cached_data = _PRICE_STATS_CACHE[cache_key]
+        if now - cached_time < CACHE_TTL_SECONDS:
+            return cached_data
+
+    try:
+        from tools.housing_tools import get_market_price_stats
+        raw_res = get_market_price_stats.invoke({
+            "city_id": city_id,
+            "district_id": district_id,
+            "room_type_id": room_type_id,
+        })
+        res = json.loads(raw_res)
+        if res.get("ok") and isinstance(res.get("data"), dict):
+            data = res["data"]
+            general = data.get("price_stats_general") or {}
+            _PRICE_STATS_CACHE[cache_key] = (now, general)
+            return general
+    except Exception as e:
+        logger.warning(f"Không thể tra cứu giá live từ Backend /price-stats: {e}")
+    return None
+
 
 MAX_GROUNDING_RETRIES = 2
 MIN_ACCEPTABLE_MATCH_SCORE = 0.30
@@ -79,6 +119,9 @@ def calculate_smart_budget_proposal(
     backend_lowest_price: Optional[float] = None,
     backend_avg_price: Optional[float] = None,
     area_name: Optional[str] = None,
+    city_id: Optional[int] = None,
+    district_id: Optional[int] = None,
+    room_type_id: Optional[int] = None,
 ) -> dict[str, Any]:
     """Tính toán đề xuất ngân sách thông minh dựa trên dữ liệu thị trường thực tế thay vì cộng máy móc +15%."""
     if not preferences or not preferences.max_price or preferences.max_price <= 0:
@@ -91,10 +134,22 @@ def calculate_smart_budget_proposal(
     market_avg: Optional[float] = None
     resolved_area: str = area_name or preferences.location_text or "khu vực bạn chọn"
 
-    if backend_lowest_price and backend_lowest_price > 0:
+    # 1. Thử lấy giá sàn thực tế từ live Backend API /price-stats
+    if (not backend_lowest_price or backend_lowest_price <= 0):
+        eff_city = city_id or getattr(preferences, "city_id", None) or 79
+        eff_district = district_id or getattr(preferences, "district_id", None)
+        eff_room_type = room_type_id or getattr(preferences, "room_type_id", None)
+        if eff_district or eff_room_type:
+            live_stats = fetch_market_price_stats(city_id=eff_city, district_id=eff_district, room_type_id=eff_room_type)
+            if live_stats and live_stats.get("minimum_price_vnd"):
+                market_min = float(live_stats["minimum_price_vnd"])
+                market_avg = float(live_stats.get("average_price_vnd") or (market_min * 1.4))
+
+    if not market_min and backend_lowest_price and backend_lowest_price > 0:
         market_min = float(backend_lowest_price)
         market_avg = float(backend_avg_price) if backend_avg_price else round(market_min * 1.4, 0)
-    else:
+    elif market_min is None:
+        # 2. Fallback ngoại tuyến: Tra cứu từ điển DISTRICT_PRICE_FLOORS
         for k, v in DISTRICT_PRICE_FLOORS.items():
             if k in loc_text:
                 market_min = float(v["min"])
@@ -157,11 +212,18 @@ def build_hitl_proposal(
     area_name: Optional[str] = None,
 ) -> HitlProposal:
     """Tạo đối tượng HitlProposal với các tùy chọn tương tác chuyên nghiệp chuẩn Claude UI."""
+    c_id = (last_search_args.get("city_id") if last_search_args else None) or (preferences.city_id if preferences else None)
+    d_id = (last_search_args.get("district_id") if last_search_args else None) or (preferences.district_id if preferences else None)
+    rt_id = (last_search_args.get("room_type_id") if last_search_args else None) or (preferences.room_type_id if preferences else None)
+
     smart = calculate_smart_budget_proposal(
         preferences=preferences,
         backend_lowest_price=backend_lowest_price,
         backend_avg_price=backend_avg_price,
         area_name=area_name,
+        city_id=c_id,
+        district_id=d_id,
+        room_type_id=rt_id,
     )
 
     options: list[HitlOption] = []

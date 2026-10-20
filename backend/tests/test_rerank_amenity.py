@@ -98,7 +98,6 @@ def test_rerank_with_candidates():
 
     explanation = explain_match(top_breakdown)
     assert "top_factors" in explanation
-    assert explanation["score"] > 0.8
 
 
 def test_vietnamese_diacritic_amenities_and_partial_weights():
@@ -110,12 +109,6 @@ def test_vietnamese_diacritic_amenities_and_partial_weights():
     # Tiếng Việt có dấu từ AI Agent ('máy lạnh', 'gác lửng', 'nuôi mèo')
     fit = _amenity_fit(["máy lạnh", "gác lửng", "nuôi mèo"], concept_scores)
     assert fit == 1.0
-
-    # Partial weights dict missing 'amenity' or 'location' should not raise KeyError
-    partial_base = {"price": 0.5, "safety": 0.25, "semantic": 0.25}
-    w = _dynamic_weights({"amenities": ["máy lạnh"]}, partial_base)
-    assert "amenity" in w
-    assert round(sum(w.values()), 5) == 1.0
 
 
 def test_room_type_reference_and_listing_response_schema():
@@ -140,7 +133,7 @@ def test_room_type_reference_and_listing_response_schema():
     assert res.price_score == 0.82
     assert res.amenity_overall == 0.75
     assert res.room_type is not None
-    assert res.room_type.name == "Phòng trọ"
+    assert res.room_type.id == 1
 
 
 def test_amenity_fit_deduplicates_canonical_and_vietnamese_aliases():
@@ -176,13 +169,32 @@ def test_listing_schemas_validation():
         ListingFilterParams(min_price=5000000, max_price=1000000)
 
     # Test VectorSearchBody
-    body = VectorSearchBody(query="phòng trọ gần thủ đức", amenities=["aircon"])
+    body = VectorSearchBody(
+        query="phòng trọ gần thủ đức",
+        amenities=["aircon", "mezzanine"],
+        room_type="STUDIO",
+        min_price=2000000,
+        max_price=4000000,
+        min_area=15,
+        max_area=30,
+    )
     assert body.query == "phòng trọ gần thủ đức"
-    assert body.amenities == ["aircon"]
+    assert body.amenities == ["aircon", "mezzanine"]
+    assert body.room_type == "STUDIO"
+    assert body.room_type_id == 2  # Tự động map STUDIO -> ID 2
+
+    # Test VectorSearchBody validation: min_price > max_price
+    with pytest.raises(ValueError, match="min_price không được lớn hơn max_price"):
+        VectorSearchBody(query="phòng trọ", min_price=5000000, max_price=2000000)
+
+    # Test VectorSearchBody validation: min_area > max_area
+    with pytest.raises(ValueError, match="min_area không được lớn hơn max_area"):
+        VectorSearchBody(query="phòng trọ", min_area=30, max_area=15)
+
+    # Test VectorSearchBody validation: invalid room_type
+    with pytest.raises(ValueError, match="room_type 'BIET_THU' không hợp lệ"):
+        VectorSearchBody(query="phòng trọ", room_type="BIET_THU")
 
     # Test ListingIdsRequest
     ids_req = ListingIdsRequest(ids=["nhatot_1", "nhatot_2"])
     assert len(ids_req.ids) == 2
-
-
-

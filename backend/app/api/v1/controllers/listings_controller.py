@@ -12,7 +12,6 @@ from app.schemas.listing import (
     ListingQueryParams,
     ListingResponse,
     VectorSearchBody,
-    VectorSearchQueryFilters,
     VectorSearchResult,
 )
 from app.schemas.listing_count import ListingCountResponse
@@ -39,7 +38,7 @@ def get_listing_service(db: Session = Depends(get_db)) -> ListingService:
 def get_listings(
     params: ListingQueryParams = Depends(),
     service: ListingService = Depends(get_listing_service),
-):
+) -> ResponseDTO[list[ListingResponse]]:
     listings = service.list_listings(
         search=params.search,
         city_id=params.city_id,
@@ -67,7 +66,7 @@ def get_listings(
 def get_total_listings(
     params: ListingFilterParams = Depends(),
     service: ListingService = Depends(get_listing_service),
-):
+) -> ResponseDTO[ListingCountResponse]:
     count = ListingCountResponse(
         total_listings=service.count_listings(
             search=params.search,
@@ -100,7 +99,7 @@ def get_price_stats(
     district_id: Optional[int] = Query(None, ge=1, description="ID Quận/Huyện"),
     room_type_id: Optional[int] = Query(None, ge=1, description="ID loại phòng"),
     service: ListingService = Depends(get_listing_service),
-):
+) -> ResponseDTO[PriceStatsResponse]:
     return ResponseDTO[PriceStatsResponse](
         data=service.get_price_stats(city_id, district_id, room_type_id),
     )
@@ -115,8 +114,8 @@ def get_price_stats(
 def get_listings_by_ids(
     body: ListingIdsRequest,
     service: ListingService = Depends(get_listing_service),
-):
-    listings = service.get_listings_by_ids(ids=body.ids, preserve_order=True)
+) -> ResponseDTO[list[ListingResponse]]:
+    listings = service.get_by_ids(ids=body.ids, preserve_order=True)
     return ResponseDTO[list[ListingResponse]](data=listings)
 
 
@@ -129,41 +128,29 @@ def get_listings_by_ids(
 def vector_search_listings(
     request: Request,
     body: VectorSearchBody,
-    filters: VectorSearchQueryFilters = Depends(),
     service: ListingService = Depends(get_listing_service),
-):
-    """Tìm kiếm tin đăng theo vector embedding (hỗ trợ filters qua Query params hoặc trực tiếp trong Body)."""
+) -> ResponseDTO[list[VectorSearchResult]]:
+    """Tìm kiếm tin đăng theo vector embedding. Toàn bộ tham số được nhận trực tiếp qua JSON Body."""
     embedding_model = request.app.state.embedding_model
-
-    # Linh hoạt lấy filter: ưu tiên JSON Body, fallback về Query params
-    lat = body.lat if body.lat is not None else filters.lat
-    lng = body.lng if body.lng is not None else filters.lng
-    city_id = body.city_id if body.city_id is not None else filters.city_id
-    district_id = body.district_id if body.district_id is not None else filters.district_id
-    ward_id = body.ward_id if body.ward_id is not None else filters.ward_id
-    min_price = body.min_price if body.min_price is not None else filters.min_price
-    max_price = body.max_price if body.max_price is not None else filters.max_price
-    min_area = body.min_area if body.min_area is not None else filters.min_area
-    max_area = body.max_area if body.max_area is not None else filters.max_area
-    limit = body.limit if body.limit is not None else filters.limit
-    offset = body.offset if body.offset is not None else filters.offset
 
     results = service.vector_search(
         query=body.query,
+        model_embedding=embedding_model,
+        lat=body.lat,
+        lng=body.lng,
         amenities=body.amenities,
         weights=body.weights,
-        model_embedding=embedding_model,
-        city_id=city_id,
-        district_id=district_id,
-        ward_id=ward_id,
-        min_price=min_price,
-        max_price=max_price,
-        max_area=max_area,
-        min_area=min_area,
-        limit=limit,
-        lat=lat,
-        lng=lng,
-        offset=offset,
+        city_id=body.city_id,
+        district_id=body.district_id,
+        ward_id=body.ward_id,
+        room_type_id=body.room_type_id,
+        room_type=body.room_type,
+        min_price=body.min_price,
+        max_price=body.max_price,
+        min_area=body.min_area,
+        max_area=body.max_area,
+        limit=body.limit,
+        offset=body.offset,
     )
     return ResponseDTO[list[VectorSearchResult]](data=results)
 
@@ -174,5 +161,8 @@ def vector_search_listings(
     responses={404: {"model": ErrorDTO}, 422: {"model": ErrorDTO}, 500: {"model": ErrorDTO}},
     summary="Lấy chi tiết tin đăng",
 )
-def get_listing_by_id(list_id: str, service: ListingService = Depends(get_listing_service)):
+def get_listing_by_id(
+    list_id: str,
+    service: ListingService = Depends(get_listing_service),
+) -> ResponseDTO[ListingDetailResponse]:
     return ResponseDTO[ListingDetailResponse](data=service.get_listing(list_id))

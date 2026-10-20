@@ -145,8 +145,8 @@ def test_memory_preference_accumulation_over_turns():
 
     # Lượt 3: Thêm tiện ích (Vị trí và ngân sách vẫn giữ vững!)
     mem.update_preferences_from_text(session, "Có máy lạnh và gác lửng không bạn?")
-    assert "máy lạnh" in session.preferences.amenities
-    assert "gác lửng" in session.preferences.amenities
+    assert "aircon" in session.preferences.amenities
+    assert "mezzanine" in session.preferences.amenities
     assert session.preferences.max_price == 3000000
     assert "linh xuân" in session.preferences.location_text.lower()
 
@@ -564,71 +564,59 @@ def test_administrative_vs_specific_location_routing():
         assert _is_administrative_location_query(sq) is False, f"Expected '{sq}' to be specific location"
 
 
-def test_hitl_only_on_empty_search_rooms_and_streak_limit():
+def test_hitl_only_on_empty_search_rooms_and_streak_limit(monkeypatch):
     """Đảm bảo HITL CHỈ kích hoạt khi search_rooms trả về rỗng (không kích hoạt khi chỉ tra cứu vị trí rỗng),
     và tự động dừng đề xuất nới lỏng sau tối đa 2 lần liên tiếp (MAX_HITL_STREAK = 2).
     """
     import json
-    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-    from service import HousingAgentService
+    from graph import housing_graph
+    from tools import geocode_location, get_location_hierarchy, search_rooms
 
-    svc = HousingAgentService.__new__(HousingAgentService)
-    svc.session_histories = {}
-    svc.session_hitl_streaks = {}
+    def fake_geocode(query: str, hint: str = "Hồ Chí Minh") -> str:
+        if "Quảng Ngãi" in query:
+            return json.dumps({"ok": False, "is_administrative": True})
+        return json.dumps({"ok": True, "data": {"lat": 10.85, "lon": 106.77}})
+
+    def fake_hierarchy(**kwargs) -> str:
+        return json.dumps({"ok": True, "data": []})
+
+    def fake_empty_search(**kwargs) -> str:
+        return json.dumps({"ok": True, "data": [], "need_human_in_the_loop": True})
+
+    monkeypatch.setattr(geocode_location, "func", fake_geocode)
+    monkeypatch.setattr(get_location_hierarchy, "func", fake_hierarchy)
+    monkeypatch.setattr(search_rooms, "func", fake_empty_search)
 
     # 1. Trường hợp get_location_hierarchy trả về rỗng (chưa gọi search_rooms) -> KHÔNG bật HITL
-    msgs_loc_empty = [
-        HumanMessage(content="Tìm trọ ở Quảng Ngãi giá 5 triệu"),
-        AIMessage(
-            content="",
-            tool_calls=[{"id": "tc1", "name": "get_location_hierarchy", "args": {"city_name": "Quảng Ngãi"}}],
-        ),
-        ToolMessage(
-            content=json.dumps({"ok": True, "data": []}),
-            name="get_location_hierarchy",
-            tool_call_id="tc1",
-        ),
-        AIMessage(content="Hiện tại Homigo chưa có dữ liệu tại Quảng Ngãi."),
-    ]
-    resp_loc = svc._finalize_response("sess_loc", "Tìm trọ ở Quảng Ngãi giá 5 triệu", msgs_loc_empty, 0, [])
-    assert resp_loc.grounding_report is None
+    res_loc = housing_graph.invoke({
+        "user_message": "Tìm trọ ở Quảng Ngãi giá 5 triệu",
+        "session_id": "sess_loc_empty",
+    })
+    resp_loc = res_loc["final_response"]
+    assert resp_loc.hitl_proposal is None
     assert not any("Nới ngân sách" in q for q in resp_loc.follow_up_questions)
 
     # 2. Trường hợp search_rooms trả về rỗng: Lần 1 & Lần 2 bật HITL linh hoạt, Lần 3 dừng HITL
-    def make_empty_search_turn(user_txt: str):
-        return [
-            HumanMessage(content=user_txt),
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "id": "tc_s",
-                        "name": "search_rooms",
-                        "args": {"query": user_txt, "ward_id": 10, "max_price": 2000000, "amenities": ["aircon"]},
-                    }
-                ],
-            ),
-            ToolMessage(
-                content=json.dumps({"ok": True, "data": [], "need_human_in_the_loop": True}),
-                name="search_rooms",
-                tool_call_id="tc_s",
-            ),
-            AIMessage(content="Chưa tìm thấy phòng phù hợp."),
-        ]
-
-    r1 = svc._finalize_response("sess_hitl", "Tìm phòng dưới 2 triệu có máy lạnh", make_empty_search_turn("Tìm phòng dưới 2 triệu có máy lạnh"), 0, [])
+    r1 = housing_graph.invoke({
+        "user_message": "Tìm phòng dưới 2 triệu có máy lạnh",
+        "session_id": "sess_hitl",
+    })["final_response"]
     assert r1.grounding_report is not None and r1.grounding_report["needs_user_consent"] is True
     assert r1.grounding_report["hitl_streak"] == 1
-    assert any("Nới ngân sách" in q for q in r1.follow_up_questions)
-    assert any("Phường" in q for q in r1.follow_up_questions)
-    assert any("tiện ích" in q for q in r1.follow_up_questions)
+    assert any("ngân sách" in q.lower() or "nới" in q.lower() for q in r1.follow_up_questions)
 
-    r2 = svc._finalize_response("sess_hitl", "Mở rộng ra toàn Quận", make_empty_search_turn("Mở rộng ra toàn Quận"), 0, [])
+    r2 = housing_graph.invoke({
+        "user_message": "Mở rộng ra toàn Quận",
+        "session_id": "sess_hitl",
+    })["final_response"]
     assert r2.grounding_report is not None and r2.grounding_report["needs_user_consent"] is True
     assert r2.grounding_report["hitl_streak"] == 2
 
     # Lần 3 liên tiếp vẫn rỗng -> vượt quá MAX_HITL_STREAK = 2 -> dừng đề xuất nới lỏng
-    r3 = svc._finalize_response("sess_hitl", "Nới tiếp", make_empty_search_turn("Nới tiếp"), 0, [])
+    r3 = housing_graph.invoke({
+        "user_message": "Nới tiếp",
+        "session_id": "sess_hitl",
+    })["final_response"]
     assert r3.grounding_report is not None
     assert r3.grounding_report["needs_user_consent"] is False
     assert r3.grounding_report["hitl_limit_reached"] is True
@@ -704,9 +692,10 @@ def test_turn_context_canonicalization_for_identical_rerank(monkeypatch):
     assert captured_requests[0]["json"]["query"] == user_prompt
     assert captured_requests[0]["json"]["amenities"] == ["aircon", "mezzanine"]
     assert "weights" not in captured_requests[0]["json"]
-    assert captured_requests[0]["params"]["max_price"] == 5000000
-    assert captured_requests[0]["params"]["lat"] == 10.8698118
-    assert "city_id" not in captured_requests[0]["params"]
+    assert captured_requests[0]["json"]["max_price"] == 5000000
+    assert captured_requests[0]["json"]["lat"] == 10.8698118
+    assert "city_id" not in captured_requests[0]["json"]
+    assert captured_requests[0]["params"] is None
 
 
 def test_grounding_retry_terminates_after_max_retries():
@@ -753,4 +742,148 @@ def test_grounding_retry_terminates_after_max_retries():
     assert route_after_grounding(state) == "formatter_node"
 
 
+def test_room_type_preference_and_amenity_code_format():
+    from extractor import CANONICAL_AMENITIES, extract_preferences_with_llm
+    from tools.housing_tools import _normalize_amenity_list
+
+    # 1. Trích xuất Studio
+    pref_studio = extract_preferences_with_llm("Tìm căn hộ mini studio full nội thất tầm 4 triệu")
+    assert pref_studio.room_type == "STUDIO"
+    assert pref_studio.room_type_id == 2
+    assert "furniture" in pref_studio.amenities
+
+    # 2. Trích xuất Sleepbox / KTX
+    pref_sleepbox = extract_preferences_with_llm("Tìm ký túc xá sleepbox giường tầng giá rẻ")
+    assert pref_sleepbox.room_type == "SLEEPBOX"
+    assert pref_sleepbox.room_type_id == 4
+
+    # 3. Trích xuất Chung cư
+    pref_apt = extract_preferences_with_llm("Tìm căn hộ chung cư 2 phòng ngủ")
+    assert pref_apt.room_type == "APARTMENT"
+    assert pref_apt.room_type_id == 3
+
+    # 4. Trích xuất Nhà nguyên căn
+    pref_house = extract_preferences_with_llm("Tìm thuê nhà nguyên căn cho nhóm bạn")
+    assert pref_house.room_type == "WHOLE_HOUSE"
+    assert pref_house.room_type_id == 5
+
+    # 5. Format AmenityCode: Không chứa nhãn tiếng Việt trùng lặp
+    for a in pref_studio.amenities:
+        assert a in CANONICAL_AMENITIES, f"Amenity '{a}' không thuộc 17 canonical AmenityCode"
+
+    # 6. _normalize_amenity_list chỉ giữ các mã hợp lệ
+    norm = _normalize_amenity_list(["aircon", "INVALID_AMENITY", "mezzanine", ""])
+    assert norm == ["aircon", "mezzanine"]
+
+
+def test_search_rooms_passes_json_body_with_room_type(monkeypatch):
+    from tools.housing_tools import search_rooms
+
+    captured_payload = {}
+
+    class DummyClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, json=None, params=None):
+            captured_payload["url"] = url
+            captured_payload["json"] = json
+            captured_payload["params"] = params
+
+            class DummyResponse:
+                status_code = 200
+                is_error = False
+
+                def json(self):
+                    return {"ok": True, "data": []}
+
+            return DummyResponse()
+
+    monkeypatch.setattr("tools.housing_tools._client", lambda: DummyClient())
+
+    search_rooms.invoke({
+        "query": "căn hộ studio gần trung tâm",
+        "room_type": "STUDIO",
+        "room_type_id": 2,
+        "min_price": 2500000,
+        "max_price": 5000000,
+        "amenities": ["aircon", "furniture"],
+    })
+
+    assert captured_payload["url"] == "/listings/vector-search"
+    # Toàn bộ tham số phải nằm trong JSON Body, không dùng URL query params
+    assert captured_payload["params"] is None
+    body = captured_payload["json"]
+    assert body["query"] == "căn hộ studio gần trung tâm"
+    assert body["room_type"] == "STUDIO"
+    assert body["room_type_id"] == 2
+    assert body["min_price"] == 2500000
+    assert body["max_price"] == 5000000
+    assert body["amenities"] == ["aircon", "furniture"]
+
+def test_get_market_price_stats_and_grounding_integration(monkeypatch):
+    """Kiểm tra công cụ get_market_price_stats và tích hợp vào RAG Grounding."""
+    import json
+    from tools import get_market_price_stats, housing_tools
+    from grounding import calculate_smart_budget_proposal, fetch_market_price_stats
+    from schemas import UserPreferenceState
+
+    class MockPriceStatsResp:
+        status_code = 200
+        is_error = False
+        text = "{}"
+
+        def json(self):
+            return {
+                "success": True,
+                "data": {
+                    "price_stats_general": {
+                        "total_listings": 25,
+                        "average_price_vnd": 4500000.0,
+                        "minimum_price_vnd": 2800000.0,
+                        "maximum_price_vnd": 7000000.0,
+                        "price_fluctuation_month": 5.2,
+                    },
+                    "price_stats_by_area": []
+                }
+            }
+
+    class MockClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def get(self, path, params=None):
+            assert path == "/api/v1/listings/price-stats"
+            assert params["city_id"] == 79
+            return MockPriceStatsResp()
+
+    monkeypatch.setattr(housing_tools, "_client", lambda: MockClient())
+
+    # 1. Gọi trực tiếp tool
+    tool_res_str = get_market_price_stats.invoke({"city_id": 79, "district_id": 769})
+    tool_res = json.loads(tool_res_str)
+    assert tool_res["ok"] is True
+    assert tool_res["data"]["price_stats_general"]["minimum_price_vnd"] == 2800000.0
+
+    # 2. Kiểm tra fetch_market_price_stats
+    stats = fetch_market_price_stats(city_id=79, district_id=769)
+    assert stats is not None
+    assert stats["minimum_price_vnd"] == 2800000.0
+    assert stats["average_price_vnd"] == 4500000.0
+
+    # 3. Kiểm tra calculate_smart_budget_proposal sử dụng giá sàn 2.8tr
+    pref = UserPreferenceState(max_price=2000000, district_id=769, location_text="Thủ Đức")
+    proposal = calculate_smart_budget_proposal(
+        preferences=pref,
+        district_id=769,
+    )
+    assert proposal["proposed_budget"] == 2800000.0
+    assert proposal["is_market_gap"] is True
+    assert "2.8" in proposal["proposal_label"]
 

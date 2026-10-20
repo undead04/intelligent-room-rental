@@ -21,3 +21,9 @@ class WardResponse(BaseModel):
     name: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Aliases for references
+CityReference = CityResponse
+DistrictReference = DistrictResponse
+WardReference = WardResponse

@@ -5,6 +5,7 @@ from tools.housing_tools import (
     geocode_location,
     get_listing_detail,
     get_location_hierarchy,
+    get_market_price_stats,
     list_housing_skills,
     search_rooms,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "get_location_hierarchy",
     "search_rooms",
     "get_listing_detail",
+    "get_market_price_stats",
     "list_housing_skills",
     "consult_housing_skill",
     "RETRIEVAL_TOOLS",

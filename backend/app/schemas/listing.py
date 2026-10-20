@@ -1,34 +1,40 @@
 from datetime import datetime
 from typing import Optional
-
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from enum import Enum
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.user import UserResponse
+from app.schemas.location import CityReference, DistrictReference, WardReference
+from app.schemas.room_type import RoomTypeReference, ROOM_TYPE_CODE_TO_ID
 
 
-class CityReference(BaseModel):
-    id: int
-    name: str
-    model_config = ConfigDict(from_attributes=True)
+class AmenityCode(str, Enum):
+    """Danh mục tiện ích, quy định và an ninh chuẩn hóa (Canonical Taxonomy).
+    Giá trị dạng snake_case khớp 1-1 với field name trong ListingExtraction.
+    Dùng cho UI Checkbox, Filter cứng và công thức tính trọng số Rerank.
+    """
+    # 1. Tiện ích phòng cốt lõi (Core Amenities)
+    PRIVATE_WC = "private_wc"              # WC riêng, khép kín
+    AIRCON = "aircon"                      # Máy lạnh, điều hòa
+    MEZZANINE = "mezzanine"                # Gác lửng, gác xép
+    KITCHEN = "kitchen"                    # Kệ bếp, khu nấu ăn riêng
+    FRIDGE = "fridge"                      # Tủ lạnh
+    WASHING_MACHINE = "washing_machine"    # Máy giặt (chung hoặc riêng)
+    WINDOW_BALCONY = "window_balcony"      # Ban công hoặc cửa sổ thoáng
+    FURNITURE = "furniture"                # Đầy đủ nội thất (giường, tủ, bàn học...)
+    PARKING = "parking"                    # Chỗ để xe trong nhà / hầm xe
+    ELEVATOR = "elevator"                  # Thang máy
 
+    # 2. Quy định & Lối sống (Rules & Lifestyle)
+    FREE_HOURS = "free_hours"              # Giờ giấc tự do (không khóa cổng)
+    NO_SHARED_LANDLORD = "no_shared_landlord"  # Không chung chủ
+    PET_ALLOWED = "pet_allowed"            # Cho phép nuôi thú cưng (chó, mèo)
 
-class DistrictReference(BaseModel):
-    id: int
-    name: str
-    model_config = ConfigDict(from_attributes=True)
-
-
-class WardReference(BaseModel):
-    id: int
-    name: str
-    model_config = ConfigDict(from_attributes=True)
-
-
-class RoomTypeReference(BaseModel):
-    id: int
-    name: Optional[str] = None
-    code: Optional[str] = None
-    model_config = ConfigDict(from_attributes=True)
+    # 3. An toàn & An ninh (Safety)
+    FINGERPRINT_LOCK = "fingerprint_lock"  # Khóa vân tay, cổng thẻ từ
+    CAMERA = "camera"                      # Camera an ninh 24/7
+    GUARD = "guard"                        # Bảo vệ trực cổng 24/7
+    SAFE_AREA = "safe_area"                # Khu vực an ninh, yên tĩnh
 
 
 class ListingResponse(BaseModel):
@@ -47,12 +53,13 @@ class ListingResponse(BaseModel):
     price_score: Optional[float] = None
     safety_score: Optional[float] = None
     amenity_overall: Optional[float] = None
-    concept_scores: Optional[dict] = None
+    concept_scores: Optional[dict[str, float]] = None
     city: Optional[CityReference] = None
     district: Optional[DistrictReference] = None
     ward: Optional[WardReference] = None
     room_type: Optional[RoomTypeReference] = None
     posted_date: Optional[datetime] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -88,6 +95,9 @@ class ListingFilterParams(BaseModel):
                 raise ValueError("min_area không được lớn hơn max_area")
         return self
 
+    
+    
+
 
 class ListingPaginationParams(BaseModel):
     """Gom nhóm các tham số phân trang và sắp xếp."""
@@ -113,58 +123,69 @@ class ListingIdsRequest(BaseModel):
 
 
 class VectorSearchBody(BaseModel):
-    """Request Body cho tìm kiếm Vector Embedding."""
-    query: str = Field(..., description="Câu truy vấn tự nhiên của người dùng")
-    amenities: Optional[list[str]] = Field(default=None, description="Danh sách tiện ích yêu cầu")
+    """Request Body cho tìm kiếm Vector Embedding kèm Rerank đa tiêu chí.
+    Toàn bộ tham số được truyền trực tiếp qua JSON Body.
+    """
+    query: str = Field(..., min_length=1, description="Câu truy vấn tự nhiên của người dùng")
+    amenities: Optional[list[AmenityCode]] = Field(default=None, description="Danh sách tiện ích yêu cầu theo định dạng AmenityCode")
     weights: Optional[dict[str, float]] = Field(
         default=None,
         description="Trọng số MCDM tùy chỉnh (vd: {'price': 0.35, 'location': 0.35, ...})",
     )
-    # Tùy chọn truyền filters trực tiếp trong JSON body (thay vì URL query)
-    lat: Optional[float] = Field(None, description="Vĩ độ người dùng")
-    lng: Optional[float] = Field(None, description="Kinh độ người dùng")
-    city_id: Optional[int] = Field(None, ge=1)
-    district_id: Optional[int] = Field(None, ge=1)
-    ward_id: Optional[int] = Field(None, ge=1)
-    min_price: Optional[float] = Field(None, ge=0)
-    max_price: Optional[float] = Field(None, ge=0)
-    min_area: Optional[float] = Field(None, ge=0)
-    max_area: Optional[float] = Field(None, ge=0)
-    limit: Optional[int] = Field(None, ge=1, le=100)
-    offset: Optional[int] = Field(None, ge=0)
+    lat: Optional[float] = Field(None, ge=-90.0, le=90.0, description="Vĩ độ mục tiêu người dùng")
+    lng: Optional[float] = Field(None, ge=-180.0, le=180.0, description="Kinh độ mục tiêu người dùng")
+    city_id: Optional[int] = Field(None, ge=1, description="ID Tỉnh/Thành phố")
+    district_id: Optional[int] = Field(None, ge=1, description="ID Quận/Huyện")
+    ward_id: Optional[int] = Field(None, ge=1, description="ID Phường/Xã")
+    room_type_id: Optional[int] = Field(None, ge=1, le=5, description="ID loại phòng (1..5)")
+    room_type: Optional[str] = Field(None, description="Mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE)")
+    min_price: Optional[float] = Field(None, ge=0, description="Giá tối thiểu (VNĐ)")
+    max_price: Optional[float] = Field(None, ge=0, description="Giá tối đa (VNĐ)")
+    min_area: Optional[float] = Field(None, ge=0, description="Diện tích tối thiểu (m2)")
+    max_area: Optional[float] = Field(None, ge=0, description="Diện tích tối đa (m2)")
+    limit: int = Field(default=5, ge=1, le=100, description="Số lượng kết quả trả về")
+    offset: int = Field(default=0, ge=0, description="Số lượng kết quả bỏ qua")
 
+    @field_validator("query")
+    @classmethod
+    def validate_query_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("query không được để trống")
+        return v.strip()
 
-class VectorSearchQueryFilters(BaseModel):
-    """Filters nhận từ Query Params cho Vector Search (tương thích ngược với ai-agent)."""
-    lat: Optional[float] = Field(None, description="Vĩ độ người dùng")
-    lng: Optional[float] = Field(None, description="Kinh độ người dùng")
-    city_id: Optional[int] = Field(None, ge=1)
-    district_id: Optional[int] = Field(None, ge=1)
-    ward_id: Optional[int] = Field(None, ge=1)
-    min_price: Optional[float] = Field(None, ge=0)
-    max_price: Optional[float] = Field(None, ge=0)
-    min_area: Optional[float] = Field(None, ge=0)
-    max_area: Optional[float] = Field(None, ge=0)
-    limit: int = Field(5, ge=1, le=100)
-    offset: int = Field(0, ge=0)
+    @field_validator("room_type")
+    @classmethod
+    def validate_room_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            clean = v.strip().upper()
+            if clean not in ROOM_TYPE_CODE_TO_ID:
+                valid_codes = list(ROOM_TYPE_CODE_TO_ID.keys())
+                raise ValueError(f"room_type '{v}' không hợp lệ. Phải là một trong: {valid_codes}")
+            return clean
+        return v
 
     @model_validator(mode="after")
-    def validate_ranges(self) -> "VectorSearchQueryFilters":
+    def validate_ranges_and_constraints(self) -> "VectorSearchBody":
         if self.min_price is not None and self.max_price is not None:
             if self.min_price > self.max_price:
                 raise ValueError("min_price không được lớn hơn max_price")
         if self.min_area is not None and self.max_area is not None:
             if self.min_area > self.max_area:
                 raise ValueError("min_area không được lớn hơn max_area")
+        # Tự động đồng bộ room_type_id nếu có room_type
+        if self.room_type_id is None and self.room_type is not None:
+            self.room_type_id = ROOM_TYPE_CODE_TO_ID.get(self.room_type)
         return self
 
 
-# Alias cho tương thích ngược
-VectorSearchRequest = VectorSearchQueryFilters
+# Alias cho tương thích ngược nếu có module cũ gọi
+VectorSearchQueryFilters = VectorSearchBody
+VectorSearchRequest = VectorSearchBody
 
 
 class VectorSearchResult(BaseModel):
     listing: ListingResponse
     match_score: float
-    explain_match: Optional[dict] = None
+    explain_match: Optional[dict[str, object]] = None
+
     model_config = ConfigDict(from_attributes=True)

@@ -15,13 +15,13 @@ Public API:
 """
 from math import asin, cos, radians, sin, sqrt
 from statistics import mean, pstdev
-from typing import Any, Mapping, Sequence
+from typing import Mapping, Optional, Sequence
 
 __all__ = ["rerank", "explain_match", "component_influence", "DEFAULT_WEIGHTS"]
 
 # --- Constants ---
-UNKNOWN_SCORE = 0.0
-EARTH_RADIUS_KM = 6371.0
+UNKNOWN_SCORE: float = 0.0
+EARTH_RADIUS_KM: float = 6371.0
 DEFAULT_WEIGHTS: Mapping[str, float] = {
     "price": 0.2,
     "location": 0.2,
@@ -30,13 +30,12 @@ DEFAULT_WEIGHTS: Mapping[str, float] = {
     "semantic": 0.2,
 }
 
-
 # --- Helpers ---
 def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
-def _get(obj: Any, name: str, default: Any = None) -> Any:
+def _get(obj: object, name: str, default: object = None) -> object:
     """Đọc field từ object hoặc dict, để không phụ thuộc kiểu listing/user_pref."""
     if obj is None:
         return default
@@ -45,9 +44,14 @@ def _get(obj: Any, name: str, default: Any = None) -> Any:
     return getattr(obj, name, default)
 
 
-def _score_or_unknown(obj: Any, name: str) -> float:
+def _score_or_unknown(obj: object, name: str) -> float:
     value = _get(obj, name)
-    return UNKNOWN_SCORE if value is None else _clamp01(value)
+    if value is None:
+        return UNKNOWN_SCORE
+    try:
+        return _clamp01(float(value)) # type: ignore
+    except (ValueError, TypeError):
+        return UNKNOWN_SCORE
 
 
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -66,7 +70,7 @@ def _location_fit(dist_km: float, near_km: float = 1.0, far_km: float = 10.0) ->
     return 1.0 - (dist_km - near_km) / (far_km - near_km)
 
 
-_ALIAS_MAP = {
+_ALIAS_MAP: dict[str, str] = {
     "ac": "aircon",
     "air_conditioner": "aircon",
     "may_lanh": "aircon",
@@ -144,9 +148,9 @@ _NORMALIZE_AMENITY = _normalize_amenity
 
 
 def _amenity_fit(
-    requested: Sequence[str] | None,
-    concept_scores: Mapping | None,
-    amenity_overall: float | None = None,
+    requested: Optional[Sequence[str]],
+    concept_scores: Optional[Mapping[str, float]],
+    amenity_overall: Optional[float] = None,
 ) -> float:
     """Điểm trung bình của các tiện ích user yêu cầu (thiếu dữ liệu -> trung tính).
     Hỗ trợ alias chuẩn hóa về canonical taxonomy (cả tiếng Việt có dấu lẫn mã tiếng Anh).
@@ -160,7 +164,7 @@ def _amenity_fit(
             return _clamp01(scores["amenity_overall"])
         return 1.0
 
-    normalized_req = list(dict.fromkeys(_normalize_amenity(a) for a in requested if a))
+    normalized_req = list(dict.fromkeys(_normalize_amenity(str(a)) for a in requested if str(a).strip()))
     if not normalized_req:
         if amenity_overall is not None:
             return _clamp01(amenity_overall)
@@ -168,11 +172,11 @@ def _amenity_fit(
             return _clamp01(scores["amenity_overall"])
         return 1.0
 
-    return sum(_clamp01(scores.get(a, UNKNOWN_SCORE)) for a in normalized_req) / len(normalized_req)
+    return sum(_clamp01(float(scores.get(a, UNKNOWN_SCORE))) for a in normalized_req) / len(normalized_req)
 
 
 # --- Weights ---
-def _dynamic_weights(user_pref: Any, base: Mapping[str, float]) -> dict[str, float]:
+def _dynamic_weights(user_pref: object, base: Mapping[str, float]) -> dict[str, float]:
     """Chỉ giữ tiêu chí user có nói tới, rồi chuẩn hóa L1 để tổng trọng số = 1.0.
     Sử dụng base.get(k) an toàn để không văng KeyError khi AI Agent gửi bộ trọng số rút gọn.
     """
@@ -196,18 +200,23 @@ def _dynamic_weights(user_pref: Any, base: Mapping[str, float]) -> dict[str, flo
 
 
 # --- Scoring ---
-def _location_part(listing: Any, user_pref: Any) -> float:
+def _location_part(listing: object, user_pref: object) -> float:
     orm = _get(listing, "listing", listing)
-    lat, lng = _get(orm, "lat"), _get(orm, "lng")
-    pref_lat, pref_lng = _get(user_pref, "lat"), _get(user_pref, "lng")
+    lat = _get(orm, "lat")
+    lng = _get(orm, "lng")
+    pref_lat = _get(user_pref, "lat")
+    pref_lng = _get(user_pref, "lng")
 
     if lat is None or lng is None or pref_lat is None or pref_lng is None:
         return UNKNOWN_SCORE
 
-    return _location_fit(_haversine_km(lat, lng, pref_lat, pref_lng))
+    try:
+        return _location_fit(_haversine_km(float(lat), float(lng), float(pref_lat), float(pref_lng))) # type: ignore
+    except (ValueError, TypeError):
+        return UNKNOWN_SCORE
 
 
-def _price_fit(orm: Any) -> float:
+def _price_fit(orm: object) -> float:
     """Điểm hợp lý giá (price_score) do mô hình Machine Learning (Conformal ML / PriceEvaluator) thẩm định.
     - price_score >= 0.75: Giá rất hời / rẻ so với giá trị thực tế của phòng.
     - price_score ≈ 0.50: Giá hợp lý, ngang giá trị thị trường.
@@ -216,15 +225,18 @@ def _price_fit(orm: Any) -> float:
     """
     price_score = _get(orm, "price_score")
     if price_score is not None:
-        return _clamp01(float(price_score))
+        try:
+            return _clamp01(float(price_score)) # type: ignore
+        except (ValueError, TypeError):
+            pass
     return 0.50
 
 
 def _match_breakdown(
-    listing: dict[str, Any] | Any,
-    user_pref: Any,
+    listing: object,
+    user_pref: object,
     weights: dict[str, float],
-) -> dict:
+) -> dict[str, object]:
     """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
     orm = _get(listing, "listing", listing)
     scorers = {
@@ -232,14 +244,14 @@ def _match_breakdown(
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
         "amenity": lambda: _amenity_fit(
-            _get(user_pref, "amenities"),
-            _get(orm, "concept_scores"),
-            _get(orm, "amenity_overall"),
+            _get(user_pref, "amenities"), # type: ignore
+            _get(orm, "concept_scores"), # type: ignore
+            _get(orm, "amenity_overall"), # type: ignore
         ),
         "semantic": lambda: _score_or_unknown(listing, "similarity_score") if isinstance(listing, Mapping) and "similarity_score" in listing else _score_or_unknown(orm, "similarity_score"),
     }
-    parts = {k: scorers[k]() for k in weights}
-    contributions = {k: weights[k] * parts[k] for k in parts}
+    parts: dict[str, float] = {k: scorers[k]() for k in weights}
+    contributions: dict[str, float] = {k: weights[k] * parts[k] for k in parts}
     return {
         "score": sum(contributions.values()),
         "parts": parts,
@@ -250,23 +262,23 @@ def _match_breakdown(
 
 # --- Public API ---
 def rerank(
-    candidates: list[dict[str, Any] | Any],
-    user_pref: Any,
+    candidates: list[object],
+    user_pref: object,
     limit: int = 5,
     offset: int = 0,
-    base_weights: Mapping[str, float] = DEFAULT_WEIGHTS,
-) -> list[tuple[dict, Any]]:
+    base_weights: Optional[Mapping[str, float]] = None,
+) -> list[tuple[dict[str, object], object]]:
     """Xếp hạng candidates (từ vector search). Trả về [(breakdown, listing)] đã sort giảm dần."""
     if not candidates:
         return []
 
-    # Tính trọng số động ONCE per search request thay vì per candidate
-    computed_weights = _dynamic_weights(user_pref, base_weights)
+    effective_weights = base_weights or DEFAULT_WEIGHTS
+    computed_weights = _dynamic_weights(user_pref, effective_weights)
 
     scored = [(_match_breakdown(c, user_pref, computed_weights), c) for c in candidates]
     scored.sort(
         key=lambda x: (
-            round(float(x[0]["score"]), 8),
+            round(float(x[0]["score"]), 8), # type: ignore
             str(_get(_get(x[1], "listing", x[1]), "id", "")),
         ),
         reverse=True,
@@ -274,12 +286,14 @@ def rerank(
     return scored[offset : offset + limit]
 
 
-def explain_match(breakdown: dict, top_n: int = 5) -> dict:
+def explain_match(breakdown: dict[str, object], top_n: int = 5) -> dict[str, object]:
     """Rút gọn breakdown thành dữ liệu để đưa cho AI giải thích 'vì sao phòng này cao'."""
-    parts, weights, contrib = breakdown["parts"], breakdown["weights"], breakdown["contributions"]
-    top = sorted(contrib, key=contrib.get, reverse=True)[:top_n]
+    parts: dict[str, float] = breakdown["parts"] # type: ignore
+    weights: dict[str, float] = breakdown["weights"] # type: ignore
+    contrib: dict[str, float] = breakdown["contributions"] # type: ignore
+    top = sorted(contrib, key=lambda k: contrib[k], reverse=True)[:top_n]
     return {
-        "score": round(breakdown["score"], 3),
+        "score": round(float(breakdown["score"]), 3), # type: ignore
         "top_factors": [
             {
                 "name": k,
@@ -295,10 +309,10 @@ def explain_match(breakdown: dict, top_n: int = 5) -> dict:
 
 
 def component_influence(
-    listings: Sequence[Any],
-    prefs: Sequence[Any],
+    listings: Sequence[object],
+    prefs: Sequence[object],
     base_weights: Mapping[str, float] = DEFAULT_WEIGHTS,
-) -> dict:
+) -> dict[str, object]:
     """Chẩn đoán offline: ảnh hưởng thực của mỗi thành phần ~ trọng số x độ lệch chuẩn."""
     if not listings or not prefs:
         return {}
@@ -307,9 +321,10 @@ def component_influence(
     for pref in prefs:
         computed_weights = _dynamic_weights(pref, base_weights)
         bds = [_match_breakdown(l, pref, computed_weights) for l in listings]
-        for k in bds[0]["parts"]:
-            stds.setdefault(k, []).append(pstdev(b["parts"][k] for b in bds))
-            ws.setdefault(k, []).append(bds[0]["weights"][k])
+        for k in bds[0]["parts"]: # type: ignore
+            parts_dict: dict[str, float] = bds[0]["parts"] # type: ignore
+            stds.setdefault(k, []).append(pstdev(b["parts"][k] for b in bds)) # type: ignore
+            ws.setdefault(k, []).append(parts_dict[k])
     out = {k: {"weight": mean(ws[k]), "std": mean(stds[k])} for k in stds}
     total = sum(v["weight"] * v["std"] for v in out.values()) or 1.0
     for v in out.values():

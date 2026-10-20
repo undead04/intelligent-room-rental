@@ -1,6 +1,6 @@
-"""Module trích xuất nhu cầu và tiện ích bằng LLM (LLM-based Preference & Amenity Extraction).
-Cung cấp danh mục tiện ích chuẩn (Amenity Catalog) cho LLM để mô hình ngôn ngữ tự động hiểu
-ngữ cảnh, từ lóng, phương ngữ và viết tắt tiếng Việt của người dùng.
+"""Module trích xuất nhu cầu, loại phòng (RoomType) và tiện ích (AmenityCode) bằng LLM.
+Sử dụng trực tiếp taxonomy chuẩn hóa AmenityCode và RoomType của hệ thống Homigo.
+LLM tự động suy luận và ánh xạ trực tiếp sang các mã canonical mà không cần từ điển map thủ công.
 """
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Mapping, Optional
+from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -17,79 +17,122 @@ from schemas import UserPreferenceState
 
 logger = logging.getLogger(__name__)
 
-# Danh mục 16 tiện ích chuẩn kèm định nghĩa ngữ nghĩa phục vụ LLM
+# Danh mục 17 mã tiện ích, an ninh và quy định chuẩn hóa (AmenityCode) của Homigo
+CANONICAL_AMENITIES: set[str] = {
+    # 1. Tiện ích phòng cốt lõi (Core Amenities)
+    "private_wc",          # WC riêng, khép kín
+    "aircon",              # Máy lạnh, điều hòa
+    "mezzanine",           # Gác lửng, gác xép
+    "kitchen",             # Kệ bếp, khu nấu ăn riêng
+    "fridge",              # Tủ lạnh
+    "washing_machine",     # Máy giặt (chung hoặc riêng)
+    "window_balcony",      # Ban công hoặc cửa sổ thoáng
+    "furniture",           # Đầy đủ nội thất (giường, tủ, bàn ghế...)
+    "parking",             # Chỗ để xe trong nhà / hầm xe
+    "elevator",            # Thang máy
+
+    # 2. Quy định & Lối sống (Rules & Lifestyle)
+    "free_hours",          # Giờ giấc tự do (không khóa cổng)
+    "no_shared_landlord",  # Không chung chủ
+    "pet_allowed",         # Cho phép nuôi thú cưng (chó, mèo)
+
+    # 3. An toàn & An ninh (Safety)
+    "fingerprint_lock",    # Khóa vân tay, cổng thẻ từ
+    "camera",              # Camera an ninh 24/7
+    "guard",               # Bảo vệ trực cổng 24/7
+    "safe_area",           # Khu vực an ninh, yên tĩnh
+}
+
+# Tương thích ngược: map từ code sang tên hiển thị ngắn gọn khi cần
 AMENITY_CATALOG: dict[str, str] = {
-    "mezzanine": "Gác lửng, gác xép, gác cao, gác lưng, gác lững, gác đúc, gác gỗ, có gác, phòng có gác",
-    "aircon": "Máy lạnh, điều hòa, máy điều hòa, ac, ml",
-    "private_wc": "WC riêng, vệ sinh riêng, toilet riêng, toilet trong phòng, vệ sinh khép kín, phòng tắm riêng",
-    "kitchen": "Kệ bếp, bếp riêng, khu bếp, nấu ăn, cho nấu ăn, chỗ nấu ăn, nấu nướng",
+    "private_wc": "WC riêng, khép kín",
+    "aircon": "Máy lạnh, điều hòa",
+    "mezzanine": "Gác lửng, gác xép",
+    "kitchen": "Kệ bếp, khu nấu ăn riêng",
     "fridge": "Tủ lạnh",
-    "washing_machine": "Máy giặt, chỗ giặt đồ",
-    "window_balcony": "Ban công, cửa sổ, phòng thoáng mát, view thoáng, ánh sáng tự nhiên, lô gia",
-    "furniture": "Nội thất, full nội thất, giường, nệm, tủ quần áo, bàn ghế, đầy đủ đồ",
-    "pet_allowed": "Cho nuôi thú cưng, nuôi chó, nuôi mèo, nuôi pet, thú cưng, cho nuôi pet, boss",
-    "parking": "Chỗ để xe, giữ xe, nhà xe, bãi xe, hầm để xe",
+    "washing_machine": "Máy giặt",
+    "window_balcony": "Ban công, cửa sổ thoáng",
+    "furniture": "Đầy đủ nội thất",
+    "parking": "Chỗ để xe, hầm xe",
     "elevator": "Thang máy",
-    "free_hours": "Giờ giấc tự do, giờ tự do, 24/24, 24/7, ra vào tự do, không chung cổng giới nghiêm",
-    "no_shared_landlord": "Không chung chủ, không ở chung chủ, ko chung chủ, lối đi riêng, tự do riêng tư",
-    "fingerprint_lock": "Khóa vân tay, thẻ từ, khóa thông minh, smart lock, cổng vân tay",
-    "security": "Bảo vệ, bảo vệ 24/7, an ninh tốt, camera an ninh, an ninh đảm bảo",
-    "wifi": "Wifi, internet miễn phí, mạng cáp quang",
+    "free_hours": "Giờ giấc tự do 24/7",
+    "no_shared_landlord": "Không chung chủ",
+    "pet_allowed": "Cho nuôi thú cưng (chó, mèo)",
+    "fingerprint_lock": "Khóa vân tay, thẻ từ",
+    "camera": "Camera an ninh",
+    "guard": "Bảo vệ trực cổng 24/7",
+    "safe_area": "Khu vực an ninh, yên tĩnh",
 }
 
-CANONICAL_AMENITIES = set(AMENITY_CATALOG.keys())
-
-CANONICAL_TO_LABEL: dict[str, str] = {
-    "mezzanine": "gác lửng",
-    "aircon": "máy lạnh",
-    "private_wc": "wc riêng",
-    "kitchen": "kệ bếp",
-    "fridge": "tủ lạnh",
-    "washing_machine": "máy giặt",
-    "window_balcony": "ban công",
-    "furniture": "nội thất",
-    "pet_allowed": "nuôi thú cưng",
-    "parking": "chỗ để xe",
-    "elevator": "thang máy",
-    "free_hours": "giờ giấc tự do",
-    "no_shared_landlord": "không chung chủ",
-    "fingerprint_lock": "khoá vân tay",
-    "security": "bảo vệ",
-    "wifi": "wifi",
+# Danh mục phân loại phòng trọ chuẩn hóa (RoomType)
+CANONICAL_ROOM_TYPES: set[str] = {
+    "ROOM",         # Phòng trọ truyền thống
+    "STUDIO",       # Căn hộ mini, studio
+    "APARTMENT",    # Căn hộ chung cư, chung cư dịch vụ
+    "SLEEPBOX",     # Ký túc xá, sleepbox, giường tầng
+    "WHOLE_HOUSE",  # Nhà nguyên căn
 }
+
+ROOM_TYPE_CODE_TO_ID: dict[str, int] = {
+    "ROOM": 1,
+    "STUDIO": 2,
+    "APARTMENT": 3,
+    "SLEEPBOX": 4,
+    "WHOLE_HOUSE": 5,
+}
+
+ROOM_TYPE_ID_TO_CODE: dict[int, str] = {
+    1: "ROOM",
+    2: "STUDIO",
+    3: "APARTMENT",
+    4: "SLEEPBOX",
+    5: "WHOLE_HOUSE",
+}
+
 
 EXTRACTION_SYSTEM_PROMPT = """Bạn là trợ lý AI chuyên trích xuất tiêu chí tìm kiếm phòng trọ cho hệ thống Homigo.
 Nhiệm vụ của bạn là đọc câu nói của người dùng và trích xuất các tiêu chí tìm phòng dưới dạng JSON duy nhất.
 
-DANH MỤC TIỆN ÍCH CHUẨN (AMENITY CATALOG):
-- mezzanine: Gác lửng, gác xép, gác cao, gác lưng, gác lững, gác đúc, gác gỗ, có gác...
-- aircon: Máy lạnh, điều hòa, máy điều hòa, ac, ml...
-- private_wc: WC riêng, vệ sinh riêng, toilet riêng, khép kín, toilet trong phòng...
-- kitchen: Kệ bếp, bếp riêng, khu bếp, nấu ăn, cho nấu ăn, chỗ nấu ăn...
-- fridge: Tủ lạnh...
-- washing_machine: Máy giặt, chỗ giặt đồ...
-- window_balcony: Ban công, cửa sổ, phòng thoáng mát, view thoáng, ánh sáng tự nhiên...
-- furniture: Nội thất, full nội thất, giường, nệm, tủ quần áo, bàn ghế...
-- pet_allowed: Cho nuôi thú cưng, nuôi chó, nuôi mèo, nuôi pet, boss...
-- parking: Chỗ để xe, giữ xe, nhà xe, bãi xe, hầm để xe...
-- elevator: Thang máy...
-- free_hours: Giờ giấc tự do, 24/24, ra vào tự do, không giới nghiêm...
-- no_shared_landlord: Không chung chủ, không ở chung chủ, lối đi riêng, tự do riêng tư...
-- fingerprint_lock: Khóa vân tay, thẻ từ, khóa thông minh...
-- security: Bảo vệ, bảo vệ 24/7, camera, an ninh tốt...
-- wifi: Wifi, internet...
+1. DANH MỤC TIỆN ÍCH CHUẨN (AMENITY CODES) - CHỈ TRẢ VỀ CÁC MÃ DƯỚI ĐÂY:
+- `private_wc`: WC riêng, vệ sinh riêng, toilet riêng, toilet trong phòng, khép kín.
+- `aircon`: Máy lạnh, điều hòa, ac.
+- `mezzanine`: Gác lửng, gác xép, gác đúc, phòng có gác.
+- `kitchen`: Kệ bếp, bếp riêng, khu nấu ăn, cho nấu ăn.
+- `fridge`: Tủ lạnh.
+- `washing_machine`: Máy giặt, chỗ giặt đồ.
+- `window_balcony`: Ban công, cửa sổ, phòng thoáng mát, view thoáng.
+- `furniture`: Đầy đủ nội thất, full nội thất, giường nệm tủ bàn ghế.
+- `parking`: Chỗ để xe, giữ xe, nhà xe, hầm để xe.
+- `elevator`: Thang máy.
+- `free_hours`: Giờ giấc tự do, 24/24, không giới nghiêm.
+- `no_shared_landlord`: Không chung chủ, lối đi riêng, tự do.
+- `pet_allowed`: Cho nuôi thú cưng, nuôi chó, nuôi mèo, nuôi pet, boss.
+- `fingerprint_lock`: Khóa vân tay, thẻ từ, khóa thông minh.
+- `camera`: Camera an ninh 24/7.
+- `guard`: Bảo vệ trực cổng 24/7.
+- `safe_area`: Khu vực an ninh, yên tĩnh.
+
+2. PHÂN LOẠI PHÒNG TRỌ (ROOM TYPE) - CHỈ CHỌN 1 TRONG 5 MÃ HOẶC NULL:
+- `ROOM`: Phòng trọ truyền thống, phòng đơn, phòng trọ sinh viên.
+- `STUDIO`: Căn hộ mini, studio, phòng studio full đồ.
+- `APARTMENT`: Căn hộ chung cư, chung cư dịch vụ.
+- `SLEEPBOX`: Ký túc xá, sleepbox, giường tầng, box ngủ.
+- `WHOLE_HOUSE`: Nhà nguyên căn.
 
 QUY TẮC TRÍCH XUẤT:
 1. `location_text`: Tên địa điểm, khu vực, quận huyện, phường xã hoặc trường học/công ty người dùng muốn tìm. Nếu không nhắc thì để null.
-2. `min_price`: Mức giá tối thiểu bằng số VNĐ (ví dụ: 'từ 2 triệu' -> 2000000). Nếu không có để null.
-3. `max_price`: Mức giá tối đa bằng số VNĐ (ví dụ: 'tầm 5 triệu đổ xuống' -> 5000000, 'dưới 3.5tr' -> 3500000). Nếu không có để null.
-4. `amenities`: Mảng danh sách các mã canonical tiện ích được người dùng yêu cầu. CHỈ ĐƯỢC CHỌN từ 16 mã chuẩn ở trên (ví dụ: ['mezzanine', 'aircon']).
-   - Tự động hiểu tiếng Việt linh hoạt: 'gác lưng', 'có gác' -> 'mezzanine'; 'ml' -> 'aircon'; 'boss', 'mèo' -> 'pet_allowed'.
-5. `special_requirements`: Mảng các yêu cầu mềm khác như 'yên tĩnh', 'sạch sẽ', 'đường không ngập'.
+2. `room_type`: Mã loại phòng chuẩn (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE) hoặc null nếu không rõ.
+3. `min_price`: Mức giá tối thiểu bằng số VNĐ (ví dụ: 'từ 2 triệu' -> 2000000). Nếu không có để null.
+4. `max_price`: Mức giá tối đa bằng số VNĐ (ví dụ: 'dưới 3.5tr' -> 3500000, 'tầm 4 triệu' -> 4000000). Nếu không có để null.
+5. `min_area`: Diện tích tối thiểu bằng số m2. Nếu không có để null.
+6. `max_area`: Diện tích tối đa bằng số m2. Nếu không có để null.
+7. `amenities`: Mảng danh sách các mã canonical AmenityCode ở trên (ví dụ: ["aircon", "mezzanine"]). Tuyệt đối KHÔNG trả về từ ngữ tiếng Việt trong mảng này.
+8. `special_requirements`: Mảng các yêu cầu mềm khác như 'yên tĩnh', 'sạch sẽ', 'đường không ngập'.
 
-ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (Chỉ trả về JSON thuần):
+ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (Chỉ trả về JSON thuần, không bọc giải thích):
 {
   "location_text": null,
+  "room_type": null,
   "min_price": null,
   "max_price": null,
   "min_area": null,
@@ -101,6 +144,7 @@ QUY TẮC TRÍCH XUẤT:
 
 class ExtractedPreference(BaseModel):
     location_text: Optional[str] = None
+    room_type: Optional[str] = None
     min_price: Optional[float] = None
     max_price: Optional[float] = None
     min_area: Optional[float] = None
@@ -115,7 +159,6 @@ def _clean_json_response(raw_text: str) -> str:
     match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
     if match:
         return match.group(1).strip()
-    # Tìm chuỗi json bắt đầu bằng { và kết thúc bằng }
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -124,11 +167,23 @@ def _clean_json_response(raw_text: str) -> str:
 
 
 def _fallback_extract(text: str) -> ExtractedPreference:
-    """Bộ trích xuất dự phòng nhẹ khi LLM không khả dụng (offline / mock)."""
+    """Bộ trích xuất dự phòng nhẹ khi LLM không khả dụng (offline / test)."""
     clean = text.lower()
     res = ExtractedPreference()
 
-    # Giá
+    # 1. Loại phòng (Room Type - kiểm tra từ cụ thể đến khái quát)
+    if "nguyên căn" in clean or "nhà nguyên căn" in clean:
+        res.room_type = "WHOLE_HOUSE"
+    elif "studio" in clean or "căn hộ mini" in clean or "chung cư mini" in clean:
+        res.room_type = "STUDIO"
+    elif "sleepbox" in clean or "ký túc xá" in clean or "ktx" in clean or "giường tầng" in clean or "box" in clean:
+        res.room_type = "SLEEPBOX"
+    elif "chung cư" in clean or "căn hộ" in clean:
+        res.room_type = "APARTMENT"
+    elif "phòng trọ" in clean or "nhà trọ" in clean or "phòng" in clean:
+        res.room_type = "ROOM"
+
+    # 2. Giá
     max_m = re.search(r"(?:dưới|tối đa|khoảng|tầm|tới|dưới mức)\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)", clean)
     if max_m:
         res.max_price = float(max_m.group(1).replace(",", ".")) * 1_000_000
@@ -142,7 +197,7 @@ def _fallback_extract(text: str) -> ExtractedPreference:
         res.min_price = float(range_m.group(1).replace(",", ".")) * 1_000_000
         res.max_price = float(range_m.group(2).replace(",", ".")) * 1_000_000
 
-    # Vị trí
+    # 3. Vị trí
     loc_m = re.search(
         r"(?:ở|tại|quanh|gần|khu vực)\s+([A-Za-zÀ-ỹ0-9\s]{2,30}?)(?=\s*(?:tầm|dưới|khoảng|giá|có|phòng|$))",
         text,
@@ -153,16 +208,33 @@ def _fallback_extract(text: str) -> ExtractedPreference:
         if len(cand) >= 3 and cand.lower() not in ["phòng", "nhà", "trọ", "đây"]:
             res.location_text = cand
 
-    # Tiện ích
-    for code, desc in AMENITY_CATALOG.items():
-        kws = [k.strip().lower() for k in desc.split(",")]
+    # 4. Tiện ích (đối sánh từ khóa về thẳng mã AmenityCode)
+    amenity_keywords: dict[str, list[str]] = {
+        "aircon": ["máy lạnh", "điều hòa", "may lanh", "dieu hoa", "ac", "ml"],
+        "mezzanine": ["gác lửng", "gác xép", "có gác", "co gac", "gác đúc", "gác", "gác lưng", "gác cao"],
+        "private_wc": ["wc riêng", "vệ sinh riêng", "toilet riêng", "khép kín", "ve sinh rieng"],
+        "kitchen": ["kệ bếp", "bếp riêng", "nấu ăn", "nau an", "chỗ nấu ăn", "bếp"],
+        "fridge": ["tủ lạnh", "tu lanh"],
+        "washing_machine": ["máy giặt", "may giat"],
+        "window_balcony": ["ban công", "cửa sổ", "ban cong", "cua so", "view thoáng", "thoáng mát"],
+        "furniture": ["nội thất", "full nội thất", "đầy đủ đồ", "noi that"],
+        "parking": ["chỗ để xe", "hầm xe", "giữ xe", "cho de xe", "bãi xe"],
+        "elevator": ["thang máy", "thang may"],
+        "free_hours": ["giờ giấc tự do", "tự do", "gio tu do", "24/24", "24/7"],
+        "no_shared_landlord": ["không chung chủ", "ko chung chủ", "khong chung chu", "lối đi riêng"],
+        "pet_allowed": ["nuôi pet", "nuôi chó", "nuôi mèo", "thú cưng", "pet", "boss", "cho nuôi mèo", "cho nuôi pet"],
+        "fingerprint_lock": ["vân tay", "khóa vân tay", "thẻ từ", "khoa van tay"],
+        "camera": ["camera"],
+        "guard": ["bảo vệ", "bao ve"],
+        "safe_area": ["an ninh", "an toàn", "khu an ninh"],
+    }
+    for code, kws in amenity_keywords.items():
         for kw in kws:
             pattern = rf"(?:^|\b|\s){re.escape(kw)}(?:\b|\s|$)"
             if re.search(pattern, clean) or kw in clean:
                 if code not in res.amenities:
                     res.amenities.append(code)
                 break
-
 
     return res
 
@@ -172,8 +244,8 @@ def extract_preferences_with_llm(
     model: Any = None,
     current_pref: Optional[UserPreferenceState] = None,
 ) -> UserPreferenceState:
-    """Sử dụng LLM kết hợp Amenity Catalog để trích xuất có cấu trúc tiêu chí người dùng.
-    Tự động hòa nhập (merge) vào trạng thái tiêu chí hiện tại.
+    """Sử dụng LLM để trích xuất trực tiếp mã AmenityCode và RoomType theo yêu cầu người dùng.
+    Không cần từ điển map phức tạp vì LLM ánh xạ trực tiếp sang các mã canonical.
     """
     pref = current_pref.model_copy(deep=True) if current_pref else UserPreferenceState()
 
@@ -201,11 +273,17 @@ def extract_preferences_with_llm(
 
     # 3. Hòa nhập dữ liệu vào UserPreferenceState
     if extracted.location_text:
-        # Nếu đổi địa điểm khác -> reset lat, lng cũ để geocode lại
         if pref.location_text and extracted.location_text.lower() != pref.location_text.lower():
             pref.lat = None
             pref.lng = None
         pref.location_text = extracted.location_text
+
+    # Loại phòng (RoomType)
+    if extracted.room_type:
+        rt_clean = extracted.room_type.strip().upper()
+        if rt_clean in CANONICAL_ROOM_TYPES:
+            pref.room_type = rt_clean
+            pref.room_type_id = ROOM_TYPE_CODE_TO_ID.get(rt_clean)
 
     if extracted.min_price is not None:
         pref.min_price = extracted.min_price
@@ -216,25 +294,12 @@ def extract_preferences_with_llm(
     if extracted.max_area is not None:
         pref.max_area = extracted.max_area
 
-    # Chuẩn hóa amenities: hỗ trợ cả mã canonical và nhãn tiếng Việt
+    # Chuẩn hóa tiện ích: Lưu trữ trực tiếp mã AmenityCode chuẩn hóa, không chèn nhãn tiếng Việt trùng lặp
     for a in extracted.amenities:
-        canonical = a.strip().lower()
-        if canonical in CANONICAL_AMENITIES:
-            label = CANONICAL_TO_LABEL.get(canonical, canonical)
-            if canonical not in pref.amenities:
-                pref.amenities.append(canonical)
-            if label not in pref.amenities:
-                pref.amenities.append(label)
-        elif canonical:
-            # Nếu LLM trả về nhãn tiếng Việt (ví dụ 'gác lửng'), kiểm tra qua catalog
-            for code, desc in AMENITY_CATALOG.items():
-                if canonical in desc.lower():
-                    label = CANONICAL_TO_LABEL.get(code, code)
-                    if code not in pref.amenities:
-                        pref.amenities.append(code)
-                    if label not in pref.amenities:
-                        pref.amenities.append(label)
-                    break
+        clean_code = a.strip().lower()
+        if clean_code in CANONICAL_AMENITIES:
+            if clean_code not in pref.amenities:
+                pref.amenities.append(clean_code)
 
     for req in extracted.special_requirements:
         if req and req not in pref.special_requirements:

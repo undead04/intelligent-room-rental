@@ -512,12 +512,11 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
         try:
             geo_raw = geocode_location.invoke({"query": pref.location_text})
             geo_data = json.loads(geo_raw)
-            if isinstance(geo_data, dict) and geo_data.get("ok"):
-                inner = geo_data.get("data") if isinstance(geo_data.get("data"), dict) else geo_data
-                pref.lat = inner.get("lat")
-                pref.lng = inner.get("lng") if inner.get("lng") is not None else inner.get("lon")
-                weights = compute_normalized_weights(pref, multipliers)
-            elif isinstance(geo_data, dict) and geo_data.get("is_administrative"):
+            is_admin = bool(
+                geo_data.get("is_administrative")
+                or (isinstance(geo_data.get("data"), dict) and geo_data["data"].get("is_administrative"))
+            )
+            if is_admin:
                 from tools.housing_tools import get_location_hierarchy
                 hier_raw = get_location_hierarchy.invoke({"city_name": pref.location_text})
                 hier_data = json.loads(hier_raw)
@@ -534,6 +533,11 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
                         city_id = first.get("id")
                 else:
                     admin_not_found = True
+            elif isinstance(geo_data, dict) and geo_data.get("ok"):
+                inner = geo_data.get("data") if isinstance(geo_data.get("data"), dict) else geo_data
+                pref.lat = inner.get("lat")
+                pref.lng = inner.get("lng") if inner.get("lng") is not None else inner.get("lon")
+                weights = compute_normalized_weights(pref, multipliers)
         except Exception as e:
             logger.warning(f"Lỗi xử lý vị trí {pref.location_text}: {e}")
 
@@ -562,6 +566,10 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
                 search_args["district_id"] = district_id
             if ward_id is not None:
                 search_args["ward_id"] = ward_id
+            if pref.room_type is not None:
+                search_args["room_type"] = pref.room_type
+            if pref.room_type_id is not None:
+                search_args["room_type_id"] = pref.room_type_id
 
             res_json = search_rooms.invoke(search_args)
             data = json.loads(res_json)
@@ -580,16 +588,32 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
             logger.warning(f"Lỗi truy vấn search_rooms: {e}")
 
     # 4. Kiểm định Context Grounding
-    ctx_check = verify_context_grounding(
-        rooms,
-        pref,
-        retry_count=retry_count,
-        last_search_args=search_args if "search_args" in locals() else None,
-        area_name=pref.location_text,
-    )
+    if not admin_not_found:
+        ctx_check = verify_context_grounding(
+            rooms,
+            pref,
+            retry_count=retry_count,
+            last_search_args=search_args if "search_args" in locals() else None,
+            area_name=pref.location_text,
+        )
+    else:
+        from grounding import ContextGroundingResult
+        ctx_check = ContextGroundingResult(
+            is_grounded=True,
+            context_score=1.0,
+            needs_user_consent=False,
+            hitl_proposal=None,
+        )
 
     session = memory_manager.get_or_create_session(state.get("session_id", "default_session"))
     session.proposed_budget = ctx_check.proposed_budget
+
+    if rooms:
+        session.hitl_streak = 0
+    elif state.get("is_keep_criteria"):
+        session.hitl_streak = 0
+    elif not admin_not_found:
+        session.hitl_streak += 1
 
     return {
         "retrieved_rooms": rooms,
@@ -603,6 +627,7 @@ def retrieval_node(state: HousingAgentState) -> dict[str, Any]:
         "proposed_budget": ctx_check.proposed_budget,
         "proposed_budget_str": ctx_check.proposed_budget_str,
         "hitl_proposal": ctx_check.hitl_proposal,
+        "admin_not_found": admin_not_found,
     }
 
 
@@ -619,30 +644,45 @@ def decision_node(state: HousingAgentState) -> dict[str, Any]:
     insights = build_decision_insights(rooms, weights=weights, weight_explanations=explanations)
 
     if not rooms:
-        hitl = state.get("hitl_proposal")
-        prop_str = state.get("proposed_budget_str")
-        if hitl and hitl.message:
+        if state.get("admin_not_found"):
+            loc = (state.get("preferences") or UserPreferenceState()).location_text or "khu vực này"
             reply = (
-                "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
-                "với các điều kiện lọc hiện tại của bạn.\n\n"
-                f"💡 **Thực tế thị trường từ Homigo:** {hitl.message}\n\n"
-                "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+                f"Hiện tại Homigo chưa có dữ liệu phòng trọ tại khu vực **{loc}**.\n\n"
+                "Bạn vui lòng chọn một khu vực khác tại TP. Hồ Chí Minh (ví dụ: Thủ Đức, Bình Thạnh, Quận 1, v.v.) nhé!"
             )
-        elif prop_str:
+            return {"insights": None, "final_text": reply}
+
+        session = memory_manager.get_or_create_session(state.get("session_id", "default_session"))
+        if session.hitl_streak > 2:
             reply = (
-                "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
-                "với các điều kiện lọc hiện tại của bạn.\n\n"
-                f"💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới ngân sách lên khoảng **{prop_str}** "
-                "hoặc mở rộng phạm vi tìm kiếm sang các khu vực lân cận để có thêm lựa chọn tốt.\n\n"
-                "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+                "Homigo đã quét toàn bộ hệ thống và hỗ trợ nới lỏng nhiều tiêu chí nhưng vẫn chưa tìm thấy phòng trọ phù hợp.\n\n"
+                "💡 **Khuyến nghị:** Bạn vui lòng thử đổi sang khu vực quận/huyện lân cận hoặc nhập lại yêu cầu tìm kiếm mới nhé!"
             )
         else:
-            reply = (
-                "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
-                "với các điều kiện lọc hiện tại của bạn.\n\n"
-                "💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới rộng ngân sách hoặc mở rộng phạm vi tìm kiếm sang các khu vực lân cận.\n\n"
-                "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
-            )
+            hitl = state.get("hitl_proposal")
+            prop_str = state.get("proposed_budget_str")
+            if hitl and hitl.message:
+                reply = (
+                    "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
+                    "với các điều kiện lọc hiện tại của bạn.\n\n"
+                    f"💡 **Thực tế thị trường từ Homigo:** {hitl.message}\n\n"
+                    "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+                )
+            elif prop_str:
+                reply = (
+                    "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
+                    "với các điều kiện lọc hiện tại của bạn.\n\n"
+                    f"💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới ngân sách lên khoảng **{prop_str}** "
+                    "hoặc mở rộng phạm vi tìm kiếm sang các khu vực lân cận để có thêm lựa chọn tốt.\n\n"
+                    "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+                )
+            else:
+                reply = (
+                    "Homigo đã quét toàn bộ cơ sở dữ liệu nhưng hiện chưa tìm thấy phòng trọ nào khớp 100% "
+                    "với các điều kiện lọc hiện tại của bạn.\n\n"
+                    "💡 **Đề xuất từ Homigo:** Bạn có thể cân nhắc nới rộng ngân sách hoặc mở rộng phạm vi tìm kiếm sang các khu vực lân cận.\n\n"
+                    "👉 Bạn có muốn Homigo điều chỉnh theo phương án nào dưới đây không?"
+                )
         return {"insights": None, "final_text": reply}
 
     top_1 = rooms[0]
@@ -735,9 +775,26 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
     session_id = state.get("session_id", "default_session")
     grounding_report = state.get("grounding_report")
     hitl_proposal = state.get("hitl_proposal")
+    session = memory_manager.get_or_create_session(session_id)
+    streak = session.hitl_streak
 
     # Tạo câu hỏi gợi mở / các nút tương tác
-    if state.get("is_keep_criteria"):
+    if state.get("admin_not_found"):
+        follow_up = [
+            "🔍 Thử tìm khu vực khác (Thủ Đức, Quận 9...)",
+            "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
+        ]
+        hitl_proposal = None
+        rooms = []
+        insights = None
+        grounding_report = {
+            "is_grounded": True,
+            "groundedness_score": 1.0,
+            "context_grounded": False,
+            "needs_user_consent": False,
+            "hitl_streak": 0,
+        }
+    elif state.get("is_keep_criteria"):
         follow_up = [
             "🔍 Thử tìm khu vực khác",
             "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
@@ -763,6 +820,19 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
             "Bạn có muốn xem chi tiết thông tin liên hệ của phòng Top 1 không?",
             "Bạn có muốn so sánh chi tiết hơn với phòng Top 2 không?",
         ]
+    elif streak > 2:  # MAX_HITL_STREAK = 2
+        follow_up = [
+            "🔄 Đổi sang khu vực tìm kiếm khác",
+            "✏️ Nhập lại nhu cầu mới từ đầu",
+        ]
+        hitl_proposal = None
+        grounding_report = {
+            "is_grounded": True,
+            "context_grounded": False,
+            "needs_user_consent": False,
+            "hitl_streak": streak,
+            "hitl_limit_reached": True,
+        }
     else:
         # Không tìm thấy phòng -> Cung cấp lựa chọn tương tác thông minh
         if hitl_proposal and hitl_proposal.options:
@@ -780,6 +850,12 @@ def formatter_node(state: HousingAgentState) -> dict[str, Any]:
                 "❌ Giữ nguyên tiêu chí của tôi",
                 "✏️ Tùy chỉnh tiêu chí (Nhập thông tin mới)",
             ]
+        if hitl_proposal:
+            if grounding_report is None:
+                grounding_report = {}
+            grounding_report["needs_user_consent"] = True
+            grounding_report["hitl_streak"] = streak
+            grounding_report["hitl_max_streak"] = 2
 
     response = AgentResponse(
         session_id=session_id,
