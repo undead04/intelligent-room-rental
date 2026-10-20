@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import ListingCard from "@/components/ListingCard";
 import type { ListingCardData } from "@/types";
 

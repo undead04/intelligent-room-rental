@@ -10,12 +10,9 @@ Cung cấp interface suy luận (Inference Service) dùng chung cho:
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 ML_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = ML_DIR.parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 import joblib
 import numpy as np
@@ -24,12 +21,7 @@ import pandas as pd
 from crawler.model.ml import models as _ml_models
 from crawler.model.ml.feature_extractor import extract_features_from_record
 from crawler.model.ml.models import (
-    MondrianPriceInterval,
-    PriceInterval,
-    SpatialTE,
-    attach,
     blend_predict,
-    make_base_features,
 )
 
 # Tương thích unpickle với các file .joblib được huấn luyện dưới namespace `ml.models`
@@ -149,4 +141,50 @@ class PriceEvaluator:
 
 # Alias đồng bộ tên class dùng trong tài liệu và crawler/model/ml
 RoomPriceEvaluator = PriceEvaluator
+
+
+if __name__ == "__main__":
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+    evaluator = PriceEvaluator()
+    sample_record = {
+        "listing_id": "demo_test_01",
+        "title": "Phòng trọ giá rẻ gần ĐH Bách Khoa Quận 10",
+        "price_vnd": 3_200_000,
+        "area_m2": 20.0,
+        "latitude": 10.772,
+        "longitude": 106.657,
+        "district": "Quận 10",
+        "city": "Hồ Chí Minh",
+        "has_air_conditioner": True,
+        "has_private_wc": True,
+        "has_mezzanine": False,
+        "has_balcony": True,
+        "has_refrigerator": False,
+        "has_washing_machine": False,
+        "has_water_heater": True,
+        "has_kitchen": True,
+        "has_bed": True,
+        "has_wardrobe": True,
+        "has_wifi": True,
+        "allow_pets": False,
+        "has_parking": True,
+        "free_time": True,
+        "security_camera": True,
+    }
+    print("[EVAL] Đang chạy thẩm định giá mẫu...")
+    res = evaluator.evaluate_single(sample_record)
+    print("=" * 50)
+    print(f"Giá niêm yết: {res.get('price_vnd'):,} VNĐ")
+    print(f"Khoảng giá hợp lý (80% Conformal): [{int(res.get('price_low', 0)):,} - {int(res.get('price_high', 0)):,}] VNĐ")
+    print(f"Giá trung vị dự đoán (Mid): {int(res.get('price_mid', 0)):,} VNĐ")
+    print(f"Z-Score chênh lệch: {res.get('z_score')}")
+    print(f"Điểm đánh giá giá (Price Score 1-5): {res.get('price_score')} ⭐ ({res.get('price_score_100')}/100)")
+    print(f"Nhận định thị trường: {res.get('verdict')}")
+    print("=" * 50)
 

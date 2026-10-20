@@ -2,6 +2,7 @@ import os
 import json
 import time
 from abc import ABC, abstractmethod
+from crawler.config.paths import RAW_DATA_DIR
 from crawler.staging_db import staging_db
 
 class BaseSpider(ABC):
@@ -12,8 +13,8 @@ class BaseSpider(ABC):
     
     def __init__(self, name: str):
         self.name = name
-        self.raw_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'raw'))
-        os.makedirs(self.raw_dir, exist_ok=True)
+        self.raw_dir = str(RAW_DATA_DIR)
+        RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.staging_db = staging_db
 
     def log(self, msg: str):
@@ -26,9 +27,8 @@ class BaseSpider(ABC):
 
     def get_checkpoint_file(self, region: str = "all") -> str:
         """Tên file checkpoint theo từng nguồn và khu vực"""
-        ckpt_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'raw'))
-        os.makedirs(ckpt_dir, exist_ok=True)
-        return os.path.join(ckpt_dir, f"checkpoint_{self.name}_{region}.json")
+        RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        return str(RAW_DATA_DIR / f"checkpoint_{self.name}_{region}.json")
 
     def load_checkpoint(self, region: str = "all") -> int:
         """Đọc mốc offset đã lưu từ checkpoint"""

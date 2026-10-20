@@ -1,23 +1,12 @@
 import json
-import os
-import sys
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 from google import genai
 from google.genai import types
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
+from crawler.config.settings import DEFAULT_MAX_RETRIES, DEFAULT_RPM_DELAY
 from crawler.model.llm.prompt import build_ai_contents
-from crawler.schema.listing import ChunkExtractionWrapper
-
-
-
-DEFAULT_MAX_RETRIES = 2
-DEFAULT_RPM_DELAY = 4.0
+from crawler.schema.listing import ChunkExtractionWrapper, extract_listing_full_text
 
 
 class GeminiRoundRobin:
@@ -122,7 +111,7 @@ def call_gemini_chunk(
     chunk_payload = [
         {
             "id": str(a.get("listing_id") or a.get("id")),
-            "text": a.get("text") or a.get("description", ""),
+            "text": extract_listing_full_text(a),
         }
         for a in chunk
     ]

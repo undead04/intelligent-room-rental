@@ -5,6 +5,7 @@ from pathlib import Path
 from crawler.model.llm import (
     load_checkpoint,
     save_checkpoint,
+    convert_checkpoint_to_jsonl,
     process_chunk_result,
     is_quota_error,
 )
@@ -66,6 +67,52 @@ def test_load_checkpoint_legacy_list_format(tmp_path: Path):
     assert "100" in checkpoint
     assert "101" in checkpoint
     assert len(loaded_results) == 2
+
+
+def test_save_and_load_checkpoint_jsonl_format(tmp_path: Path):
+    ckpt_path = tmp_path / "checkpoint.jsonl"
+
+    clean_results = [
+        {"listing_id": "item_1", "report": {"amenity_overall_score": 0.85}},
+        {"listing_id": "item_2", "report": {"amenity_overall_score": 0.40}},
+    ]
+    metadata = {
+        "last_processed_chunk": 3,
+        "total_chunks": 10,
+        "completed_chunk_count": 3,
+        "completed_chunk_indices": [1, 2, 3],
+    }
+
+    save_checkpoint(ckpt_path, clean_results, metadata=metadata)
+    assert ckpt_path.exists()
+
+    checkpoint, loaded_results, loaded_meta, completed_chunks = load_checkpoint(ckpt_path)
+
+    assert len(checkpoint) == 2
+    assert "item_1" in checkpoint
+    assert "item_2" in checkpoint
+    assert len(loaded_results) == 2
+    assert loaded_meta["last_processed_chunk"] == 3
+    assert loaded_meta["total_chunks"] == 10
+    assert completed_chunks == {1, 2, 3}
+
+
+def test_convert_checkpoint_to_jsonl(tmp_path: Path):
+    json_path = tmp_path / "checkpoint.json"
+    clean_results = [
+        {"listing_id": "conv_1", "report": {"amenity_overall_score": 0.70}},
+    ]
+    metadata = {"last_processed_chunk": 1, "total_chunks": 1}
+    save_checkpoint(json_path, clean_results, metadata=metadata)
+
+    jsonl_path = convert_checkpoint_to_jsonl(json_path)
+    assert jsonl_path.exists()
+    assert jsonl_path.suffix == ".jsonl"
+
+    checkpoint, loaded_results, loaded_meta, _ = load_checkpoint(jsonl_path)
+    assert len(checkpoint) == 1
+    assert "conv_1" in checkpoint
+    assert loaded_meta["last_processed_chunk"] == 1
 
 
 def test_process_chunk_result_verification():

@@ -31,7 +31,7 @@ export interface ChatMessage {
   followUpQuestions?: string[];
   hitlProposal?: HitlProposal | null;
   selectedHitlAction?: string;
-  groundingReport?: Record<string, any> | null;
+  groundingReport?: Record<string, unknown> | null;
   traceEvents?: AgentTraceEvent[];
   isStreaming?: boolean;
   statusText?: string;

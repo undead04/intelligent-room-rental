@@ -14,11 +14,6 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-# Tự động thêm thư mục gốc dự án vào sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
 from crawler.config import settings
 from crawler.utils.http import fetch_with_retry, fetch_with_status
 from crawler.utils.parser import parse_chotot_item
@@ -145,36 +140,11 @@ class NhaTotSpider(BaseSpider):
             last_checked = data.get("last_checked_at") or data.get("crawled_at") or "1970-01-01"
             is_active = data.get("is_active", True)
             indexed.append({
-                "storage": "sqlite",
-                "file_path": None,
                 "list_id": list_id,
                 "last_checked": str(last_checked),
                 "is_active": bool(is_active),
                 "data": data,
             })
-
-        # 2. Fallback: Quét thêm file JSON legacy nếu staging.db trống
-        if not indexed and os.path.exists(self.raw_dir):
-            for fname in os.listdir(self.raw_dir):
-                if fname.startswith("nhatot_") and fname.endswith(".json"):
-                    fp = os.path.join(self.raw_dir, fname)
-                    try:
-                        with open(fp, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        last_checked = data.get("last_checked_at") or data.get("crawled_at") or "1970-01-01"
-                        is_active = data.get("is_active", True)
-                        list_id = str(data.get("list_id") or data.get("ad_id") or "").replace(f"{self.name}_", "")
-                        if list_id:
-                            indexed.append({
-                                "storage": "json",
-                                "file_path": fp,
-                                "list_id": list_id,
-                                "last_checked": str(last_checked),
-                                "is_active": bool(is_active),
-                                "data": data,
-                            })
-                    except Exception:
-                        continue
 
         if not indexed:
             self.log("Không có dữ liệu tin đăng nào trong staging.db hoặc thư mục raw để kiểm tra.")
@@ -188,7 +158,6 @@ class NhaTotSpider(BaseSpider):
 
         for idx, item_info in enumerate(target_list, 1):
             list_id = item_info["list_id"]
-            fp = item_info["file_path"]
             item_data = item_info["data"]
 
             detail_url = f"https://gateway.chotot.com/v1/public/ad-listing/{list_id}"
@@ -211,8 +180,6 @@ class NhaTotSpider(BaseSpider):
                     item_data["is_active"] = True
                     item_data["status"] = "active"
                     stats["active"] += 1
-                    if ad.get("phone") and not item_data.get("phone"):
-                        item_data["phone"] = ad.get("phone")
                     self.log(f"[{idx}/{len(target_list)}] Tin {list_id}: CÒN HOẠT ĐỘNG (Active)")
                 else:
                     item_data["is_active"] = False
@@ -225,11 +192,7 @@ class NhaTotSpider(BaseSpider):
 
             # Lưu lại bản ghi đã cập nhật trạng thái vào SQLite hoặc file JSON
             try:
-                if item_info["storage"] == "sqlite":
-                    self.staging_db.save_listing(item_data, source=self.name)
-                elif fp:
-                    with open(fp, "w", encoding="utf-8") as f:
-                        json.dump(item_data, f, ensure_ascii=False, indent=2)
+                self.staging_db.save_listing(item_data, source=self.name)
             except Exception as e:
                 self.log(f"Lỗi lưu trạng thái tin {list_id}: {e}")
 

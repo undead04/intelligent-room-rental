@@ -11,8 +11,6 @@ export function useHomeListings() {
   const [apiError, setApiError] = useState<string | null>(null);
 
   const fetchListings = useCallback(() => {
-    setIsLoading(true);
-    setApiError(null);
     listingsApi
       .list({ limit: HOME_LISTING_LIMIT })
       .then((apiListings) => {
@@ -30,9 +28,15 @@ export function useHomeListings() {
       .finally(() => setIsLoading(false));
   }, []);
 
+  const reload = useCallback(() => {
+    setIsLoading(true);
+    setApiError(null);
+    fetchListings();
+  }, [fetchListings]);
+
   useEffect(() => {
     fetchListings();
   }, [fetchListings]);
 
-  return { listings, isLoading, apiError, reload: fetchListings };
+  return { listings, isLoading, apiError, reload };
 }

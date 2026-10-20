@@ -1,14 +1,7 @@
-import os
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
 from crawler.model.llm.client import GeminiRoundRobin, call_gemini_chunk
-from crawler.schema.listing import ChunkExtractionWrapper
+from crawler.schema.listing import ChunkExtractionWrapper, extract_listing_full_text
 
 
 
@@ -18,6 +11,7 @@ def process_chunk_result(
     checkpoint: Dict[str, Dict[str, Any]],
     clean_results: List[Dict[str, Any]],
     chunk_label: str,
+    failed_chunks: Optional[List[List[Dict[str, Any]]]] = None,
 ) -> Set[str]:
     """
     Xử lý kết quả trả về từ Gemini:
@@ -27,13 +21,18 @@ def process_chunk_result(
     - Cập nhật checkpoint & clean_results
     """
     expected_ids = {str(a.get("listing_id") or a.get("id")) for a in chunk}
-    text_map = {str(a.get("listing_id") or a.get("id")): (a.get("text") or a.get("description", "")) for a in chunk}
+    text_map = {str(a.get("listing_id") or a.get("id")): extract_listing_full_text(a) for a in chunk}
 
     returned_ids: Set[str] = set()
     newly_extracted_ids: Set[str] = set()
 
     for item in parsed.reports:
         art_id = str(item.id)
+        if art_id not in expected_ids:
+            for eid in expected_ids:
+                if eid.endswith(f"_{art_id}") or eid == art_id:
+                    art_id = eid
+                    break
         returned_ids.add(art_id)
 
         if art_id in checkpoint:
@@ -63,6 +62,14 @@ def process_chunk_result(
     missing_ids = expected_ids - returned_ids
     if missing_ids:
         print(f"  [CANH BAO] [{chunk_label}] LLM bỏ sót các ID: {missing_ids}")
+        if failed_chunks is not None:
+            missing_items = [
+                a for a in chunk
+                if str(a.get("listing_id") or a.get("id")) in missing_ids
+            ]
+            if missing_items:
+                failed_chunks.append(missing_items)
+                print(f"  --> [RETRY QUEUE] Đã đưa {len(missing_items)} bài bị bỏ sót vào danh sách retry cuối lượt.")
 
     print(
         f"  [OK] [{chunk_label}] Trích xuất {len(newly_extracted_ids)}/{len(chunk)} bài mới | "
@@ -114,5 +121,6 @@ def process_one_chunk(
         checkpoint=checkpoint,
         clean_results=clean_results,
         chunk_label=chunk_label,
+        failed_chunks=failed_chunks,
     )
     return True

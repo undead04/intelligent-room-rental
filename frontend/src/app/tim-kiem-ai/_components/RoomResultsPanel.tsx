@@ -91,7 +91,6 @@ export default function RoomResultsPanel({
     }
   }, [rooms, activeFilter]);
 
-  const hasSpecificFilter = activeFilter !== "default";
   const filterMatched =
     activeFilter === "has_ac"
       ? rooms.some((r) => r.tags.some((t) => /máy lạnh|điều hòa/i.test(t)) || /máy lạnh|điều hòa/i.test(r.title))

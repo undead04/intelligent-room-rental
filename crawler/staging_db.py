@@ -13,9 +13,9 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "data", "raw", "staging.db")
-)
+from crawler.config.paths import STAGING_DB_PATH_STR
+
+DEFAULT_DB_PATH = STAGING_DB_PATH_STR
 
 
 class StagingDatabase:
@@ -70,9 +70,10 @@ class StagingDatabase:
         Nếu listing_id đã tồn tại, sẽ ghi đè bản mới nhất và đặt lại is_processed = 0.
         """
         src = source or str(item.get("source") or "nhatot").lower()
+        sub_id = item.get("list_id") or item.get("ad_id") or item.get("id")
         listing_id = str(
             item.get("listing_id")
-            or f"{src}_{item.get('list_id') or item.get('ad_id')}"
+            or (f"{src}_{sub_id}" if sub_id else "")
         )
         payload_str = json.dumps(item, ensure_ascii=False)
 
@@ -101,9 +102,10 @@ class StagingDatabase:
         rows = []
         for item in items:
             src = source or str(item.get("source") or "nhatot").lower()
+            sub_id = item.get("list_id") or item.get("ad_id") or item.get("id")
             listing_id = str(
                 item.get("listing_id")
-                or f"{src}_{item.get('list_id') or item.get('ad_id')}"
+                or (f"{src}_{sub_id}" if sub_id else "")
             )
             payload_str = json.dumps(item, ensure_ascii=False)
             rows.append((listing_id, src, payload_str))

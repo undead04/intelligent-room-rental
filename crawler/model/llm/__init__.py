@@ -1,7 +1,7 @@
 """Package crawler.model.llm
 Chuyên trách toàn bộ logic gọi LLM (Gemini), dynamic chunking, checkpointing và bóc tách thông tin tin đăng.
 """
-from crawler.model.llm.checkpoint import load_checkpoint, save_checkpoint
+from crawler.model.llm.checkpoint import load_checkpoint, save_checkpoint, convert_checkpoint_to_jsonl
 from crawler.model.llm.chunker import create_dynamic_chunks
 from crawler.model.llm.client import (
     DEFAULT_MAX_RETRIES,
@@ -25,6 +25,7 @@ __all__ = [
     "is_quota_error",
     "load_checkpoint",
     "save_checkpoint",
+    "convert_checkpoint_to_jsonl",
     "create_dynamic_chunks",
     "process_chunk_result",
     "process_one_chunk",

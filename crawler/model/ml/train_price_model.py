@@ -13,7 +13,6 @@ Kiến trúc mô hình:
 
 from __future__ import annotations
 import json
-import os
 import sys
 import time
 import warnings
@@ -30,24 +29,15 @@ from sklearn.model_selection import KFold, train_test_split
 import xgboost as xgb
 
 ML_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = ML_DIR.parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from crawler.model.ml.feature_extractor import load_and_preprocess_dataset
 from crawler.model.ml.models import (
-    DROP_COLS,
-    FINAL_PREDICT,
-    MAX_PRICE,
-    PPM_RANGE,
     InputGuard,
     MondrianPriceInterval,
-    PriceInterval,
     SpatialTE,
     attach,
     blend_predict,
     make_base_features,
-    predict_log,
 )
 
 # Tắt log cảnh báo thừa
@@ -335,4 +325,10 @@ def main():
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
     main()

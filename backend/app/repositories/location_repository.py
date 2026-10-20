@@ -36,4 +36,4 @@ class LocationRepository:
         query = self.db.query(RoomType)
         if search:
             query = query.filter(RoomType.name.ilike(f"%{search}%"))
-        return query.order_by(RoomType.name).all()
+        return query.order_by(RoomType.id).all()

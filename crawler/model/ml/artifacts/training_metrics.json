@@ -1,5 +1,5 @@
 {
-  "dataset_size": 9384,
+  "dataset_size": 1249,
   "features": [
     "area_m2",
     "lat",
@@ -20,9 +20,9 @@
     "is_guard",
     "is_safe_area"
   ],
-  "mae_vnd": 770512.72,
-  "rmse_vnd": 1079077.49,
-  "r2_score": 0.484,
-  "conformal_coverage": 0.7812,
-  "trained_at": "2026-10-15 23:23:49"
+  "mae_vnd": 950440.28,
+  "rmse_vnd": 1292866.84,
+  "r2_score": 0.3111,
+  "conformal_coverage": 0.7447,
+  "trained_at": "2026-10-19 22:28:29"
 }

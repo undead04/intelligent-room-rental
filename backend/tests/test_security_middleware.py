@@ -1,14 +1,17 @@
 """Unit tests cho Security Middlewares của FastAPI Backend:
 - SQLInjectionMiddleware
 - RateLimitMiddleware
+- RequestLoggingMiddleware
 """
 
-import pytest
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
-from app.core.security_middleware import RateLimitMiddleware, SQLInjectionMiddleware
+from app.middleware import (
+    RateLimitMiddleware,
+    RequestLoggingMiddleware,
+    SQLInjectionMiddleware,
+)
 
 
 def create_test_app(requests_per_minute: int = 5):
@@ -20,6 +23,7 @@ def create_test_app(requests_per_minute: int = 5):
         enabled=True,
         whitelist_paths={"/whitelist"},
     )
+    test_app.add_middleware(RequestLoggingMiddleware)
 
     @test_app.get("/items")
     def get_items(search: str = ""):
@@ -47,6 +51,7 @@ def test_sql_injection_middleware_blocks_malicious_query():
         assert resp.status_code == 403
         data = resp.json()
         assert data["code"] == "SQL_INJECTION_DETECTED"
+        assert "X-Request-ID" in resp.headers
 
 
 def test_sql_injection_middleware_allows_normal_query():
@@ -56,6 +61,7 @@ def test_sql_injection_middleware_allows_normal_query():
     resp = client.get("/items?search=phong tro linh xuan gia re")
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
+    assert "X-Request-ID" in resp.headers
 
 
 def test_rate_limit_middleware_enforces_limit():
@@ -67,12 +73,14 @@ def test_rate_limit_middleware_enforces_limit():
         resp = client.get("/items")
         assert resp.status_code == 200
         assert "X-RateLimit-Remaining" in resp.headers
+        assert "X-Request-ID" in resp.headers
 
     # Request thứ 4 phải bị chặn với mã 429
     blocked_resp = client.get("/items")
     assert blocked_resp.status_code == 429
     assert blocked_resp.json()["code"] == "RATE_LIMIT_EXCEEDED"
     assert "Retry-After" in blocked_resp.headers
+    assert "X-Request-ID" in blocked_resp.headers
 
 
 def test_rate_limit_whitelist_bypasses_limiter():
@@ -83,3 +91,4 @@ def test_rate_limit_whitelist_bypasses_limiter():
     for _ in range(5):
         resp = client.get("/whitelist")
         assert resp.status_code == 200
+        assert "X-Request-ID" in resp.headers

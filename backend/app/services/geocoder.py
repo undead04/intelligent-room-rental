@@ -1,9 +1,8 @@
 import re
-import json
 import unicodedata
+from typing import Optional
 import requests
 from app.schemas.geocode import GeocodeResponse
-from typing import Optional
 
 # Bounding box Việt Nam: minLon, minLat, maxLon, maxLat
 VN_BBOX = "102.1,8.1,109.6,23.4"

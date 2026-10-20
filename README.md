@@ -63,15 +63,18 @@
 │   │   ├── repositories/          # Tầng truy vấn DB (Hybrid Search 70% Dense + 30% FTS)
 │   │   ├── schemas/               # Pydantic Request/Response DTOs
 │   │   ├── services/              # Nghiệp vụ (ListingService, Geocoder, Embedding)
-│   │   └── utils/                 # Rerank đa tiêu chí 5 trọng số (utils.py)
+│   │   │   └── reranker.py        # MCDM Dynamic Reranking Engine (5-factor rerank, explain_match)
+│   │   └── utils/                 # Tiện ích tương thích ngược (utils.py)
 │   ├── scripts/                   # Script khởi tạo schema DB (init_db.py)
-│   ├── tests/                     # Unit tests bảo mật & Rerank (conftest.py, test_*.py)
+│   ├── tests/                     # Unit tests bảo mật & Rerank (14 tests passed)
 │   ├── run.py                     # Script khởi chạy backend
 │   └── requirements.txt           # Thư viện phụ thuộc backend
 │
 ├── frontend/                      # [Service 2] Giao diện Web (Next.js 15 App Router + React 19)
 │   ├── src/
 │   │   ├── app/                   # App Router Pages (/tim-kiem-ai, /phong-tro/[id], ...)
+│   │   │   └── tim-kiem-ai/
+│   │   │       └── _components/   # Modular components (RoomMapPanel, roomMapUtils.ts...)
 │   │   ├── components/            # UI Components (Cards, ChatBox, Map, Navbar)
 │   │   ├── hooks/                 # React Hooks (useAiChat.ts, useLocations.ts)
 │   │   └── lib/                   # API Client, hằng số, tiện ích lọc
@@ -82,33 +85,35 @@
 │   │   ├── housing_tools.py       # Tools (search_rooms, geocode, detail, skills)
 │   │   └── registry.py            # Phân vùng công cụ (RETRIEVAL, DETAIL, ADVISORY)
 │   ├── skills/                    # Kỹ năng chuyên sâu (rental-contract-advisor)
-│   ├── graph.py                   # Máy trạng thái LangGraph 7 node với Tool Partitioning
+│   ├── graph.py                   # Máy trạng thái LangGraph 8 node với Corrective Self-RAG
 │   ├── skills_discovery.py        # Engine khám phá kỹ năng động qua YAML triggers
 │   ├── intent_weights.py          # Engine nhận diện Intent Multipliers & L1 Dynamic Weights
 │   ├── memory.py                  # Bộ nhớ phiên & Tích lũy tiêu chí người dùng
 │   ├── guardrails.py              # Lớp bảo vệ Prompt Injection & Off-topic
 │   ├── grounding.py               # Tự kiểm chứng trung thực RAG Grounding & Retry Loop
-│   ├── service.py                 # FastAPI microservice (Port 8001) phục vụ Frontend
+│   ├── service.py                 # FastAPI microservice (Port 8001) phục vụ Frontend (React Agent & LangGraph)
 │   ├── app.py                     # Streamlit Observability & Debug Console (Port 8501)
 │   ├── observer.py                # Middleware chụp snapshot Context Window & Tool calls
 │   ├── trace.py                   # Ghi log sự kiện ra file JSONL
 │   ├── schemas.py                 # Schemas chuẩn (RoomItem, DecisionInsight, AgentResponse)
 │   ├── eval/                      # Bộ 30 benchmark test cases & RAG Triad Grounding
-│   └── tests/                     # 20 unit tests AI Agent (100% Passed)
+│   └── tests/                     # 30 unit tests AI Agent (100% Passed)
 │
 ├── crawler/                       # [Service 4] Thu thập & ETL Dữ Liệu Phòng Trọ
-│   ├── spiders/                   # Spiders cào dữ liệu & verify trạng thái (Nhà Tốt)
+│   ├── spiders/                   # Spiders cào dữ liệu & verify trạng thái (Nhà Tốt, PhongTro123)
 │   ├── staging_db.py              # SQLite Staging DB (Kiến trúc Two-Tier Storage)
 │   ├── model/
 │   │   ├── llm/                   # Gemini Dynamic Chunking & Metadata Extraction
 │   │   └── ml/                    # CatBoost + Ridge Blend & Conformal Prediction định giá
 │   ├── data/                      # Lưu raw SQLite DB và processed (listings_clean.parquet)
 │   ├── etl/                       # Pipeline ETL (Extract -> Transform -> Embed -> Load DB)
-│   └── tests/                     # 22 unit tests Crawler & ETL (100% Passed)
+│   ├── schema/                    # Danh mục chuẩn (enums.py) & Shim tương thích (enum.py)
+│   └── tests/                     # 25 unit tests Crawler & ETL (100% Passed)
 │
 ├── models_cache/                  # Cache offline cục bộ cho SentenceTransformer (BAAI/bge-m3)
 ├── AGENT.md                       # Tài liệu kỹ thuật chi tiết dành cho AI Agents
 ├── run_backend.bat                # Phím tắt 1-click khởi chạy Backend trên Windows
+├── run_crawler.bat                # Menu tương tác 1-click chạy Crawler & ETL trên Windows
 └── README.md                      # Tài liệu tổng quan toàn bộ dự án (File này)
 ```
 
@@ -329,17 +334,23 @@ cd ai-agent; .\.venv\Scripts\streamlit.exe run app.py; cd ..
 
 ### 6.1 Chạy Toàn Bộ Unit Tests
 
-* **Kiểm thử AI Agent (13 tests):**
+* **Kiểm thử AI Agent (30 tests):**
   ```powershell
-  ai-agent\.venv\Scripts\pytest.exe ai-agent/tests/test_housing_agent.py -v
+  ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -v
   ```
-  *Bao phủ: Tools, Schemas, Guardrails, Memory State, Intent Weights, Multi-turn Accumulation, LangGraph Workflow.*
+  *Bao phủ: Tools, Schemas, Guardrails, Memory State, Intent Weights, Multi-turn Accumulation, LangGraph 8-node State Machine, Health API, Guardrail Blocking, Stream SSE và Service Routing.*
 
-* **Kiểm thử Backend Security (4 tests):**
+* **Kiểm thử Backend & Crawler (39 tests):**
   ```powershell
-  .venv\Scripts\pytest.exe backend/tests/test_security_middleware.py -v
+  .venv\Scripts\pytest.exe backend/tests crawler/tests -v
   ```
-  *Bao phủ: SQL Injection Blocking, Rate Limiting, Whitelist Bypass.*
+  *Bao phủ: Embedding Prefix & Models, 5-Factor MCDM Dynamic Reranking, Vietnamese Diacritic Amenities, SQL Injection Defense, Rate Limiter Middleware, Staging DB, Parquet Transformer, E5 Embedder Batch, và LLM Signal Validator.*
+
+* **Kiểm thử Frontend Static Analysis:**
+  ```powershell
+  cd frontend; npm run lint; npx tsc --noEmit; cd ..
+  ```
+  *Bao phủ: TypeScript strict typechecking (0 errors) và Next.js ESLint (0 errors, 0 warnings).*
 
 ### 6.2 Đánh Giá Độc Lập RAG Triad Grounding
 Chạy script đo lường chất lượng sinh nội dung dựa trên bộ ba tiêu chuẩn RAG:

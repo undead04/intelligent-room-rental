@@ -13,19 +13,17 @@ cho mô hình định giá phòng trọ ML.
 
 from __future__ import annotations
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-import numpy as np
+from typing import Any, Tuple
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_PARQUET_PATH = PROJECT_ROOT / "crawler" / "data" / "processed" / "listings_clean.parquet"
+from crawler.config.paths import PROCESSED_DATA_DIR, PROCESSED_PARQUET_PATH
+
+DEFAULT_PARQUET_PATH = PROCESSED_PARQUET_PATH
 DEFAULT_DATA_PATH = (
     DEFAULT_PARQUET_PATH
     if DEFAULT_PARQUET_PATH.exists()
-    else PROJECT_ROOT / "crawler" / "data" / "processed" / "listings_clean.json"
+    else PROCESSED_DATA_DIR / "listings_clean.json"
 )
 
 # Danh sách tiện ích / quy định / an ninh chuẩn hóa theo Schema mới (KHÔNG có water_heater, wifi)
@@ -67,23 +65,27 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
     }
 
     # Đọc từ concept_scores hoặc lồng trong report (hỗ trợ cả dict lẫn JSON string từ Parquet)
-    concept = r.get("concept_scores") or {}
+    concept = r.get("concept_scores")
     if isinstance(concept, str) and concept.strip().startswith("{"):
         try:
             concept = json.loads(concept)
         except Exception:
             concept = {}
+    if not isinstance(concept, dict):
+        concept = {}
 
-    report = r.get("report") or {}
+    report = r.get("report")
     if isinstance(report, str) and report.strip().startswith("{"):
         try:
             report = json.loads(report)
         except Exception:
             report = {}
+    if not isinstance(report, dict):
+        report = {}
 
-    rep_amenities = report.get("amenities") or {}
-    rep_rules = report.get("rules") or {}
-    rep_safety = report.get("safety") or {}
+    rep_amenities = report.get("amenities") if isinstance(report.get("amenities"), dict) else {}
+    rep_rules = report.get("rules") if isinstance(report.get("rules"), dict) else {}
+    rep_safety = report.get("safety") if isinstance(report.get("safety"), dict) else {}
 
     for k in ALL_BINARY_KEYS:
         val = 0

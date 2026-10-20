@@ -1,0 +1,15 @@
+# Environment and secret files
+.env
+*.env
+.env.*
+*.env.*
+crawler/.env
+crawler/**/.env
+
+# Keys and credentials
+*.pem
+*.key
+*.pfx
+*.pkcs12
+id_rsa*
+secrets/

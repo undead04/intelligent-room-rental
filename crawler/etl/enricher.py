@@ -1,39 +1,17 @@
-from typing import Any, Dict, List, Optional, Union
-from crawler.schema.enum import RoomType
+from typing import List, Optional, Union
+from crawler.schema.enums import (
+    AmenityCode,
+    RoomType,
+    ROOM_TYPE_LABELS,
+    AMENITY_VIETNAMESE_MAP,
+    SAFETY_VIETNAMESE_MAP,
+    RULES_VIETNAMESE_MAP,
+)
 from crawler.schema.listing import ExtractedRoomData, ListingExtraction
-
-# Bản đồ chuyển đổi mã tiện ích sang tiếng Việt chuẩn hóa cho mô hình Embedding
-AMENITY_VIETNAMESE_MAP = {
-    "private_wc": "WC riêng",
-    "aircon": "máy lạnh",
-    "mezzanine": "gác lửng",
-    "kitchen": "kệ bếp",
-    "fridge": "tủ lạnh",
-    "washing_machine": "máy giặt",
-    "window_balcony": "cửa sổ/ban công",
-    "furniture": "nội thất",
-    "parking": "chỗ để xe",
-    "elevator": "thang máy",
-}
-
-SAFETY_VIETNAMESE_MAP = {
-    "fingerprint_lock": "khóa vân tay/thẻ từ",
-    "camera": "camera an ninh",
-    "guard": "bảo vệ 24/7",
-    "safe_area": "khu an ninh",
-}
-
-ROOM_TYPE_LABELS = {
-    "ROOM": "Phòng trọ",
-    "STUDIO": "Căn hộ mini / Studio",
-    "APARTMENT": "Căn hộ chung cư",
-    "SLEEPBOX": "Ký túc xá / Sleepbox",
-    "WHOLE_HOUSE": "Nhà nguyên căn",
-}
 
 
 def build_enriched_embedding_text(
-    data: Union[ExtractedRoomData, Any],
+    data: ExtractedRoomData,
     clean_desc: str = "",
     prefix: str = "",
 ) -> str:
@@ -47,20 +25,20 @@ def build_enriched_embedding_text(
     4. Môi trường & Quy định (lối sống, nuôi thú cưng)
     5. Mô tả thực tế đã dọn dẹp sạch sẽ
     """
-    blocks = []
+    blocks: list[str] = []
 
-    def _dedup(items: list[Any]) -> list[str]:
-        seen = set()
-        res = []
+    def _dedup(items: list[str]) -> list[str]:
+        seen: set[str] = set()
+        res: list[str] = []
         for x in items:
-            s = str(getattr(x, "value", x) if x is not None else "").strip()
+            s = str(x if x is not None else "").strip()
             if s and s.lower() not in seen:
                 seen.add(s.lower())
                 res.append(s)
         return res
 
     # 1. Địa điểm & Tiện ích ngoại khu
-    loc_tokens = [
+    loc_tokens: list[str] = [
         t for t in [
             getattr(data, "street", None),
             getattr(data, "ward", None),
@@ -76,11 +54,29 @@ def build_enriched_embedding_text(
     blocks.append(f"Vị trí: {loc_str}")
 
     # 2. Đặc điểm & Giá
-    specs = []
+    specs: list[str] = []
     raw_rt = getattr(data, "room_type", RoomType.ROOM)
     rt_val = raw_rt.value if hasattr(raw_rt, "value") else str(raw_rt)
     rt_label = ROOM_TYPE_LABELS.get(rt_val, rt_val)
     specs.append(f"Loại phòng: {rt_label}")
+
+    bedrooms = getattr(data, "bedrooms", None)
+    if bedrooms is not None:
+        try:
+            b_int = int(bedrooms)
+            if b_int > 0:
+                specs.append(f"{b_int} phòng ngủ")
+        except (ValueError, TypeError):
+            pass
+
+    bathrooms = getattr(data, "bathrooms", None)
+    if bathrooms is not None:
+        try:
+            bt_int = int(bathrooms)
+            if bt_int > 0:
+                specs.append(f"{bt_int} phòng tắm")
+        except (ValueError, TypeError):
+            pass
 
     area = getattr(data, "area", None)
     if area:
@@ -94,7 +90,7 @@ def build_enriched_embedding_text(
     # 3. Tiện ích nội khu (gộp cả chuẩn hóa lẫn mô tả phụ)
     std_amenities = getattr(data, "standard_amenities", []) or []
     extra_amenities = getattr(data, "extra_amenities", []) or []
-    amenity_labels = _dedup(std_amenities + list(extra_amenities))
+    amenity_labels = _dedup(list(std_amenities) + list(extra_amenities))
     if amenity_labels:
         amen_str = ", ".join(amenity_labels)
         blocks.append(f"Tiện ích: {amen_str}")
@@ -121,9 +117,18 @@ def build_enriched_embedding_text(
     return body
 
 
+def _parse_opt_int(val: Optional[Union[str, int, float]]) -> Optional[int]:
+    if val is None:
+        return None
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return None
+
+
 def extract_room_data_from_record(
-    record: dict,
-    report: Optional[Union[ListingExtraction, dict]] = None,
+    record: dict[str, object],
+    report: Optional[Union[ListingExtraction, dict[str, object]]] = None,
 ) -> ExtractedRoomData:
     """Chuyển đổi bản ghi cào thô và báo cáo LLM sang ExtractedRoomData."""
     street = record.get("street_name") or record.get("street") or record.get("address_raw")
@@ -134,6 +139,18 @@ def extract_room_data_from_record(
     price = record.get("price_vnd")
     room_type = record.get("room_type") or RoomType.ROOM
 
+    # Trích xuất số phòng ngủ, phòng tắm từ record thô nếu có
+    bedrooms = _parse_opt_int(
+        record.get("num_bedrooms")  # type: ignore[arg-type]
+        or record.get("bedrooms")   # type: ignore[arg-type]
+        or record.get("total_bedroom")  # type: ignore[arg-type]
+    )
+    bathrooms = _parse_opt_int(
+        record.get("num_bathrooms")  # type: ignore[arg-type]
+        or record.get("bathrooms")   # type: ignore[arg-type]
+        or record.get("total_bathroom")  # type: ignore[arg-type]
+    )
+
     landmarks_nearby: List[str] = []
     extra_amenities: List[str] = []
     rules_and_lifestyle: List[str] = []
@@ -141,7 +158,7 @@ def extract_room_data_from_record(
     is_pet_allowed: Optional[bool] = None
 
     if report:
-        rep_obj = None
+        rep_obj: Optional[ListingExtraction] = None
         if isinstance(report, dict):
             try:
                 rep_obj = ListingExtraction.model_validate(report)
@@ -154,7 +171,14 @@ def extract_room_data_from_record(
             room_type = rep_obj.room_type
             landmarks_nearby = list(rep_obj.landmarks_nearby or [])
             extra_amenities = list(rep_obj.extra_amenities or [])
-            rules_and_lifestyle = list(rep_obj.rules_and_lifestyle or [])
+            rules_and_lifestyle = list(getattr(rep_obj, "rules_and_lifestyle", None) or [])
+
+            # Số phòng ngủ & phòng tắm từ trích xuất LLM
+            if getattr(rep_obj, "numeric", None):
+                if rep_obj.numeric.bedrooms is not None:
+                    bedrooms = rep_obj.numeric.bedrooms
+                if rep_obj.numeric.bathrooms is not None:
+                    bathrooms = rep_obj.numeric.bathrooms
 
             # Tiện ích phòng
             for k, label in AMENITY_VIETNAMESE_MAP.items():
@@ -168,60 +192,81 @@ def extract_room_data_from_record(
                 if sig and getattr(sig, "value", None) == "yes" and label not in standard_amenities:
                     standard_amenities.append(label)
 
-            # Quy định & Thú cưng
-            if rep_obj.rules.pet_allowed.value == "yes":
-                is_pet_allowed = True
-            elif rep_obj.rules.pet_allowed.value == "no":
-                is_pet_allowed = False
+            # Quy định & Lối sống (sử dụng RULES_VIETNAMESE_MAP tập trung)
+            for rule_key, rule_label in RULES_VIETNAMESE_MAP.items():
+                sig = getattr(rep_obj.rules, rule_key, None)
+                if not sig:
+                    continue
+                val = getattr(sig, "value", None)
+                if rule_key == AmenityCode.PET_ALLOWED.value:
+                    if val == "yes":
+                        is_pet_allowed = True
+                    elif val == "no":
+                        is_pet_allowed = False
+                elif val == "yes" and rule_label not in rules_and_lifestyle:
+                    rules_and_lifestyle.append(rule_label)
 
-            if rep_obj.rules.free_hours.value == "yes" and "giờ giấc tự do" not in rules_and_lifestyle:
-                rules_and_lifestyle.append("giờ giấc tự do")
-            if rep_obj.rules.no_shared_landlord.value == "yes" and "không chung chủ" not in rules_and_lifestyle:
-                rules_and_lifestyle.append("không chung chủ")
         elif isinstance(report, dict):
             # Fallback khi report là dict thô
             if "landmarks_nearby" in report:
-                landmarks_nearby = list(report["landmarks_nearby"] or [])
+                landmarks_nearby = list(report["landmarks_nearby"] or [])  # type: ignore[arg-type]
             if "extra_amenities" in report:
-                extra_amenities = list(report["extra_amenities"] or [])
+                extra_amenities = list(report["extra_amenities"] or [])  # type: ignore[arg-type]
             if "rules_and_lifestyle" in report:
-                rules_and_lifestyle = list(report["rules_and_lifestyle"] or [])
+                rules_and_lifestyle = list(report["rules_and_lifestyle"] or [])  # type: ignore[arg-type]
             if "room_type" in report:
-                room_type = report["room_type"]
+                room_type = report["room_type"]  # type: ignore[assignment]
+
+            numeric_dict = report.get("numeric") or {}
+            if isinstance(numeric_dict, dict):
+                if numeric_dict.get("bedrooms") is not None:
+                    bedrooms = _parse_opt_int(numeric_dict.get("bedrooms"))  # type: ignore[arg-type]
+                if numeric_dict.get("bathrooms") is not None:
+                    bathrooms = _parse_opt_int(numeric_dict.get("bathrooms"))  # type: ignore[arg-type]
 
             amenities_dict = report.get("amenities") or {}
-            for k, label in AMENITY_VIETNAMESE_MAP.items():
-                val = amenities_dict.get(k, {})
-                v_str = val.get("value") if isinstance(val, dict) else val
-                if v_str == "yes" and label not in standard_amenities:
-                    standard_amenities.append(label)
+            if isinstance(amenities_dict, dict):
+                for k, label in AMENITY_VIETNAMESE_MAP.items():
+                    val = amenities_dict.get(k, {})
+                    v_str = val.get("value") if isinstance(val, dict) else val
+                    if v_str == "yes" and label not in standard_amenities:
+                        standard_amenities.append(label)
 
             safety_dict = report.get("safety") or {}
-            for k, label in SAFETY_VIETNAMESE_MAP.items():
-                val = safety_dict.get(k, {})
-                v_str = val.get("value") if isinstance(val, dict) else val
-                if v_str == "yes" and label not in standard_amenities:
-                    standard_amenities.append(label)
+            if isinstance(safety_dict, dict):
+                for k, label in SAFETY_VIETNAMESE_MAP.items():
+                    val = safety_dict.get(k, {})
+                    v_str = val.get("value") if isinstance(val, dict) else val
+                    if v_str == "yes" and label not in standard_amenities:
+                        standard_amenities.append(label)
 
             rules_dict = report.get("rules") or {}
-            pet_sig = rules_dict.get("pet_allowed", {})
-            pet_val = pet_sig.get("value") if isinstance(pet_sig, dict) else pet_sig
-            if pet_val == "yes":
-                is_pet_allowed = True
-            elif pet_val == "no":
-                is_pet_allowed = False
+            if isinstance(rules_dict, dict):
+                for rule_key, rule_label in RULES_VIETNAMESE_MAP.items():
+                    r_val = rules_dict.get(rule_key, {})
+                    v_str = r_val.get("value") if isinstance(r_val, dict) else r_val
+                    if rule_key == AmenityCode.PET_ALLOWED.value:
+                        if v_str == "yes":
+                            is_pet_allowed = True
+                        elif v_str == "no":
+                            is_pet_allowed = False
+                    elif v_str == "yes" and rule_label not in rules_and_lifestyle:
+                        rules_and_lifestyle.append(rule_label)
 
     return ExtractedRoomData(
-        street=street,
-        ward=ward,
-        district=district,
-        city=city,
+        street=str(street) if street is not None else None,
+        ward=str(ward) if ward is not None else None,
+        district=str(district) if district is not None else None,
+        city=str(city) if city is not None else None,
         landmarks_nearby=landmarks_nearby,
         room_type=room_type,
-        area=float(area) if area else None,
-        price=float(price) if price else None,
+        area=float(area) if area else None,  # type: ignore[arg-type]
+        price=float(price) if price else None,  # type: ignore[arg-type]
         standard_amenities=standard_amenities,
         extra_amenities=extra_amenities,
         rules_and_lifestyle=rules_and_lifestyle,
         is_pet_allowed=is_pet_allowed,
+        bedrooms=bedrooms,
+        bathrooms=bathrooms,
     )
+

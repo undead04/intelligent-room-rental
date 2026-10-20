@@ -30,6 +30,7 @@ export interface WardDto {
 export interface RoomTypeDto {
   id: number;
   name: string;
+  code?: string;
 }
 
 export interface ListingDto {

@@ -29,12 +29,14 @@ export function useAiChat() {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
-        if (parsed.rooms && parsed.rooms.length > 0) setRooms(parsed.rooms);
-        if (parsed.insights) setInsights(parsed.insights);
-        if (parsed.preferences) setPreferences(parsed.preferences);
-        if (parsed.selectedRoomId) setSelectedRoomId(parsed.selectedRoomId);
-        if (parsed.sessionId) setSessionId(parsed.sessionId);
+        queueMicrotask(() => {
+          if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
+          if (parsed.rooms && parsed.rooms.length > 0) setRooms(parsed.rooms);
+          if (parsed.insights) setInsights(parsed.insights);
+          if (parsed.preferences) setPreferences(parsed.preferences);
+          if (parsed.selectedRoomId) setSelectedRoomId(parsed.selectedRoomId);
+          if (parsed.sessionId) setSessionId(parsed.sessionId);
+        });
       }
     } catch (e) {
       console.warn("Could not restore AI chat session", e);
@@ -116,7 +118,7 @@ export function useAiChat() {
     setMessages((prev) => {
       // Nếu gửi từ một nút bấm (HITL hoặc gợi ý), đánh dấu hành động đã chọn vào tin nhắn bot gần nhất
       const updated = prev.map((m, idx) => {
-        if (customText && idx === prev.length - 1 && (m.sender === "ai" || (m as any).sender === "bot")) {
+        if (customText && idx === prev.length - 1 && m.sender === "ai") {
           return {
             ...m,
             selectedHitlAction: customText,

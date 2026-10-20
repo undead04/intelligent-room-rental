@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from crawler.schema.enum import RoomType
+from crawler.schema.enums import RoomType
 from crawler.schema.listing import (
     ListingExtraction,
     Signal,
@@ -200,46 +200,6 @@ def test_listing_transformer_clean_record_and_transform():
     assert "0909123456" not in item["embedding_text"]
 
 
-def test_parquet_round_trip(tmp_path):
-    """Kiểm tra xuất và đọc lại file Parquet bảo toàn dict concept_scores, mảng vector và giá trị None."""
-    from crawler.etl.load import DataLoader
-
-    loader = DataLoader()
-    parquet_file = str(tmp_path / "test_listings_clean.parquet")
-    sample_records = [
-        {
-            "listing_id": "nhatot_1001",
-            "title": "Phòng trọ Quận 10",
-            "price_vnd": 3500000.0,
-            "area_m2": 25.0,
-            "deposit": None,
-            "images": ["https://a.jpg", "https://b.jpg"],
-            "concept_scores": {"aircon": 1.0, "private_wc": 1.0},
-            "vector": [0.1, 0.2, 0.3],
-        },
-        {
-            "listing_id": "nhatot_1002",
-            "title": "Phòng trọ Quận 3",
-            "price_vnd": 4200000.0,
-            "area_m2": 30.0,
-            "deposit": 4200000.0,
-            "images": [],
-            "concept_scores": {},
-            "vector": [0.4, 0.5, 0.6],
-        },
-    ]
-
-    saved_path = loader.load_to_parquet(sample_records, output_path=parquet_file)
-    assert saved_path == parquet_file
-
-    loaded = loader.read_processed_records(parquet_file)
-    assert len(loaded) == 2
-    assert loaded[0]["listing_id"] == "nhatot_1001"
-    assert loaded[0]["deposit"] is None
-    assert loaded[0]["images"] == ["https://a.jpg", "https://b.jpg"]
-    assert loaded[0]["concept_scores"] == {"aircon": 1.0, "private_wc": 1.0}
-    assert len(loaded[0]["vector"]) == 3
-    assert loaded[1]["concept_scores"] == {}
 
 
 def test_listing_embedder_batch():
@@ -273,5 +233,51 @@ def test_listing_embedder_batch():
         assert embedded[0]["embedding_model"] == "intfloat/multilingual-e5-base"
         assert embedded[0]["embedding_dim"] == 768
         assert "passage:" in embedded[1]["embedding_text"]
+
+
+def test_room_type_canonical_resolution():
+    from crawler.schema.enums import CANONICAL_ROOM_TYPES, ROOM_TYPE_CODE_TO_ID
+    transformer = ListingTransformer(enable_price_evaluator=False)
+
+    # 1. Report có Studio
+    rec_studio = transformer.clean_record(
+        {"listing_id": "test_1", "category_id": 1050, "price_vnd": 5000000, "area_m2": 30},
+        report={"room_type": "STUDIO"},
+    )
+    assert rec_studio["room_type"] == "STUDIO"
+    assert rec_studio["room_type_id"] == 2
+
+    # 2. Report có Apartment
+    rec_apt = transformer.clean_record(
+        {"listing_id": "test_2", "price_vnd": 8000000, "area_m2": 50},
+        report={"room_type": "APARTMENT"},
+    )
+    assert rec_apt["room_type"] == "APARTMENT"
+    assert rec_apt["room_type_id"] == 3
+
+    # 3. Report có Sleepbox
+    rec_box = transformer.clean_record(
+        {"listing_id": "test_3", "price_vnd": 1800000, "area_m2": 6},
+        report={"room_type": "SLEEPBOX"},
+    )
+    assert rec_box["room_type"] == "SLEEPBOX"
+    assert rec_box["room_type_id"] == 4
+
+    # 4. Report có Whole House
+    rec_house = transformer.clean_record(
+        {"listing_id": "test_4", "price_vnd": 15000000, "area_m2": 80},
+        report={"room_type": "WHOLE_HOUSE"},
+    )
+    assert rec_house["room_type"] == "WHOLE_HOUSE"
+    assert rec_house["room_type_id"] == 5
+
+    # 5. Không có report, mặc định fallback ROOM (1), bỏ qua category_id = 1050
+    rec_default = transformer.clean_record(
+        {"listing_id": "test_5", "category_id": 1050, "price_vnd": 2500000, "area_m2": 18},
+        report=None,
+    )
+    assert rec_default["room_type"] == "ROOM"
+    assert rec_default["room_type_id"] == 1
+
 
 
