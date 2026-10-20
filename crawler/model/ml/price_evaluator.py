@@ -9,8 +9,12 @@ Cung cấp interface suy luận (Inference Service) dùng chung cho:
 """
 
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
+
+# Tắt UserWarning về phiên bản khi unpickle mô hình XGBoost
+warnings.filterwarnings("ignore", category=UserWarning)
 
 ML_DIR = Path(__file__).resolve().parent
 

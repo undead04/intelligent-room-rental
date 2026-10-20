@@ -183,7 +183,7 @@ class ListingRepository:
         min_area: float | None = None,
         max_area: float | None = None,
         limit: int = 50,
-        alpha: float = 0.7,
+        alpha: float = 0.6,
         model_name: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """Tìm kiếm tin đăng kết hợp Hybrid Search (Dense pgvector + Sparse PostgreSQL Full-Text Search).

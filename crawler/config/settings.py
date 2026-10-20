@@ -1,7 +1,7 @@
 import os
 import sys
 from dotenv import load_dotenv
-from crawler.config.paths import CRAWLER_ENV_PATH, ROOT_ENV_PATH
+from crawler.config.paths import CRAWLER_ENV_PATH
 
 # 1. Tự động chuẩn hóa console output UTF-8 trên Windows
 def setup_windows_encoding() -> None:
@@ -17,8 +17,6 @@ setup_windows_encoding()
 # 2. Đảm bảo đọc file .env từ thư mục crawler/ và thư mục gốc của dự án
 if CRAWLER_ENV_PATH.exists():
     load_dotenv(CRAWLER_ENV_PATH)
-if ROOT_ENV_PATH.exists():
-    load_dotenv(ROOT_ENV_PATH)
 
 
 # 3. Cấu hình cào dữ liệu Chợ Tốt (NhaTot Spider)
