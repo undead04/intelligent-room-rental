@@ -47,9 +47,11 @@ class DataLoader:
         engine, session = create_db_session(db_url)
         with engine.connect() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            conn.execute(text("ALTER TABLE room_types ADD COLUMN IF NOT EXISTS code VARCHAR(50);"))
             conn.commit()
         Base.metadata.create_all(bind=engine)
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE room_types ADD COLUMN IF NOT EXISTS code VARCHAR(50);"))
+            conn.commit()
 
         def _sync_sequence(table_name: str, id_col: str = "id"):
             try:

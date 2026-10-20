@@ -9,28 +9,24 @@ from app.schemas.user import UserResponse
 class CityReference(BaseModel):
     id: int
     name: str
-    region_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 class DistrictReference(BaseModel):
     id: int
     name: str
-    district_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 class WardReference(BaseModel):
     id: int
     name: str
-    ward_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 class RoomTypeReference(BaseModel):
     id: int
     name: Optional[str] = None
-    room_type: Optional[str] = None
     code: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 

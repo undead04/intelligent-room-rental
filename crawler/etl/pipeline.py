@@ -105,16 +105,21 @@ def run_pipeline(
 
     # 4. LOAD (Chỉ nạp trực tiếp vào PostgreSQL, không tạo file parquet hay csv)
     loader = DataLoader()
+    load_success = False
     try:
         loader.load_to_postgres(cleaned_records)
+        load_success = True
     except Exception as e:
-        print(f"[LOAD] Bỏ qua nạp PostgreSQL (lỗi kết nối hoặc DB chưa bật): {e}", flush=True)
+        print(f"[LOAD] Lỗi nạp PostgreSQL: {e}", flush=True)
 
-    # 5. MARK PROCESSED IN STAGING DB
-    processed_ids = [r.get("listing_id") for r in cleaned_records if r.get("listing_id")]
-    if processed_ids:
-        updated = staging_db.mark_as_processed(processed_ids)
-        print(f"[ETL] Đã cập nhật trạng thái is_processed = 1 cho {updated} tin trong Staging DB.", flush=True)
+    # 5. MARK PROCESSED IN STAGING DB (Chỉ đánh dấu khi nạp PostgreSQL THÀNH CÔNG)
+    if load_success:
+        processed_ids = [r.get("listing_id") for r in cleaned_records if r.get("listing_id")]
+        if processed_ids:
+            updated = staging_db.mark_as_processed(processed_ids)
+            print(f"[ETL] Đã cập nhật trạng thái is_processed = 1 cho {updated} tin trong Staging DB.", flush=True)
+    else:
+        print("[ETL] CẢNH BÁO: Chưa nạp được vào PostgreSQL, giữ nguyên is_processed = 0 để có thể nạp lại mà không bị mất dữ liệu.", flush=True)
 
     # Báo cáo thống kê
     loader.print_summary(cleaned_records)

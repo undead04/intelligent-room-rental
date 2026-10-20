@@ -54,7 +54,6 @@ LEGACY_LLM_CHECKPOINT_PATH = LLM_DIR / "checkpoint.json"
 PROCESSED_PARQUET_PATH = PROCESSED_DATA_DIR / "listings_clean.parquet"
 
 # Tập tin biến môi trường .env
-ROOT_ENV_PATH = PROJECT_ROOT / ".env"
 CRAWLER_ENV_PATH = CRAWLER_DIR / ".env"
 
 # ==============================================================================

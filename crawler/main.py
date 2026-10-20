@@ -1,5 +1,11 @@
 import sys
 import argparse
+from pathlib import Path
+
+# Đảm bảo thư mục gốc dự án luôn nằm trong sys.path để import crawler.* không bị lỗi
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 # Tự động điều chỉnh encoding cho stdout trên Windows
 if sys.platform == "win32":
