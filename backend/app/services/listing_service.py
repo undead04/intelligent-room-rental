@@ -2,7 +2,7 @@ from app.schemas.listing import AmenityCode
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import case, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequestException, NotFoundException

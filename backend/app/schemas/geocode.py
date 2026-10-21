@@ -1,5 +1,3 @@
-# ---------- Schemas ----------
-
 from pydantic import BaseModel
 
 

@@ -13,8 +13,9 @@ from app.schemas.listing import (
     ListingResponse,
     VectorSearchBody,
     VectorSearchResult,
+    ListingCountResponse
 )
-from app.schemas.listing_count import ListingCountResponse
+
 from app.schemas.response import ErrorDTO, ResponseDTO
 from app.services.listing_service import ListingService
 

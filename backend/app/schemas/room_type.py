@@ -10,11 +10,6 @@ class RoomTypeResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
-# Alias for Reference
-RoomTypeReference = RoomTypeResponse
-
-
 class RoomType(str, Enum):
     """Phân loại phòng trọ cơ bản."""
     ROOM = "ROOM"                          # Phòng trọ truyền thống

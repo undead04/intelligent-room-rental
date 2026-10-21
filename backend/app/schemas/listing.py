@@ -177,15 +177,12 @@ class VectorSearchBody(BaseModel):
             self.room_type_id = ROOM_TYPE_CODE_TO_ID.get(self.room_type)
         return self
 
-
-# Alias cho tương thích ngược nếu có module cũ gọi
-VectorSearchQueryFilters = VectorSearchBody
-VectorSearchRequest = VectorSearchBody
-
-
 class VectorSearchResult(BaseModel):
     listing: ListingResponse
     match_score: float
     explain_match: Optional[dict[str, object]] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class ListingCountResponse(BaseModel):
+    total_listings: int

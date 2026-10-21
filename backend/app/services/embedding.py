@@ -3,43 +3,21 @@ from typing import List, Optional, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
+from pathlib import Path
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-
-
+PROJECT_ROOT = Path("../../..")
+MODEL_CACHE_DIR = PROJECT_ROOT / "model_cache"
 def resolve_model_cache_dir(custom_path: Optional[str] = None) -> str:
-    """Tự động tìm kiếm và đồng nhất thư mục model_cache/models_cache trên máy.
-    Tránh trường hợp mỗi module hoặc terminal chạy từ thư mục khác nhau tạo ra folder riêng.
-    """
+    """Tự động tìm kiếm thư mục model_cache/models_cache độc lập cho container Crawler."""
+    
     if custom_path and os.path.isabs(custom_path) and os.path.exists(custom_path):
         return custom_path
 
-    env_dir = os.environ.get("MODEL_CACHE_DIR") or os.environ.get("EMBEDDING_MODEL_CACHE_DIR")
-    if env_dir and os.path.exists(env_dir):
-        return os.path.abspath(env_dir)
+    if MODEL_CACHE_DIR.is_dir():
+        return str(MODEL_CACHE_DIR.resolve())
 
-    # Ưu tiên các thư mục cache đã tồn tại theo thứ tự
-    candidate_dirs = [
-        os.path.join(PROJECT_ROOT, "model_cache"),
-        os.path.join(PROJECT_ROOT, "models_cache"),
-        os.path.join(PROJECT_ROOT, "backend", "model_cache"),
-        os.path.join(PROJECT_ROOT, "backend", "models_cache"),
-        os.path.join(PROJECT_ROOT, "crawler", "model_cache"),
-        os.path.join(PROJECT_ROOT, "crawler", "models_cache"),
-    ]
-    for c in candidate_dirs:
-        if os.path.isdir(c):
-            return os.path.abspath(c)
-
-    # Nếu chỉ định custom_path tương đối, gán về thư mục gốc dự án
-    if custom_path:
-        target = os.path.abspath(os.path.join(PROJECT_ROOT, custom_path.lstrip("./\\")))
-        os.makedirs(target, exist_ok=True)
-        return target
-
-    default_dir = os.path.join(PROJECT_ROOT, "models_cache")
-    os.makedirs(default_dir, exist_ok=True)
-    return default_dir
+    MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return str(MODEL_CACHE_DIR.resolve())
 
 
 class EmbeddingModel:
@@ -66,8 +44,6 @@ class EmbeddingModel:
         if device is None:
             if torch.cuda.is_available():
                 self.device = "cuda"
-            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                self.device = "mps"
             else:
                 self.device = "cpu"
         else:

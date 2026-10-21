@@ -7,32 +7,6 @@ from sqlalchemy.orm import Query, Session, joinedload
 from app.models.embedding import ListingEmbedding
 from app.models.listing import Listing
 
-_FTS_STOPWORDS = {
-    "tìm", "tim", "giúp", "giup", "tôi", "toi", "mình", "minh", "em", "cho",
-    "hỏi", "hoi", "ở", "o", "tại", "tai", "quanh", "gần", "gan", "khu", "vực",
-    "vuc", "dưới", "duoi", "trên", "tren", "tầm", "tam", "khoảng", "khoang",
-    "từ", "tu", "đến", "den", "giá", "gia", "triệu", "trieu", "tr", "vnd",
-    "nhé", "nhe", "ạ", "a", "với", "voi", "có", "co", "và", "va", "cần", "can",
-    "muốn", "muon", "thuê", "thue",
-}
-
-
-def _build_or_tsquery_string(query_text: str) -> str:
-    """Chuyển câu truy vấn tự nhiên thành chuỗi OR-tsquery an toàn cho PostgreSQL simple dictionary.
-    Giúp Sparse Full-Text Search (30% trọng số Hybrid) vẫn chấm điểm khớp từ khóa địa danh/tiện ích
-    ngay cả khi câu hỏi chứa các từ hội thoại ('tìm', 'dưới', 'quanh',...).
-    """
-    tokens = re.findall(r"\w+", (query_text or "").lower(), flags=re.UNICODE)
-    valid_tokens: list[str] = []
-    for tok in tokens:
-        if len(tok) < 2 or tok in _FTS_STOPWORDS or tok.isdigit():
-            continue
-        if tok not in valid_tokens:
-            valid_tokens.append(tok)
-    return " | ".join(valid_tokens)
-
-
-
 class ListingRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -215,12 +189,7 @@ class ListingRepository:
             func.coalesce(Listing.description, ""),
         )
         ts_vector = func.to_tsvector("simple", text_content)
-        or_query_str = _build_or_tsquery_string(clean_query)
-
-        if or_query_str:
-            ts_query = func.to_tsquery("simple", or_query_str)
-        else:
-            ts_query = func.plainto_tsquery("simple", clean_query)
+        ts_query = func.plainto_tsquery("simple", clean_query)
         
         sparse_score_col = func.ts_rank_cd(ts_vector, ts_query).label("sparse_score")
 
