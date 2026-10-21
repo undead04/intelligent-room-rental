@@ -6,11 +6,14 @@ triggers:
   - tiền cọc
   - đặt cọc
   - mất cọc
+  - giữ cọc
+  - hoàn cọc
+  - trả cọc
   - pháp lý
   - bẫy
   - ký hợp đồng
+  - thanh lý hợp đồng
   - trả phòng
-  - trả cọc
   - đền bù
   - điều khoản
 ---
@@ -27,9 +30,13 @@ Kỹ năng này cung cấp năng lực chuyên sâu giúp Homigo AI:
 
 ## ⚠️ 5 "Bẫy" Hợp Đồng Thuê Trọ Phổ Biến & Cách Phòng Tránh
 
-### 1. Bẫy Tiền Cọc & Điều Kiện Hoàn Cọc
-* **Dấu hiệu rủi ro:** Hợp đồng chỉ ghi *"Bên B đặt cọc X triệu"*, nhưng KHÔNG ghi rõ thời hạn và điều kiện hoàn lại cọc khi kết thúc hợp đồng, hoặc cài điều khoản phạt cọc phi lý (ví dụ: chuyển đi phải tìm người thay thế mới được trả cọc).
-* **Lời khuyên sửa đổi:** Bắt buộc bổ sung: *"Bên A có trách nhiệm hoàn trả 100% tiền đặt cọc cho Bên B trong vòng 03 ngày làm việc kể từ khi hai bên bàn giao lại phòng và thanh toán xong các chi phí điện nước cuối kỳ."*
+### 1. Bẫy Tiền Cọc & Điều Kiện Hoàn Cọc (Đặc biệt khi chấm dứt hợp đồng sớm)
+* **Dấu hiệu rủi ro:** Hợp đồng chỉ ghi *"Bên B đặt cọc X triệu (hoặc 2 tháng tiền phòng)"*, bắt ký hợp đồng 1 năm nhưng KHÔNG ghi rõ điều kiện hoàn cọc hoặc cài điều khoản phạt mất 100% cọc nếu chuyển đi trước hạn (ví dụ: ở 6 tháng muốn chuyển đi).
+* **Quy định & Lời khuyên pháp lý:**
+  * Theo nguyên tắc thỏa thuận dân sự, nếu bạn ký hợp đồng có thời hạn 1 năm mà tự ý chấm dứt sớm ở tháng thứ 6 **khi hợp đồng không có điều khoản cho phép báo trước để nhận lại cọc**, chủ trọ có quyền giữ lại tiền cọc do vi phạm thời hạn cam kết (trừ khi chủ nhà vi phạm nghĩa vụ hoặc phòng không đảm bảo điều kiện ở an toàn).
+  * **Cách bảo vệ quyền lợi & Đàm phán:**
+    1. **Trước khi ký:** Bắt buộc bổ sung điều khoản: *"Bên B có quyền chấm dứt hợp đồng trước thời hạn nếu thông báo trước cho Bên A tối thiểu 30 ngày (hoặc hỗ trợ tìm người thuê sang nhượng thay thế) và được hoàn trả 100% tiền đặt cọc trong vòng 03 ngày làm việc sau khi bàn giao phòng."*
+    2. **Nếu đã ký hợp đồng 1 năm và muốn chuyển đi sau 6 tháng:** Hãy kiểm tra điều khoản *"Chấm dứt hợp đồng trước hạn"* trong hợp đồng đã ký. Nếu hợp đồng quy định phạt cọc khi nghỉ trước hạn, giải pháp tốt nhất là **xin thỏa thuận sang nhượng (pass phòng) cho người thuê mới** để nối tiếp 6 tháng còn lại và nhận lại tiền cọc 2 tháng từ người thuê kế tiếp hoặc chủ nhà.
 
 ### 2. Tự Ý Tăng Tiền Thuê Nhà Trước Hạn
 * **Dấu hiệu rủi ro:** Ghi thời hạn hợp đồng 1 năm nhưng không cam kết giữ nguyên giá thuê.

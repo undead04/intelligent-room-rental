@@ -1,102 +1,88 @@
 "use client";
 
 import { useMemo } from "react";
-import QuickFilterPills from "@/app/tim-kiem-ai/_components/QuickFilterPills";
 import RoomResultCard from "@/app/tim-kiem-ai/_components/RoomResultCard";
 import type { RoomItem, UserPreferenceState } from "@/app/tim-kiem-ai/types";
+import {
+  CANONICAL_AMENITIES_MAP,
+  CANONICAL_ROOM_TYPES_MAP,
+} from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 
 interface RoomResultsPanelProps {
   rooms: RoomItem[];
   selectedRoomId: string;
-  activeFilter: string;
   preferences?: UserPreferenceState | null;
   onSelectRoom: (roomId: string) => void;
-  onSelectFilter: (filterId: string) => void;
 }
 
 export default function RoomResultsPanel({
   rooms,
   selectedRoomId,
-  activeFilter,
   preferences,
   onSelectRoom,
-  onSelectFilter,
 }: RoomResultsPanelProps) {
   // Extract active search tags from AI preferences
-  const searchTags = useMemo(() => {
-    if (!preferences) return [];
-    const tags: string[] = [];
-    if (preferences.location_text) {
-      tags.push(`📍 ${preferences.location_text}`);
-    }
-    if (preferences.max_price) {
-      const priceTr = (preferences.max_price / 1_000_000).toFixed(1).replace(".0", "");
-      tags.push(`💰 ≤ ${priceTr}tr`);
-    }
-    if (preferences.amenities && preferences.amenities.length > 0) {
-      preferences.amenities.forEach((a) => {
-        const clean = a.trim().toLowerCase();
-        if (/^(aircon|ac)$|máy lạnh|điều hòa/i.test(clean)) tags.push("❄️ Máy lạnh");
-        else if (/^mezzanine$|gác/i.test(clean)) tags.push("🪜 Gác lửng");
-        else if (/^private_wc$|wc riêng|vệ sinh riêng/i.test(clean)) tags.push("🚿 WC riêng");
-        else if (/^free_hours$|giờ giấc tự do|tự do/i.test(clean)) tags.push("🛵 Giờ tự do");
-        else if (/^pet_allowed$|thú cưng|nuôi pet/i.test(clean)) tags.push("🐾 Nuôi thú cưng");
-        else if (/^balcony$|ban công/i.test(clean)) tags.push("🌿 Ban công");
-        else if (/^kitchen$|bếp/i.test(clean)) tags.push("🍳 Kệ bếp");
-        else if (/^fridge$|tủ lạnh/i.test(clean)) tags.push("🧊 Tủ lạnh");
-        else if (/^washing_machine$|máy giặt/i.test(clean)) tags.push("🧺 Máy giặt");
-        else if (/^parking$|chỗ để xe|giữ xe/i.test(clean)) tags.push("🛵 Chỗ để xe");
-        else if (/^security$|an ninh/i.test(clean)) tags.push("🛡️ An ninh");
-        else tags.push(`✨ ${a}`);
-      });
-    }
-    if (preferences.special_requirements && preferences.special_requirements.length > 0) {
-      preferences.special_requirements.forEach((r) => {
-        if (/giờ/i.test(r)) tags.push("🛵 Giờ tự do");
-        else if (/thú cưng/i.test(r)) tags.push("🐾 Nuôi thú cưng");
-        else tags.push(`🏷️ ${r}`);
-      });
-    }
-    return Array.from(new Set(tags));
-  }, [preferences]);
+  // const searchTags = useMemo(() => {
+  //   if (!preferences) return [];
+  //   const tags: string[] = [];
+  //   if (preferences.room_type && CANONICAL_ROOM_TYPES_MAP[preferences.room_type]) {
+  //     tags.push(`🏠 ${CANONICAL_ROOM_TYPES_MAP[preferences.room_type]}`);
+  //   }
+  //   if (preferences.location_text) {
+  //     const cleanLoc = preferences.location_text
+  //       .replace(/\s*\((?:ví dụ|vd|vd:)[^)]*\)/gi, "")
+  //       .replace(/^(?:khu vực\s+)?(?:lân cận|quanh)\s+/gi, "")
+  //       .trim();
+  //     if (cleanLoc) {
+  //       tags.push(`📍 ${cleanLoc}`);
+  //     }
+  //   }
+  //   if (preferences.min_price && preferences.max_price) {
+  //     const minTr = (preferences.min_price / 1_000_000).toFixed(1).replace(".0", "");
+  //     const maxTr = (preferences.max_price / 1_000_000).toFixed(1).replace(".0", "");
+  //     tags.push(`💰 ${minTr} - ${maxTr}tr`);
+  //   } else if (preferences.max_price) {
+  //     const priceTr = (preferences.max_price / 1_000_000).toFixed(1).replace(".0", "");
+  //     tags.push(`💰 ≤ ${priceTr}tr`);
+  //   } else if (preferences.min_price) {
+  //     const priceTr = (preferences.min_price / 1_000_000).toFixed(1).replace(".0", "");
+  //     tags.push(`💰 ≥ ${priceTr}tr`);
+  //   }
+  //   if (preferences.min_area || preferences.max_area) {
+  //     if (preferences.min_area && preferences.max_area) {
+  //       tags.push(`📐 ${preferences.min_area}-${preferences.max_area}m²`);
+  //     } else if (preferences.min_area) {
+  //       tags.push(`📐 ≥${preferences.min_area}m²`);
+  //     } else {
+  //       tags.push(`📐 ≤${preferences.max_area}m²`);
+  //     }
+  //   }
+  //   if (preferences.amenities && preferences.amenities.length > 0) {
+  //     preferences.amenities.forEach((a) => {
+  //       const clean = a.trim().toLowerCase();
+  //       const meta = CANONICAL_AMENITIES_MAP[clean];
+  //       if (meta) {
+  //         tags.push(`${meta.emoji} ${meta.label}`);
+  //       } else {
+  //         tags.push(`✨ ${a}`);
+  //       }
+  //     });
+  //   }
+  //   if (preferences.special_requirements && preferences.special_requirements.length > 0) {
+  //     preferences.special_requirements.forEach((r) => {
+  //       tags.push(`🏷️ ${r}`);
+  //     });
+  //   }
+  //   return Array.from(new Set(tags));
+  // }, [preferences]);
 
   // Client-side filtering & sorting of rooms
   const processedRooms = useMemo(() => {
     if (!rooms || rooms.length === 0) return [];
 
-    switch (activeFilter) {
-      case "price_asc":
-        return [...rooms].sort((a, b) => a.priceNum - b.priceNum);
-      case "score_desc":
-        return [...rooms].sort((a, b) => b.matchScore - a.matchScore);
-      case "has_ac": {
-        const filtered = rooms.filter(
-          (r) =>
-            r.tags.some((t) => /máy lạnh|điều hòa/i.test(t)) ||
-            /máy lạnh|điều hòa/i.test(r.title)
-        );
-        return filtered.length > 0 ? filtered : rooms;
-      }
-      case "has_mezzanine": {
-        const filtered = rooms.filter(
-          (r) =>
-            r.tags.some((t) => /gác/i.test(t)) ||
-            /gác/i.test(r.title)
-        );
-        return filtered.length > 0 ? filtered : rooms;
-      }
-      case "default":
-      default:
-        return rooms;
-    }
-  }, [rooms, activeFilter]);
+    return rooms;
+  }, [rooms]);
 
-  const filterMatched =
-    activeFilter === "has_ac"
-      ? rooms.some((r) => r.tags.some((t) => /máy lạnh|điều hòa/i.test(t)) || /máy lạnh|điều hòa/i.test(r.title))
-      : activeFilter === "has_mezzanine"
-      ? rooms.some((r) => r.tags.some((t) => /gác/i.test(t)) || /gác/i.test(r.title))
-      : true;
 
   return (
     <section className="lg:col-span-4 bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-[520px] lg:h-full min-h-0 overflow-hidden">
@@ -108,11 +94,10 @@ export default function RoomResultsPanel({
             <span>2. Kết quả danh sách phòng</span>
           </h2>
           <span
-            className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-              rooms.length > 0
-                ? "text-[#0F5F4A] bg-[#E6F4EE]"
-                : "text-[#6F7974] bg-[#F1F5F9]"
-            }`}
+            className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${rooms.length > 0
+              ? "text-[#0F5F4A] bg-[#E6F4EE]"
+              : "text-[#6F7974] bg-[#F1F5F9]"
+              }`}
           >
             {rooms.length > 0 ? `${processedRooms.length} phòng` : "Chờ yêu cầu"}
           </span>
@@ -127,28 +112,8 @@ export default function RoomResultsPanel({
           )}
         </p>
 
-        {/* Filter Pills & Active Search Criteria Row */}
-        {rooms.length > 0 && (
-          <QuickFilterPills
-            activeFilter={activeFilter}
-            onSelect={onSelectFilter}
-            searchTags={searchTags}
-          />
-        )}
       </div>
 
-      {/* Filter notice if none matched specific filter */}
-      {!filterMatched && (
-        <div className="mx-3 mt-2 px-3 py-1.5 bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E] text-[11px] rounded-lg flex items-center justify-between">
-          <span>Không có phòng nào gắn nhãn này trong top 5. Đang hiển thị danh sách gốc.</span>
-          <button
-            onClick={() => onSelectFilter("default")}
-            className="text-[10px] underline font-bold ml-2 cursor-pointer"
-          >
-            Về mặc định
-          </button>
-        </div>
-      )}
 
       {/* Room Cards Scroll Area or Empty State */}
       {rooms.length > 0 ? (

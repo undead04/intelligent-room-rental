@@ -3,7 +3,34 @@ import type { ChatMessage, RoomItem } from "@/app/tim-kiem-ai/types";
 export const USER_AVATAR = "/stitch/1_avatar_user_317ba717e1464aafbe096f8b685c3790.png";
 
 export const DEFAULT_ROOM_ID = "";
-export const DEFAULT_FILTER_ID = "all";
+
+export const CANONICAL_AMENITIES_MAP: Record<string, { label: string; icon: string; emoji: string }> = {
+  private_wc: { label: "WC riêng", icon: "shower", emoji: "🚿" },
+  aircon: { label: "Máy lạnh", icon: "ac_unit", emoji: "❄️" },
+  mezzanine: { label: "Gác lửng", icon: "stairs", emoji: "🪜" },
+  kitchen: { label: "Kệ bếp", icon: "skillet", emoji: "🍳" },
+  fridge: { label: "Tủ lạnh", icon: "kitchen", emoji: "🧊" },
+  washing_machine: { label: "Máy giặt", icon: "local_laundry_service", emoji: "🧺" },
+  window_balcony: { label: "Ban công / Cửa sổ", icon: "balcony", emoji: "🌿" },
+  furniture: { label: "Full nội thất", icon: "chair", emoji: "🛋️" },
+  parking: { label: "Chỗ để xe", icon: "two_wheeler", emoji: "🛵" },
+  elevator: { label: "Thang máy", icon: "elevator", emoji: "🛗" },
+  free_hours: { label: "Giờ tự do", icon: "schedule", emoji: "⏰" },
+  no_shared_landlord: { label: "Không chung chủ", icon: "vpn_key", emoji: "🔑" },
+  pet_allowed: { label: "Cho nuôi thú cưng", icon: "pets", emoji: "🐾" },
+  fingerprint_lock: { label: "Khóa vân tay / Thẻ từ", icon: "fingerprint", emoji: "🔒" },
+  camera: { label: "Camera an ninh", icon: "videocam", emoji: "📹" },
+  guard: { label: "Bảo vệ 24/7", icon: "security", emoji: "👮" },
+  safe_area: { label: "Khu an ninh", icon: "shield", emoji: "🛡️" },
+};
+
+export const CANONICAL_ROOM_TYPES_MAP: Record<string, string> = {
+  ROOM: "Phòng trọ",
+  STUDIO: "Căn hộ Studio",
+  APARTMENT: "Chung cư / Căn hộ",
+  SLEEPBOX: "KTX / Sleepbox",
+  WHOLE_HOUSE: "Nhà nguyên căn",
+};
 
 export const SAMPLE_ROOMS: RoomItem[] = [
   {

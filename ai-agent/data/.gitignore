@@ -1,0 +1,5 @@
+# Ignore sqlite databases
+*.db
+*.db-shm
+*.db-wal
+!.gitkeep

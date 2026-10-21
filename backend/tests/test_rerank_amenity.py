@@ -1,4 +1,4 @@
-"""Unit tests for backend rerank and amenity fit."""
+"""Unit tests for backend rerank and amenity fit (Phương án 3 - Hybrid Clean Architecture)."""
 import pytest
 from app.services.reranker import (
     DEFAULT_WEIGHTS,
@@ -9,7 +9,7 @@ from app.services.reranker import (
 )
 
 
-def test_amenity_fit_canonical_and_aliases():
+def test_amenity_fit_preferred_and_ignores_mandatory():
     concept_scores = {
         "private_wc": 1.0,
         "aircon": 1.0,
@@ -19,41 +19,61 @@ def test_amenity_fit_canonical_and_aliases():
         "amenity_overall": 0.8,
     }
 
-    # Canonical match
-    fit_canonical = _amenity_fit(["aircon", "window_balcony"], concept_scores)
-    assert fit_canonical == 1.0
+    # Preferred canonical match (70% preferred + 30% overall)
+    fit_canonical = _amenity_fit(None, concept_scores, preferred=["aircon", "window_balcony"])
+    assert fit_canonical == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
     # Alias match ('ac' -> 'aircon', 'ban_cong' -> 'window_balcony')
-    fit_alias = _amenity_fit(["ac", "ban_cong"], concept_scores)
-    assert fit_alias == 1.0
+    fit_alias = _amenity_fit(None, concept_scores, preferred=["ac", "ban_cong"])
+    assert fit_alias == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
-    # Negative match
-    fit_negative = _amenity_fit(["pet", "aircon"], concept_scores)
-    assert fit_negative == 0.5  # (0.0 + 1.0) / 2
+    # Negative match in preferred: (0.0 + 1.0) / 2 = 0.5 -> 0.7 * 0.5 + 0.3 * 0.8 = 0.59
+    fit_negative = _amenity_fit(None, concept_scores, preferred=["pet", "aircon"])
+    assert fit_negative == pytest.approx(0.7 * 0.5 + 0.3 * 0.8)
+
+    # Mandatory (requested) is ignored in _amenity_fit (already hard-filtered at SQL & Grounding)
+    fit_with_mandatory = _amenity_fit(["pet_allowed"], concept_scores, preferred=["aircon"])
+    assert fit_with_mandatory == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
+
+    # AmenityCode Enum instance match
+    from app.schemas.listing import AmenityCode
+    fit_enum_pref = _amenity_fit(None, concept_scores, preferred=[AmenityCode.AIRCON])
+    assert fit_enum_pref == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
 
 def test_amenity_fit_fallback_overall():
     concept_scores = {
         "amenity_overall": 0.75,
     }
-    # No amenities requested -> falls back to amenity_overall
+    # No preferred amenities -> falls back to amenity_overall (even if mandatory requested is passed)
     assert _amenity_fit(None, concept_scores) == 0.75
-    assert _amenity_fit([], concept_scores) == 0.75
+    assert _amenity_fit(["aircon"], concept_scores) == 0.75
 
     # Completely empty concept scores -> falls back to neutral 1.0
     assert _amenity_fit(None, {}) == 1.0
 
 
 def test_dynamic_weights():
-    # Only price, safety, semantic active when no coords and no amenities
+    # Only price, safety, semantic active when no coords and no preferred amenities
     w_basic = _dynamic_weights({}, DEFAULT_WEIGHTS)
     assert set(w_basic.keys()) == {"price", "safety", "semantic"}
     assert round(sum(w_basic.values()), 5) == 1.0
 
-    # Amenities requested -> amenity active
-    w_amenities = _dynamic_weights({"amenities": ["ac"]}, DEFAULT_WEIGHTS)
-    assert "amenity" in w_amenities
-    assert round(sum(w_amenities.values()), 5) == 1.0
+    # Mandatory amenities alone -> amenity is NOT active in MCDM (already hard-filtered)
+    w_mandatory = _dynamic_weights({"amenities": ["ac"]}, DEFAULT_WEIGHTS)
+    assert "amenity" not in w_mandatory
+    assert set(w_mandatory.keys()) == {"price", "safety", "semantic"}
+    assert round(sum(w_mandatory.values()), 5) == 1.0
+
+    # Preferred amenities requested -> amenity active
+    w_pref = _dynamic_weights({"preferred_amenities": ["ac"]}, DEFAULT_WEIGHTS)
+    assert "amenity" in w_pref
+    assert round(sum(w_pref.values()), 5) == 1.0
+
+    # AI Agent passes explicit amenity weight (e.g., user emphasized 'full nội thất') -> amenity active
+    w_explicit = _dynamic_weights({}, {"price": 0.25, "safety": 0.25, "semantic": 0.25, "amenity": 0.25})
+    assert "amenity" in w_explicit
+    assert round(sum(w_explicit.values()), 5) == 1.0
 
     # Location provided -> location active
     w_loc = _dynamic_weights({"lat": 10.8, "lng": 106.7}, DEFAULT_WEIGHTS)
@@ -87,14 +107,14 @@ def test_rerank_with_candidates():
         },
     ]
 
-    # User explicitly wants aircon
-    user_pref = {"amenities": ["may_lanh"]}
+    # User prefers aircon
+    user_pref = {"preferred_amenities": ["may_lanh"]}
     results = rerank(candidates, user_pref=user_pref)
 
     assert len(results) == 2
     top_breakdown, top_item = results[0]
     assert top_item["id"] == "room_1"
-    assert top_breakdown["parts"]["amenity"] == 1.0
+    assert top_breakdown["parts"]["amenity"] == pytest.approx(0.7 * 1.0 + 0.3 * 0.9)
 
     explanation = explain_match(top_breakdown)
     assert "top_factors" in explanation
@@ -105,9 +125,10 @@ def test_vietnamese_diacritic_amenities_and_partial_weights():
         "aircon": 1.0,
         "mezzanine": 1.0,
         "pet_allowed": 1.0,
+        "amenity_overall": 1.0,
     }
     # Tiếng Việt có dấu từ AI Agent ('máy lạnh', 'gác lửng', 'nuôi mèo')
-    fit = _amenity_fit(["máy lạnh", "gác lửng", "nuôi mèo"], concept_scores)
+    fit = _amenity_fit(None, concept_scores, preferred=["máy lạnh", "gác lửng", "nuôi mèo"])
     assert fit == 1.0
 
 
@@ -140,11 +161,13 @@ def test_amenity_fit_deduplicates_canonical_and_vietnamese_aliases():
     concept_scores = {
         "aircon": 1.0,
         "mezzanine": 0.0,
+        "amenity_overall": 0.5,
     }
-    # Passing both 'aircon' and 'máy lạnh' must not double-count aircon:
-    # unique normalized codes are ['aircon', 'mezzanine'] -> (1.0 + 0.0) / 2 = 0.5
-    fit = _amenity_fit(["aircon", "máy lạnh", "mezzanine"], concept_scores)
-    assert fit == 0.5
+    # Passing both 'aircon' and 'máy lạnh' in preferred must not double-count aircon:
+    # unique normalized codes are ['aircon', 'mezzanine'] -> pref_fit = (1.0 + 0.0) / 2 = 0.5
+    # blended with amenity_overall (0.5): 0.7 * 0.5 + 0.3 * 0.5 = 0.5
+    fit = _amenity_fit(None, concept_scores, preferred=["aircon", "máy lạnh", "mezzanine"])
+    assert fit == pytest.approx(0.5)
 
 
 def test_build_or_tsquery_string_for_sparse_fts():

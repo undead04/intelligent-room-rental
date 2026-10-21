@@ -35,24 +35,36 @@ export default function ListingCard({ item }: ListingCardProps) {
 
       <div className="flex-1 flex flex-col justify-between min-w-0">
         <div>
-          <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
-            {item.area && <span className="font-semibold text-[#0F5F4A]">{item.area}</span>}
-            <span className="ml-auto shrink-0">{item.time}</span>
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+              <span className="material-symbols-outlined text-[14px]">schedule</span>
+              {item.time}
+            </span>
           </div>
           <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-base text-[#121E1A] line-clamp-2 group-hover:text-[#0F5F4A] transition-colors">
             {item.title}
           </h3>
-          <p className="text-xs text-gray-600 flex items-center gap-1 mt-1 line-clamp-1">
-            <span className="material-symbols-outlined text-[14px] text-[#0F5F4A]">location_on</span>
-            <span>{item.location}</span>
+          <p className="text-xs text-gray-600 flex items-center gap-1 mt-1.5 line-clamp-1">
+            <span className="material-symbols-outlined text-[14px] text-[#0F5F4A] shrink-0">location_on</span>
+            <span className="truncate">{item.location}</span>
           </p>
         </div>
 
-        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <span className="font-['Plus_Jakarta_Sans'] text-lg font-extrabold text-[#FF6B4A]">
-            {item.price}<span className="text-xs font-normal text-gray-500">/tháng</span>
-          </span>
-          <span className="text-xs text-[#0F5F4A] font-bold group-hover:translate-x-0.5 transition-transform">
+        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-1.5 min-w-0">
+            <span className="font-['Plus_Jakarta_Sans'] text-base sm:text-lg font-extrabold text-[#FF6B4A] shrink-0">
+              {item.price}<span className="text-xs font-normal text-gray-500">/tháng</span>
+            </span>
+            {item.area && (
+              <>
+                <span className="text-gray-300 font-light">·</span>
+                <span className="text-xs sm:text-sm font-bold text-[#121E1A]/80 shrink-0">
+                  {item.area}
+                </span>
+              </>
+            )}
+          </div>
+          <span className="text-xs text-[#0F5F4A] font-bold group-hover:translate-x-0.5 transition-transform shrink-0 whitespace-nowrap">
             Xem chi tiết →
           </span>
         </div>

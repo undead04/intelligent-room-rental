@@ -2,7 +2,7 @@ from app.schemas.listing import AmenityCode
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import case, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequestException, NotFoundException
@@ -196,6 +196,7 @@ class ListingService:
         lat: Optional[float] = None,
         lng: Optional[float] = None,
         amenities: Optional[list[AmenityCode]] = None,
+        preferred_amenities: Optional[list[AmenityCode]] = None,
         weights: Optional[dict[str, float]] = None,
         city_id: Optional[int] = None,
         district_id: Optional[int] = None,
@@ -206,6 +207,7 @@ class ListingService:
         max_price: Optional[float] = None,
         min_area: Optional[float] = None,
         max_area: Optional[float] = None,
+        max_distance_km: Optional[float] = 8.0,
         limit: int = 5,
         offset: int = 0,
     ) -> list[VectorSearchResult]:
@@ -228,6 +230,10 @@ class ListingService:
             "max_price": max_price,
             "min_area": min_area,
             "max_area": max_area,
+            "lat": lat,
+            "lng": lng,
+            "max_distance_km": max_distance_km,
+            "amenities": amenities,
             "limit": 50,
         }
         model_name = model_embedding.model_name.strip()
@@ -242,6 +248,7 @@ class ListingService:
             "lat": lat,
             "lng": lng,
             "amenities": amenities,
+            "preferred_amenities": preferred_amenities,
             "min_price": min_price,
             "max_price": max_price,
             "query": query,

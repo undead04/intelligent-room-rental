@@ -8,16 +8,18 @@ interface RoomResultCardProps {
 }
 
 export default function RoomResultCard({ room, isSelected, onSelect }: RoomResultCardProps) {
+  const areaTag = room.tags.find((tag) => /^\d+(\.\d+)?\s*(m²|m2)$/i.test(tag) || tag.includes("m²") || tag.includes("m2"));
+  const displayTags = areaTag ? room.tags.filter((t) => t !== areaTag) : room.tags;
+
   return (
     <article
       onClick={() => onSelect(room.id)}
-      className={`p-3 rounded-2xl border transition bg-white group cursor-pointer ${
-        isSelected
-          ? "border-2 border-[#0F5F4A] shadow-md ring-2 ring-[#0F5F4A]/10"
-          : room.rank === 1
+      className={`p-3 rounded-2xl border transition bg-white group cursor-pointer ${isSelected
+        ? "border-2 border-[#0F5F4A] shadow-md ring-2 ring-[#0F5F4A]/10"
+        : room.rank === 1
           ? "border-2 border-[#0F5F4A]/30 hover:border-[#0F5F4A] hover:shadow-md"
           : "border border-[#E8E4DC] hover:border-[#0F5F4A]/60 hover:shadow-md"
-      }`}
+        }`}
     >
       <div className="flex gap-3">
         {/* Thumbnail + Photo counter */}
@@ -37,11 +39,10 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
           <div>
             <div className="flex items-center justify-between gap-1 mb-1">
               <span
-                className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full tracking-wide uppercase ${
-                  room.rank === 1
-                    ? "bg-[#0F5F4A] text-white"
-                    : "bg-[#0F5F4A]/80 text-white"
-                }`}
+                className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full tracking-wide uppercase ${room.rank === 1
+                  ? "bg-[#0F5F4A] text-white"
+                  : "bg-[#0F5F4A]/80 text-white"
+                  }`}
               >
                 {room.rankText}
               </span>
@@ -58,9 +59,19 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
               {room.title}
             </h3>
 
-            <div className="text-sm font-extrabold text-[#FF6B4A] mt-0.5">
-              {room.price.replace(/\s*\/\s*(tháng|thang|month)\s*$/i, "")}
-              <span className="text-[10px] font-normal text-[#6F7974]">/tháng</span>
+            <div className="flex items-baseline gap-1.5 mt-0.5 min-w-0">
+              <span className="text-sm font-extrabold text-[#FF6B4A] shrink-0">
+                {room.price.replace(/\s*\/\s*(tháng|thang|month)\s*$/i, "")}
+                <span className="text-[10px] font-normal text-[#6F7974]">/tháng</span>
+              </span>
+              {areaTag && (
+                <>
+                  <span className="text-gray-300 font-light">·</span>
+                  <span className="text-xs font-bold text-[#121E1A]/80 shrink-0">
+                    {areaTag}
+                  </span>
+                </>
+              )}
             </div>
 
             <p className="text-[10px] text-[#6F7974] truncate mt-0.5 flex items-center gap-1">
@@ -75,7 +86,7 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
 
           {/* Tags */}
           <div className="flex items-center gap-1.5 mt-1 text-[9px] text-[#3F4944] font-medium flex-wrap">
-            {room.tags.map((tag) => (
+            {displayTags.map((tag) => (
               <span key={tag} className="px-1.5 py-0.5 bg-[#FAFBF9] border border-[#E8E4DC] rounded">
                 {tag}
               </span>
@@ -86,16 +97,6 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
 
       {/* Action buttons */}
       <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-[#F1F5F9]">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelect(room.id);
-          }}
-          className="px-3 py-1.5 text-[11px] font-bold text-[#0F5F4A] hover:bg-[#E6F4EE] border border-[#0F5F4A]/30 rounded-full transition"
-        >
-          So sánh
-        </button>
         <Link
           href={`/phong-tro/${room.id}`}
           target="_blank"
@@ -104,7 +105,6 @@ export default function RoomResultCard({ room, isSelected, onSelect }: RoomResul
           className="px-4 py-1.5 text-[11px] font-bold text-white bg-[#0F5F4A] hover:bg-[#004635] rounded-full transition shadow-xs flex items-center gap-1"
         >
           <span>Xem chi tiết</span>
-          <span className="material-symbols-outlined text-[13px]">open_in_new</span>
         </Link>
       </div>
     </article>

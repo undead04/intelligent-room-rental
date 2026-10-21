@@ -6,10 +6,12 @@ import {
   DEFAULT_ROOM_ID,
   INITIAL_MESSAGES,
   USER_AVATAR,
+  CANONICAL_AMENITIES_MAP,
+  CANONICAL_ROOM_TYPES_MAP,
 } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 import { agentApi } from "@/lib/api/client";
 
-const STORAGE_KEY = "homigo_ai_workspace_session_v1";
+const STORAGE_KEY = "homigo_ai_workspace_session_v2";
 
 export function useAiChat() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
@@ -70,6 +72,9 @@ export function useAiChat() {
 
   // Xoá lịch sử phiên làm việc hiện tại để bắt đầu hội thoại mới
   const resetConversation = () => {
+    if (sessionId) {
+      agentApi.clearSession(sessionId);
+    }
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {}
@@ -189,13 +194,22 @@ export function useAiChat() {
 
       if (res.rooms && res.rooms.length > 0) {
         setRooms(res.rooms);
-        setSelectedRoomId(res.rooms[0].id);
-      } else {
-        // AI trả về danh sách rỗng (do Giữ nguyên tiêu chí hoặc không tìm thấy phòng)
+        // Tự động focus đúng phòng nếu câu hỏi người dùng chỉ định rõ Top 2 hoặc Top 3
+        const lowerText = textToSend.toLowerCase();
+        if ((lowerText.includes("top 2") || lowerText.includes("phòng 2") || lowerText.includes("phòng số 2")) && res.rooms.length > 1) {
+          setSelectedRoomId(res.rooms[1].id);
+        } else if ((lowerText.includes("top 3") || lowerText.includes("phòng 3") || lowerText.includes("phòng số 3")) && res.rooms.length > 2) {
+          setSelectedRoomId(res.rooms[2].id);
+        } else {
+          setSelectedRoomId(res.rooms[0].id);
+        }
+      } else if (res.hitl_proposal || res.grounding_report?.blocked_by_guardrail || textToSend.toLowerCase().includes("giữ nguyên")) {
+        // Chỉ làm trống danh sách phòng khi tìm kiếm thực sự không có kết quả hoặc bị chặn
         setRooms([]);
         setSelectedRoomId(DEFAULT_ROOM_ID);
         setInsights(null);
       }
+      // Khi là lượt hỏi Kỹ năng chuyên sâu (Advisory) hoặc Hỏi làm rõ, giữ nguyên danh sách phòng và bản đồ hiện có
 
       if (res.insights) {
         setInsights(res.insights);
@@ -205,24 +219,63 @@ export function useAiChat() {
         setPreferences(res.current_preferences);
       }
 
-      // Trích xuất tiêu chí hiển thị trực quan
+      // Trích xuất tiêu chí hiển thị trực quan chuẩn hoá tiếng Việt
       const mandatory: string[] = [];
       const priority: string[] = [];
 
       if (res.current_preferences) {
         const pref = res.current_preferences;
-        if (pref.max_price) {
+        if (pref.room_type && CANONICAL_ROOM_TYPES_MAP[pref.room_type]) {
+          mandatory.push(`Loại: ${CANONICAL_ROOM_TYPES_MAP[pref.room_type]}`);
+        }
+        if (pref.min_price && pref.max_price) {
+          const minTr = (pref.min_price / 1_000_000).toFixed(1).replace(".0", "");
+          const maxTr = (pref.max_price / 1_000_000).toFixed(1).replace(".0", "");
+          mandatory.push(`Giá: ${minTr} - ${maxTr} triệu`);
+        } else if (pref.max_price) {
           const maxTr = (pref.max_price / 1_000_000).toFixed(1).replace(".0", "");
           mandatory.push(`Giá ≤ ${maxTr} triệu`);
+        } else if (pref.min_price) {
+          const minTr = (pref.min_price / 1_000_000).toFixed(1).replace(".0", "");
+          mandatory.push(`Giá ≥ ${minTr} triệu`);
         }
         if (pref.location_text) {
-          mandatory.push(`Khu vực: ${pref.location_text}`);
+          const cleanLoc = pref.location_text
+            .replace(/\s*\((?:ví dụ|vd|vd:)[^)]*\)/gi, "")
+            .replace(/^(?:khu vực\s+)?(?:lân cận|quanh)\s+/gi, "")
+            .trim();
+          if (cleanLoc) {
+            mandatory.push(`Khu vực: ${cleanLoc}`);
+          }
+        }
+        if (pref.min_area || pref.max_area) {
+          const areaDesc =
+            pref.min_area && pref.max_area
+              ? `${pref.min_area} - ${pref.max_area} m²`
+              : pref.min_area
+              ? `≥ ${pref.min_area} m²`
+              : `≤ ${pref.max_area} m²`;
+          mandatory.push(`Diện tích: ${areaDesc}`);
         }
         if (pref.amenities && pref.amenities.length > 0) {
-          priority.push(...pref.amenities);
+          pref.amenities.forEach((a) => {
+            const meta = CANONICAL_AMENITIES_MAP[a.toLowerCase()];
+            mandatory.push(meta ? meta.label : a);
+          });
+        }
+        if (pref.preferred_amenities && pref.preferred_amenities.length > 0) {
+          pref.preferred_amenities.forEach((a) => {
+            const meta = CANONICAL_AMENITIES_MAP[a.toLowerCase()];
+            priority.push(meta ? meta.label : a);
+          });
         }
         if (pref.special_requirements && pref.special_requirements.length > 0) {
-          priority.push(...pref.special_requirements);
+          pref.special_requirements.forEach((req) => {
+            const cleaned = req.replace(/^(?:ưu tiên|uu tien)[:\s-]*/i, "").trim();
+            if (cleaned) {
+              priority.push(cleaned.charAt(0).toUpperCase() + cleaned.slice(1));
+            }
+          });
         }
       }
 

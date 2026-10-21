@@ -18,6 +18,9 @@ export default function PriceAnalyticsPage() {
     selectCity,
     districtId,
     selectDistrict,
+    roomTypes,
+    roomTypeId,
+    selectRoomType,
     apiError,
     isLoading,
   } = usePriceStats();
@@ -43,22 +46,11 @@ export default function PriceAnalyticsPage() {
               { label: "Tra cứu giá trọ thị trường" },
             ]}
           />
-          <Link
-            href="/tim-kiem"
-            className="inline-flex items-center gap-1.5 text-xs text-[#0F5F4A] font-semibold hover:underline"
-          >
-            <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-            <span>Xem phòng theo quận</span>
-          </Link>
         </div>
 
         {/* Title Header */}
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E6F4EE] mb-2 text-[#0F5F4A] text-[11px] uppercase tracking-wider font-bold">
-              <span className="material-symbols-outlined text-[14px]">query_stats</span>
-              <span>Báo cáo thời gian thực</span>
-            </div>
             <h1 className="font-['Plus_Jakarta_Sans'] font-extrabold text-2xl sm:text-3xl text-[#121E1A] tracking-tight">
               Thống kê & Biến động giá phòng trọ
             </h1>
@@ -78,7 +70,14 @@ export default function PriceAnalyticsPage() {
 
         <PriceStatsOverview stats={stats} />
 
-        <PriceStatsFilterBar cities={cities} cityId={cityId} onCityChange={selectCity} />
+        <PriceStatsFilterBar
+          cities={cities}
+          cityId={cityId}
+          onCityChange={selectCity}
+          roomTypes={roomTypes}
+          roomTypeId={roomTypeId}
+          onRoomTypeChange={selectRoomType}
+        />
 
         <PriceStatsTable
           rows={rows}

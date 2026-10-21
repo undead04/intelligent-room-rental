@@ -49,22 +49,27 @@ function SearchPageContent() {
   };
 
   const selectedDistrictName = districtOptions.find((d) => d.id === filters.district)?.name;
+  const selectedCityName = cities.find((c) => c.id === filters.province)?.name;
 
   return (
     <SiteLayout className="bg-[#FAF8F4]">
       <main className="w-full flex-1 max-w-[1500px] mx-auto px-4 lg:px-8 py-6">
         <Breadcrumbs
           className="mb-3"
-          items={[{ label: "Trang chủ", href: "/" }, { label: "TP. Hồ Chí Minh" }]}
+          items={[
+            { label: "Trang chủ", href: "/" },
+            { label: selectedCityName || "", href: `/tim-kiem?city_id=${filters.province}` },
+            { label: selectedDistrictName || "", href: `/tim-kiem?city_id=${filters.province}&district_id=${filters.district}` },
+          ]}
         />
 
         <h1 className="font-['Plus_Jakarta_Sans'] font-extrabold text-2xl sm:text-3xl text-[#121E1A] mb-4">
-          Phòng trọ, nhà ở, căn hộ TP. Hồ Chí Minh
+          Phòng trọ, nhà ở, căn hộ {selectedCityName || ""}
         </h1>
 
         <SearchToolbar
           query={searchText}
-          placeholder={`Hồ Chí Minh · ${selectedDistrictName ?? "Tất cả"}`}
+          placeholder={`${selectedCityName || ""} · ${selectedDistrictName ?? "Tất cả"}`}
           activeFilterCount={activeFilterCount}
           onQueryChange={handleSearchInputChange}
           onSubmit={(event) => {
@@ -80,7 +85,7 @@ function SearchPageContent() {
             <span className="material-symbols-outlined text-[#0F5F4A] text-[18px]">bolt</span>
             <span>
               Tìm thấy <strong className="text-[#121E1A] font-bold">{totalListings ?? "..."}</strong> kết quả
-              tại Hồ Chí Minh
+              tại {selectedCityName ?? "tất cả thành phố"}
             </span>
           </div>
         </div>

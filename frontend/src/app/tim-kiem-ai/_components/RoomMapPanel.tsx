@@ -85,8 +85,8 @@ export default function RoomMapPanel({
       /uit|khtn|bách khoa|làng đại học|linh trung|linh xuân|thủ đức/i.test(lowerLoc)
         ? ["Quốc lộ 1A / Xa lộ Hà Nội", "Đường Hàn Thuyên", "Đường Hoàng Diệu 2", "Đường Võ Văn Ngân"]
         : /bình thạnh|hutech/i.test(lowerLoc)
-        ? ["Đường Điện Biên Phủ", "Đường Nguyễn Gia Trí (D2)", "Đường Xô Viết Nghệ Tĩnh", "Đường Ung Văn Khiêm"]
-        : ["Trục đường chính Khu vực", "Đường Liên Phường", "Đại lộ Trung tâm", "Đường Nội khu"];
+          ? ["Đường Điện Biên Phủ", "Đường Nguyễn Gia Trí (D2)", "Đường Xô Viết Nghệ Tĩnh", "Đường Ung Văn Khiêm"]
+          : ["Trục đường chính Khu vực", "Đường Liên Phường", "Đại lộ Trung tâm", "Đường Nội khu"];
 
     const defaultWards =
       /uit|khtn|bách khoa|làng đại học|linh trung|linh xuân|thủ đức/i.test(lowerLoc)
@@ -292,34 +292,25 @@ export default function RoomMapPanel({
           <div className="flex items-center bg-[#F1F5F9] rounded-lg p-0.5 text-[10px]">
             <button
               onClick={() => setViewMode("visual")}
-              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 ${
-                viewMode === "visual"
-                  ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
-                  : "text-[#64748B] hover:text-[#121E1A]"
-              }`}
+              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 ${viewMode === "visual"
+                ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
+                : "text-[#64748B] hover:text-[#121E1A]"
+                }`}
             >
               <span className="material-symbols-outlined text-[12px]">radar</span>
               <span>Trực quan</span>
             </button>
             <button
               onClick={() => setViewMode("google")}
-              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 ${
-                viewMode === "google"
-                  ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
-                  : "text-[#64748B] hover:text-[#121E1A]"
-              }`}
+              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 ${viewMode === "google"
+                ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
+                : "text-[#64748B] hover:text-[#121E1A]"
+                }`}
             >
               <span className="material-symbols-outlined text-[12px]">map</span>
               <span>Google Maps</span>
             </button>
           </div>
-
-          {viewMode === "visual" && rooms.length > 0 && (
-            <span className="text-[10px] bg-[#E6F4EE] text-[#0F5F4A] px-2.5 py-0.5 rounded-full font-bold">
-              Bán kính ~{radarScale.scaleMaxKmText}
-            </span>
-          )}
-
           <a
             href={googleUrls.external}
             target="_blank"
@@ -543,11 +534,9 @@ export default function RoomMapPanel({
                 {/* Midpoint route distance indicator badge */}
                 {(activePin.pinDistText || activePin.distance) && (
                   <g
-                    transform={`translate(${
-                      (300 + (activePin.leftPercent / 100) * 600) / 2
-                    }, ${
-                      (160 + (activePin.topPercent / 100) * 320) / 2
-                    })`}
+                    transform={`translate(${(300 + (activePin.leftPercent / 100) * 600) / 2
+                      }, ${(160 + (activePin.topPercent / 100) * 320) / 2
+                      })`}
                   >
                     <rect
                       x="-24"
@@ -600,11 +589,10 @@ export default function RoomMapPanel({
                   left: `${room.leftPercent}%`,
                   transform: `translate(-50%, -100%) scale(${zoomLevel * (isSelected ? 1.25 : 1)})`,
                 }}
-                className={`absolute z-20 flex flex-col items-center cursor-pointer transition-all duration-300 origin-bottom ${
-                  isSelected
-                    ? "z-30 drop-shadow-[0_4px_10px_rgba(234,179,8,0.55)]"
-                    : "hover:scale-115 drop-shadow-md"
-                }`}
+                className={`absolute z-20 flex flex-col items-center cursor-pointer transition-all duration-300 origin-bottom ${isSelected
+                  ? "z-30 drop-shadow-[0_4px_10px_rgba(234,179,8,0.55)]"
+                  : "hover:scale-115 drop-shadow-md"
+                  }`}
                 title={`${room.rankText}: ${room.title} | ${room.price} | Cách ${landmarkInfo.shortName}: ${room.distance}`}
               >
                 <svg

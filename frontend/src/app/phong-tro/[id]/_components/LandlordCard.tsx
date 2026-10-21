@@ -4,8 +4,6 @@ import ImageWithFallback from "@/components/ImageWithFallback";
 interface LandlordCardProps {
   listing: ListingDetailDto | null;
   defaultImage: string;
-  showPhone: boolean;
-  onTogglePhone: () => void;
 }
 
 interface StatItemProps {
@@ -28,7 +26,7 @@ function StatItem({ icon, value, label }: StatItemProps) {
   );
 }
 
-export default function LandlordCard({ listing, defaultImage, showPhone, onTogglePhone }: LandlordCardProps) {
+export default function LandlordCard({ listing, defaultImage }: LandlordCardProps) {
   const poster = listing?.poster;
   const isCompany = poster?.is_company ?? false;
   const liveAds = poster?.live_ads ?? 0;
@@ -52,9 +50,8 @@ export default function LandlordCard({ listing, defaultImage, showPhone, onToggl
             </h3>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                  isCompany ? "bg-[#FFF3DC] text-[#8A5A00]" : "bg-gray-100 text-gray-600"
-                }`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isCompany ? "bg-[#FFF3DC] text-[#8A5A00]" : "bg-gray-100 text-gray-600"
+                  }`}
               >
                 <span className="material-symbols-outlined text-[14px]">
                   {isCompany ? "apartment" : "person"}
@@ -76,24 +73,6 @@ export default function LandlordCard({ listing, defaultImage, showPhone, onToggl
         </div>
 
         <div className="space-y-3 py-4">
-          {showPhone ? (
-            <a
-              href="tel:0784498868"
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#0F5F4A] py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#004635] cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[20px]">call</span>
-              <span>Gọi ngay: 0784 498 868</span>
-            </a>
-          ) : (
-            <button
-              type="button"
-              onClick={onTogglePhone}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#0F5F4A] py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#004635] cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[20px]">call</span>
-              <span>Hiện số: 0784 498 ***</span>
-            </button>
-          )}
           {listing?.url && (
             <a
               href={listing.url}

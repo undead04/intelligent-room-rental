@@ -15,6 +15,18 @@ export default function Navbar() {
     { label: "Giá trọ", href: "/tra-cuu-gia-tro", icon: "bar_chart" },
   ];
 
+  const isItemActive = (href: string) => {
+    if (href === "/") return pathname === "/";
+    if (href === "/tim-kiem") {
+      return (
+        pathname === "/tim-kiem" ||
+        pathname?.startsWith("/tim-kiem/") ||
+        pathname?.startsWith("/phong-tro")
+      );
+    }
+    return pathname === href || (href !== "/" && pathname?.startsWith(href + "/"));
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-[#E8E4DC] shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
       <div className="h-[72px] max-w-[1500px] mx-auto px-4 lg:px-8 flex items-center justify-between gap-4">
@@ -38,10 +50,7 @@ export default function Navbar() {
         {/* Center Nav for Desktop */}
         <nav className="hidden lg:flex items-center gap-1.5 p-1.5 bg-[#EEF4F1] rounded-full border border-[#D8E4DF] shadow-inner">
           {navItems.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href + "/"));
+            const isActive = isItemActive(item.href);
 
             return (
               <Link
@@ -103,10 +112,7 @@ export default function Navbar() {
         <div className="lg:hidden border-t border-[#E8E4DC] bg-white px-4 py-3 shadow-lg animate-in slide-in-from-top-2 duration-200">
           <div className="flex flex-col gap-1">
             {navItems.map((item) => {
-              const isActive =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href + "/"));
+              const isActive = isItemActive(item.href);
 
               return (
                 <Link

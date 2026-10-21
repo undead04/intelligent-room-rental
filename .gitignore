@@ -45,3 +45,7 @@ Thumbs.db
 traces/
 ai-agent/traces/
 *.jsonl
+AGENTS.md
+*.db
+*.db-wal
+*.db-shm

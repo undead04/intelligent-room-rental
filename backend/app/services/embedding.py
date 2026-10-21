@@ -3,43 +3,48 @@ from typing import List, Optional, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
-
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+from pathlib import Path
 
 
 def resolve_model_cache_dir(custom_path: Optional[str] = None) -> str:
-    """Tự động tìm kiếm và đồng nhất thư mục model_cache/models_cache trên máy.
-    Tránh trường hợp mỗi module hoặc terminal chạy từ thư mục khác nhau tạo ra folder riêng.
-    """
-    if custom_path and os.path.isabs(custom_path) and os.path.exists(custom_path):
-        return custom_path
+    """Tự động tìm kiếm thư mục models_cache/model_cache."""
+    if custom_path and os.path.exists(custom_path):
+        return str(Path(custom_path).resolve())
 
-    env_dir = os.environ.get("MODEL_CACHE_DIR") or os.environ.get("EMBEDDING_MODEL_CACHE_DIR")
-    if env_dir and os.path.exists(env_dir):
-        return os.path.abspath(env_dir)
+    # Kiểm tra biến môi trường
+    env_cache = os.getenv("MODELS_CACHE_DIR") or os.getenv("MODEL_CACHE_DIR")
+    if env_cache and os.path.exists(env_cache):
+        return str(Path(env_cache).resolve())
 
-    # Ưu tiên các thư mục cache đã tồn tại theo thứ tự
-    candidate_dirs = [
-        os.path.join(PROJECT_ROOT, "model_cache"),
-        os.path.join(PROJECT_ROOT, "models_cache"),
-        os.path.join(PROJECT_ROOT, "backend", "model_cache"),
-        os.path.join(PROJECT_ROOT, "backend", "models_cache"),
-        os.path.join(PROJECT_ROOT, "crawler", "model_cache"),
-        os.path.join(PROJECT_ROOT, "crawler", "models_cache"),
-    ]
-    for c in candidate_dirs:
-        if os.path.isdir(c):
-            return os.path.abspath(c)
+    file_path = Path(__file__).resolve()
+    # Các ứng viên thư mục cache (Workspace root, Backend dir)
+    # parents: [0]=services, [1]=app, [2]=backend, [3]=workspace root
+    candidates = []
+    if len(file_path.parents) > 3:
+        candidates.extend([
+            file_path.parents[3] / "models_cache",
+            file_path.parents[3] / "model_cache",
+        ])
+    if len(file_path.parents) > 2:
+        candidates.extend([
+            file_path.parents[2] / "models_cache",
+            file_path.parents[2] / "model_cache",
+        ])
 
-    # Nếu chỉ định custom_path tương đối, gán về thư mục gốc dự án
-    if custom_path:
-        target = os.path.abspath(os.path.join(PROJECT_ROOT, custom_path.lstrip("./\\")))
-        os.makedirs(target, exist_ok=True)
-        return target
+    # 1. Ưu tiên thư mục đã có model e5-base
+    for p in candidates:
+        if (p / "models--intfloat--multilingual-e5-base").exists():
+            return str(p.resolve())
 
-    default_dir = os.path.join(PROJECT_ROOT, "models_cache")
-    os.makedirs(default_dir, exist_ok=True)
-    return default_dir
+    # 2. Thư mục cache đã tồn tại
+    for p in candidates:
+        if p.is_dir():
+            return str(p.resolve())
+
+    # 3. Fallback: tạo thư mục models_cache ở workspace root (nếu có) hoặc backend
+    target_dir = file_path.parents[3] / "models_cache" if len(file_path.parents) > 3 else file_path.parents[2] / "models_cache"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return str(target_dir.resolve())
 
 
 class EmbeddingModel:
@@ -66,8 +71,6 @@ class EmbeddingModel:
         if device is None:
             if torch.cuda.is_available():
                 self.device = "cuda"
-            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                self.device = "mps"
             else:
                 self.device = "cpu"
         else:
@@ -172,7 +175,6 @@ class EmbeddingModel:
         self,
         texts: Union[str, List[str]],
         is_query: bool = False,
-        normalize_embeddings: bool = True,
     ) -> np.ndarray:
         """Hàm encode tổng quát (tương thích ngược hoàn toàn với code cũ)."""
         if isinstance(texts, str):

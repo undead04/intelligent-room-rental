@@ -10,6 +10,7 @@ export default function Breadcrumbs({ items, className = "" }: BreadcrumbsProps)
   return (
     <nav className={`flex items-center gap-1.5 overflow-x-auto text-xs text-gray-500 hide-scrollbar ${className}`} aria-label="Breadcrumb">
       {items.map((item, index) => (
+        item.label &&
         <span key={`${item.label}-${index}`} className="flex shrink-0 items-center gap-1.5">
           {index > 0 && <span className="material-symbols-outlined text-[14px]">chevron_right</span>}
           {item.href ? (

@@ -106,7 +106,7 @@ export const roomTypesApi = {
 };
 
 export const priceStatsApi = {
-  get(params: { city_id?: number; district_id?: number } = {}) {
+  get(params: { city_id?: number; district_id?: number; room_type_id?: number; room_type?: number } = {}) {
     return request<PriceStatsDto>(`/listings/price-stats${buildQuery(params)}`);
   },
 };
@@ -201,16 +201,23 @@ export const agentApi = {
 
         try {
           const parsed = JSON.parse(rawData);
-          if (eventName === "trace") {
+          const eventType = parsed?.type || eventName;
+
+          if (eventName === "trace" || eventType === "trace" || eventType === "node_step") {
             callbacks.onTrace?.(parsed as AgentTraceEvent);
-          } else if (eventName === "text_delta") {
+          } else if (eventName === "text_delta" || eventType === "text_delta") {
             if (typeof parsed.delta === "string") {
               callbacks.onTextDelta?.(parsed.delta);
             }
-          } else if (eventName === "done") {
+          } else if (
+            eventName === "complete" ||
+            eventName === "done" ||
+            eventType === "complete" ||
+            eventType === "done"
+          ) {
             finalResponse = parsed as AgentResponse;
             callbacks.onDone?.(finalResponse);
-          } else if (eventName === "error") {
+          } else if (eventName === "error" || eventType === "error") {
             throw new ApiError(parsed.error || "Lỗi trong quá trình stream từ AI Agent", 500);
           }
         } catch (err) {
@@ -227,6 +234,12 @@ export const agentApi = {
 
   health() {
     return agentRequest<{ status: string; service: string; version: string }>("/api/v1/health");
+  },
+
+  clearSession(sessionId: string) {
+    return agentRequest<{ status: string; message: string }>(`/api/v1/session/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    }).catch(() => null);
   },
 };
 

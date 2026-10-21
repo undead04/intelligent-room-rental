@@ -10,30 +10,17 @@ from app.services.geocoder import resolve_location
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Khung toạ độ Việt Nam (gồm cả Hoàng Sa, Trường Sa) để kiểm tra kết quả
-VN_LAT_RANGE = (6.0, 23.5)
-VN_LON_RANGE = (102.0, 118.0)
-
-
-# ---------- Helpers ----------
-
-def _in_vietnam(lat: float, lon: float) -> bool:
-    return (
-        VN_LAT_RANGE[0] <= lat <= VN_LAT_RANGE[1]
-        and VN_LON_RANGE[0] <= lon <= VN_LON_RANGE[1]
-    )
-
-
 def _geocode_one(query: str, hint: Optional[str]) -> Optional[GeocodeResponse]:
     result = resolve_location(query, hint)
     if not result:
         return None
-    if not _in_vietnam(result.lat, result.lon):
-        return None
     logger.info("Geocoded '%s' to (%f, %f) via %s", query, result.lat, result.lon, result.provider)
     return result
 
-
+def _is_in_vietnam(lat: float, lon: float) -> bool:
+    """Kiểm tra tọa độ có nằm trong phạm vi Việt Nam không"""
+    return 8.1 <= lat <= 23.4 and 102.1 <= lon <= 109.6
+    
 # ---------- Endpoints ----------
 @router.get(
     "/",
@@ -50,5 +37,11 @@ def geocode(
         raise HTTPException(
             status_code=404,
             detail=f"Không tìm thấy toạ độ cho '{q}'. Thử thêm hint (tỉnh/thành) hoặc nhập cụ thể hơn.",
+        )
+    
+    if not _is_in_vietnam(result.lat, result.lon):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tọa độ tìm được ngoài Việt Nam: ({result.lat}, {result.lon}). Nhập lại query.",
         )
     return ResponseDTO[GeocodeResponse](data=result)

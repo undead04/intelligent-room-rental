@@ -4,8 +4,8 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.user import UserResponse
-from app.schemas.location import CityReference, DistrictReference, WardReference
-from app.schemas.room_type import RoomTypeReference, ROOM_TYPE_CODE_TO_ID
+from app.schemas.location import CityResponse, DistrictResponse, WardResponse
+from app.schemas.room_type import RoomType, RoomTypeResponse, RoomTypeReference, ROOM_TYPE_CODE_TO_ID
 
 
 class AmenityCode(str, Enum):
@@ -13,6 +13,9 @@ class AmenityCode(str, Enum):
     Giá trị dạng snake_case khớp 1-1 với field name trong ListingExtraction.
     Dùng cho UI Checkbox, Filter cứng và công thức tính trọng số Rerank.
     """
+    def __str__(self) -> str:
+        return str(self.value)
+
     # 1. Tiện ích phòng cốt lõi (Core Amenities)
     PRIVATE_WC = "private_wc"              # WC riêng, khép kín
     AIRCON = "aircon"                      # Máy lạnh, điều hòa
@@ -54,10 +57,10 @@ class ListingResponse(BaseModel):
     safety_score: Optional[float] = None
     amenity_overall: Optional[float] = None
     concept_scores: Optional[dict[str, float]] = None
-    city: Optional[CityReference] = None
-    district: Optional[DistrictReference] = None
-    ward: Optional[WardReference] = None
-    room_type: Optional[RoomTypeReference] = None
+    city: Optional[CityResponse] = None
+    district: Optional[DistrictResponse] = None
+    ward: Optional[WardResponse] = None
+    room_type: Optional[RoomTypeResponse] = None
     posted_date: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -95,9 +98,6 @@ class ListingFilterParams(BaseModel):
                 raise ValueError("min_area không được lớn hơn max_area")
         return self
 
-    
-    
-
 
 class ListingPaginationParams(BaseModel):
     """Gom nhóm các tham số phân trang và sắp xếp."""
@@ -127,13 +127,15 @@ class VectorSearchBody(BaseModel):
     Toàn bộ tham số được truyền trực tiếp qua JSON Body.
     """
     query: str = Field(..., min_length=1, description="Câu truy vấn tự nhiên của người dùng")
-    amenities: Optional[list[AmenityCode]] = Field(default=None, description="Danh sách tiện ích yêu cầu theo định dạng AmenityCode")
+    amenities: Optional[list[AmenityCode]] = Field(default=None, description="Danh sách tiện ích bắt buộc theo định dạng AmenityCode")
+    preferred_amenities: Optional[list[AmenityCode]] = Field(default=None, description="Danh sách tiện ích ưu tiên mềm (có càng tốt)")
     weights: Optional[dict[str, float]] = Field(
         default=None,
         description="Trọng số MCDM tùy chỉnh (vd: {'price': 0.35, 'location': 0.35, ...})",
     )
     lat: Optional[float] = Field(None, ge=-90.0, le=90.0, description="Vĩ độ mục tiêu người dùng")
     lng: Optional[float] = Field(None, ge=-180.0, le=180.0, description="Kinh độ mục tiêu người dùng")
+    max_distance_km: Optional[float] = Field(default=8.0, ge=0.5, le=50.0, description="Bán kính tìm kiếm tối đa quanh toạ độ (km)")
     city_id: Optional[int] = Field(None, ge=1, description="ID Tỉnh/Thành phố")
     district_id: Optional[int] = Field(None, ge=1, description="ID Quận/Huyện")
     ward_id: Optional[int] = Field(None, ge=1, description="ID Phường/Xã")
@@ -157,7 +159,7 @@ class VectorSearchBody(BaseModel):
     @classmethod
     def validate_room_type(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
-            clean = v.strip().upper()
+            clean = v.value if hasattr(v, "value") else str(v).strip().upper()
             if clean not in ROOM_TYPE_CODE_TO_ID:
                 valid_codes = list(ROOM_TYPE_CODE_TO_ID.keys())
                 raise ValueError(f"room_type '{v}' không hợp lệ. Phải là một trong: {valid_codes}")
@@ -172,13 +174,13 @@ class VectorSearchBody(BaseModel):
         if self.min_area is not None and self.max_area is not None:
             if self.min_area > self.max_area:
                 raise ValueError("min_area không được lớn hơn max_area")
-        # Tự động đồng bộ room_type_id nếu có room_type
+        # Cách 1: Tự động đồng bộ room_type_id nếu có room_type
         if self.room_type_id is None and self.room_type is not None:
-            self.room_type_id = ROOM_TYPE_CODE_TO_ID.get(self.room_type)
+            clean = self.room_type.value if hasattr(self.room_type, "value") else str(self.room_type).strip().upper()
+            self.room_type_id = ROOM_TYPE_CODE_TO_ID.get(clean)
         return self
 
 
-# Alias cho tương thích ngược nếu có module cũ gọi
 VectorSearchQueryFilters = VectorSearchBody
 VectorSearchRequest = VectorSearchBody
 
@@ -189,3 +191,7 @@ class VectorSearchResult(BaseModel):
     explain_match: Optional[dict[str, object]] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ListingCountResponse(BaseModel):
+    total_listings: int

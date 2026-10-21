@@ -1,7 +1,6 @@
 from typing import Optional, Any
 import re
-
-from sqlalchemy import case, func, or_
+from sqlalchemy import Float, case, cast, func, or_
 from sqlalchemy.orm import Query, Session, joinedload
 
 from app.models.embedding import ListingEmbedding
@@ -14,6 +13,14 @@ _FTS_STOPWORDS = {
     "từ", "tu", "đến", "den", "giá", "gia", "triệu", "trieu", "tr", "vnd",
     "nhé", "nhe", "ạ", "a", "với", "voi", "có", "co", "và", "va", "cần", "can",
     "muốn", "muon", "thuê", "thue",
+}
+
+ROOM_TYPE_CODE_TO_ID: dict[str, int] = {
+    "ROOM": 1,
+    "STUDIO": 2,
+    "APARTMENT": 3,
+    "SLEEPBOX": 4,
+    "WHOLE_HOUSE": 5,
 }
 
 
@@ -30,7 +37,6 @@ def _build_or_tsquery_string(query_text: str) -> str:
         if tok not in valid_tokens:
             valid_tokens.append(tok)
     return " | ".join(valid_tokens)
-
 
 
 class ListingRepository:
@@ -187,6 +193,8 @@ class ListingRepository:
         city_id: int | None = None,
         district_id: int | None = None,
         ward_id: int | None = None,
+        room_type_id: int | None = None,
+        room_type: Optional[str] = None,
         min_price: float | None = None,
         max_price: float | None = None,
         min_area: float | None = None,
@@ -194,6 +202,10 @@ class ListingRepository:
         limit: int = 50,
         alpha: float = 0.6,
         model_name: Optional[str] = None,
+        lat: float | None = None,
+        lng: float | None = None,
+        max_distance_km: float | None = None,
+        amenities: list[Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Tìm kiếm tin đăng kết hợp Hybrid Search (Dense pgvector + Sparse PostgreSQL Full-Text Search).
 
@@ -207,7 +219,7 @@ class ListingRepository:
             query_vector
         ).label("distance")
 
-        clean_query = query_text.strip()
+        clean_query = (query_text or "").strip()
         text_content = func.concat_ws(
             " ",
             func.coalesce(Listing.title, ""),
@@ -216,7 +228,6 @@ class ListingRepository:
         )
         ts_vector = func.to_tsvector("simple", text_content)
         or_query_str = _build_or_tsquery_string(clean_query)
-
         if or_query_str:
             ts_query = func.to_tsquery("simple", or_query_str)
         else:
@@ -252,6 +263,18 @@ class ListingRepository:
         if ward_id is not None:
             query = query.filter(Listing.ward_id == ward_id)
 
+        # Cách 1: Lọc an toàn bằng room_type_id (tránh so sánh relationship với str)
+        effective_room_type_id = room_type_id
+        if effective_room_type_id is None and room_type is not None:
+            clean = room_type.value if hasattr(room_type, "value") else str(room_type).strip().upper()
+            if clean.isdigit():
+                effective_room_type_id = int(clean)
+            elif clean in ROOM_TYPE_CODE_TO_ID:
+                effective_room_type_id = ROOM_TYPE_CODE_TO_ID[clean]
+
+        if effective_room_type_id is not None:
+            query = query.filter(Listing.room_type_id == effective_room_type_id)
+
         if min_price is not None:
             query = query.filter(Listing.price_vnd >= min_price)
         if max_price is not None:
@@ -261,6 +284,29 @@ class ListingRepository:
             query = query.filter(Listing.area_m2 >= min_area)
         if max_area is not None:
             query = query.filter(Listing.area_m2 <= max_area)
+
+        # Lọc không gian theo bán kính (bounding box) quanh toạ độ mục tiêu
+        if lat is not None and lng is not None and max_distance_km:
+            lat_delta = max_distance_km / 111.0
+            lng_delta = max_distance_km / 105.0
+            query = query.filter(
+                Listing.lat.isnot(None),
+                Listing.lng.isnot(None),
+                Listing.lat >= lat - lat_delta,
+                Listing.lat <= lat + lat_delta,
+                Listing.lng >= lng - lng_delta,
+                Listing.lng <= lng + lng_delta,
+            )
+
+        # Lọc cứng tiện ích bắt buộc từ concept_scores
+        if amenities:
+            from app.services.reranker import _NORMALIZE_AMENITY
+
+            for am in amenities:
+                clean_code = _NORMALIZE_AMENITY(str(getattr(am, "value", am)))
+                query = query.filter(
+                    func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
+                )
 
         rows = query.order_by(hybrid_score_col.desc()).limit(limit).all()
 

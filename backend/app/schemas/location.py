@@ -23,7 +23,16 @@ class WardResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Aliases for references
-CityReference = CityResponse
-DistrictReference = DistrictResponse
-WardReference = WardResponse
+class NearbyLocationItem(BaseModel):
+    id: int
+    name: str
+    level: str  # "ward" hoặc "district"
+    parent_name: str | None = None
+    distance_km: float
+    total_listings: int
+    min_price_vnd: float
+    max_price_vnd: float | None = None
+    avg_price_vnd: float
+    is_filtered: bool = False
+
+    model_config = ConfigDict(from_attributes=True)

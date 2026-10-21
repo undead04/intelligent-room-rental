@@ -1,18 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import SiteLayout from "@/components/SiteLayout";
 import AgentInsightPanel from "@/app/tim-kiem-ai/_components/AgentInsightPanel";
 import AiChatPanel from "@/app/tim-kiem-ai/_components/AiChatPanel";
 import AiWorkspaceHeader from "@/app/tim-kiem-ai/_components/AiWorkspaceHeader";
 import RoomMapPanel from "@/app/tim-kiem-ai/_components/RoomMapPanel";
 import RoomResultsPanel from "@/app/tim-kiem-ai/_components/RoomResultsPanel";
-import { DEFAULT_FILTER_ID } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 import { useAiChat } from "@/app/tim-kiem-ai/_hooks/useAiChat";
 import BackendConnectionError from "@/components/BackendConnectionError";
 
 export default function AIChatWorkspacePage() {
-  const [activeFilter, setActiveFilter] = useState<string>(DEFAULT_FILTER_ID);
 
   const {
     messages,
@@ -42,6 +39,7 @@ export default function AIChatWorkspacePage() {
         onResetConversation={resetConversation}
         hasActiveSession={hasActiveSession}
       />
+
 
       {/* MAIN WORKSPACE LAYOUT (Viewport Fit: No whole-page scroll on desktop) */}
       <main className="flex-1 min-h-0 px-3 sm:px-4 lg:px-6 pb-3 pt-1 max-w-[1600px] w-full mx-auto flex flex-col overflow-y-auto lg:overflow-hidden">
@@ -83,10 +81,8 @@ export default function AIChatWorkspacePage() {
           <RoomResultsPanel
             rooms={rooms}
             selectedRoomId={selectedRoomId}
-            activeFilter={activeFilter}
             preferences={preferences}
             onSelectRoom={setSelectedRoomId}
-            onSelectFilter={setActiveFilter}
           />
 
           {/* COLUMN 3: BẢN ĐỒ VỊ TRÍ & PHÂN TÍCH AGENT (Col span 4) */}

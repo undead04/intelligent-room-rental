@@ -22,6 +22,7 @@ const FACTOR_ORDER = ["price", "location", "safety", "amenity", "semantic"];
 
 export default function AgentInsightPanel({
   room,
+  insights,
   rooms = [],
 }: AgentInsightPanelProps) {
   const explainBreakdown = useMemo(() => {
@@ -171,6 +172,10 @@ export default function AgentInsightPanel({
     if (!room) return [];
     const items: string[] = [];
 
+    if (insights?.verification_checklist && insights.verification_checklist.length > 0 && (room.rank === 1 || room.id === insights.selected_top_1_id)) {
+      items.push(...insights.verification_checklist);
+    }
+
     if (room.priceNum > 0 && room.priceNum <= 3_500_000) {
       items.push(
         "Xác nhận đơn giá điện nước: Hỏi rõ giá điện (giá nhà nước hay 3.5k–4k/kWh), giá nước và phí dịch vụ/rác/wifi để tính tổng chi phí thực tế hàng tháng."
@@ -233,6 +238,29 @@ export default function AgentInsightPanel({
         </div>
       ) : (
         <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs bg-[#FAFBF9]">
+          {/* AI Agent Decision Support (Dynamic MCDM) */}
+          {insights && (room.rank === 1 || room.id === insights.selected_top_1_id) && (
+            <div className="bg-gradient-to-r from-[#E6F4EE]/90 via-[#F0FDF8] to-white rounded-xl p-3.5 border border-[#0F5F4A]/25 shadow-2xs space-y-2">
+              <div className="flex items-center gap-1.5 text-[#0F5F4A] font-bold text-[12px]">
+                <span className="material-symbols-outlined text-[16px]">psychology</span>
+                <span>Lý do lựa chọn Top 1 (Dynamic MCDM):</span>
+              </div>
+              <p className="text-[11px] text-[#121E1A] leading-relaxed">
+                {insights.top_1_reason}
+              </p>
+              {insights.key_factors && insights.key_factors.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-[#6F7974] font-medium">Tiêu chí then chốt:</span>
+                  {insights.key_factors.map((kf, idx) => (
+                    <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-[#0F5F4A]/20 text-[#0F5F4A] text-[10px] font-bold shadow-2xs">
+                      {kf}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Detailed Room Header Card */}
           <div className="bg-white rounded-xl p-3.5 border border-[#E8E4DC] shadow-2xs space-y-2.5">
             <div className="flex items-start justify-between gap-2">
@@ -387,6 +415,29 @@ export default function AgentInsightPanel({
                       <li key={idx}>{con}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Backend AI Computed Trade-offs */}
+              {insights?.trade_offs && insights.trade_offs.length > 0 && (room.rank === 1 || room.id === insights.selected_top_1_id) && (
+                <div className="space-y-1.5 pt-1 border-t border-[#F1F5F9]">
+                  <div className="text-[11px] font-bold text-[#0F5F4A] flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">balance</span>
+                    <span>Phân tích đánh đổi (Trade-off Matrix từ AI):</span>
+                  </div>
+                  {insights.trade_offs.map((to, idx) => (
+                    <div key={idx} className="bg-[#FAFBF9] rounded-lg p-2.5 border border-[#E8E4DC] text-[10.5px] space-y-1">
+                      <div className="font-bold text-[#1E293B]">So với {to.compared_with}:</div>
+                      <div className="text-[#15803D] flex items-start gap-1">
+                        <span className="font-bold shrink-0">▲</span>
+                        <span>{to.advantage}</span>
+                      </div>
+                      <div className="text-[#B45309] flex items-start gap-1">
+                        <span className="font-bold shrink-0">▼</span>
+                        <span>{to.disadvantage}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

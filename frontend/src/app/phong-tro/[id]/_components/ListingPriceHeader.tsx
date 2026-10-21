@@ -2,6 +2,7 @@ interface ListingPriceHeaderProps {
   title: string;
   location: string;
   price: string;
+  area?: string;
   isSaved: boolean;
   onToggleSave: () => void;
 }
@@ -10,6 +11,7 @@ export default function ListingPriceHeader({
   title,
   location,
   price,
+  area,
   isSaved,
   onToggleSave,
 }: ListingPriceHeaderProps) {
@@ -37,11 +39,42 @@ export default function ListingPriceHeader({
         <span>{location}</span>
       </p>
 
-      <div className="p-4 rounded-xl bg-[#FAF8F4] border border-[#E8E4DC] flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-baseline gap-2">
-          <span className="font-['Plus_Jakarta_Sans'] font-black text-3xl text-[#FF6B4A]">
-            {price}
+      <div className="p-5 rounded-2xl bg-[#FAF8F4] border border-[#E8E4DC] flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-6 sm:gap-8 flex-wrap">
+          <div>
+            <span className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+              Giá thuê
+            </span>
+            <div className="flex items-baseline gap-1">
+              <span className="font-['Plus_Jakarta_Sans'] font-black text-2xl sm:text-3xl text-[#FF6B4A]">
+                {price}
+              </span>
+            </div>
+          </div>
+
+          {area && (
+            <>
+              <div className="hidden sm:block w-px h-10 bg-[#E0DCD3]" />
+              <div>
+                <span className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  Diện tích
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-['Plus_Jakarta_Sans'] font-black text-2xl sm:text-3xl text-[#121E1A]">
+                    {area}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-[#E8E4DC] text-xs font-semibold text-gray-700 shadow-2xs">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
+          <span>Đang cho thuê</span>
         </div>
       </div>
     </div>

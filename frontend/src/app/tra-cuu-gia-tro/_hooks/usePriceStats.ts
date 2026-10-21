@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CityDto, PriceStatsDto } from "@/types/dto";
-import { locationsApi, priceStatsApi } from "@/lib/api/client";
+import type { CityDto, PriceStatsDto, RoomTypeDto } from "@/types/dto";
+import { locationsApi, priceStatsApi, roomTypesApi } from "@/lib/api/client";
 import { toPriceStatRows } from "@/lib/utils/priceStats";
 
 const DEFAULT_CITY_NAME = "Hồ Chí Minh";
@@ -14,6 +14,8 @@ interface StatsSnapshot {
 export function usePriceStats() {
   const [cities, setCities] = useState<CityDto[]>([]);
   const [cityId, setCityId] = useState<number | undefined>();
+  const [roomTypes, setRoomTypes] = useState<RoomTypeDto[]>([]);
+  const [roomTypeId, setRoomTypeId] = useState<number | undefined>();
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Quận đang chọn gắn với thành phố: đổi thành phố là tự bỏ chọn, không cần effect
@@ -35,16 +37,21 @@ export function usePriceStats() {
         if (city) setCityId(city.id);
       })
       .catch(() => setLoadError("Không thể tải danh sách thành phố."));
+
+    roomTypesApi
+      .list()
+      .then((result) => setRoomTypes(result))
+      .catch(() => {});
   }, []);
 
-  const statsQueryKey = `${cityId ?? ""}|${districtId ?? ""}`;
+  const statsQueryKey = `${cityId ?? ""}|${districtId ?? ""}|${roomTypeId ?? ""}`;
 
   useEffect(() => {
     if (cityId === undefined) return;
     let cancelled = false;
 
     priceStatsApi
-      .get({ city_id: cityId, district_id: districtId })
+      .get({ city_id: cityId, district_id: districtId, room_type_id: roomTypeId })
       .then((stats) => !cancelled && setStatsSnapshot({ queryKey: statsQueryKey, stats, apiError: null }))
       .catch(() =>
         !cancelled &&
@@ -58,7 +65,7 @@ export function usePriceStats() {
     return () => {
       cancelled = true;
     };
-  }, [cityId, districtId, statsQueryKey]);
+  }, [cityId, districtId, roomTypeId, statsQueryKey]);
 
   const selectCity = (nextCityId: number) => {
     setCityId(nextCityId);
@@ -66,6 +73,10 @@ export function usePriceStats() {
 
   const selectDistrict = (nextDistrictId: number | undefined) => {
     setDistrictSelection({ cityId, districtId: nextDistrictId });
+  };
+
+  const selectRoomType = (nextRoomTypeId: number | undefined) => {
+    setRoomTypeId(nextRoomTypeId);
   };
 
   // Chỉ dùng thống kê của request hiện tại: đổi bộ lọc là loading và không còn lỗi cũ
@@ -82,6 +93,9 @@ export function usePriceStats() {
     selectCity,
     districtId,
     selectDistrict,
+    roomTypes,
+    roomTypeId,
+    selectRoomType,
     apiError: loadError ?? snapshot?.apiError ?? null,
     isLoading: snapshot === null,
   };

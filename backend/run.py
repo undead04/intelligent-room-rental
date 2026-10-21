@@ -9,6 +9,14 @@ import os
 import sys
 from pathlib import Path
 
+# Đảm bảo mã hóa UTF-8 cho stdout trên môi trường Windows
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Thêm thư mục backend vào sys.path để import app.* không bị lỗi ModuleNotFoundError
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
@@ -33,5 +41,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
+        reload_dirs=[str(BACKEND_DIR / "app")],
         log_level="info",
     )

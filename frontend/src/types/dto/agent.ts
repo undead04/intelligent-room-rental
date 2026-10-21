@@ -16,11 +16,17 @@ export interface UserPreferenceState {
   location_text?: string;
   lat?: number;
   lng?: number;
+  city_id?: number;
+  district_id?: number;
+  ward_id?: number;
+  room_type?: string;
+  room_type_id?: number;
   min_price?: number;
   max_price?: number;
   min_area?: number;
   max_area?: number;
   amenities?: string[];
+  preferred_amenities?: string[];
   special_requirements?: string[];
 }
 
@@ -46,8 +52,8 @@ export interface RoomItem {
 }
 
 export interface AgentTraceEvent {
-  type: "model_request" | "model_response" | "tool_started" | "tool_finished" | string;
-  step: number;
+  type: "model_request" | "model_response" | "tool_started" | "tool_finished" | "node_step" | "model_error" | string;
+  step?: number;
   model_call_index?: number;
   model_name?: string;
   message_count?: number;
@@ -55,6 +61,9 @@ export interface AgentTraceEvent {
   system_prompt_chars?: number;
   message_chars?: number;
   elapsed_ms?: number;
+  node?: string;
+  label?: string;
+  details?: string;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -96,6 +105,8 @@ export interface HitlProposal {
   market_floor_price_str?: string;
   market_avg_price?: number;
   market_avg_price_str?: string;
+  proposed_budget?: number;
+  proposed_budget_str?: string;
   is_market_gap?: boolean;
   message?: string;
   options: HitlOption[];
@@ -118,5 +129,6 @@ export interface AgentChatRequest {
   message: string;
   conversation_history?: Array<{ role: string; content: string }>;
   session_id?: string;
+  use_graph?: boolean;
 }
 

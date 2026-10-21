@@ -84,6 +84,7 @@ export default function PropertyDetailPage() {
               title={title}
               location={location}
               price={price}
+              area={area}
               isSaved={isSaved}
               onToggleSave={() => setIsSaved(!isSaved)}
             />
@@ -105,8 +106,6 @@ export default function PropertyDetailPage() {
           <LandlordCard
             listing={listing}
             defaultImage={DEFAULT_PROPERTY_IMAGE}
-            showPhone={showPhone}
-            onTogglePhone={() => setShowPhone(!showPhone)}
           />
         </div>
 

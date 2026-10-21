@@ -1,15 +1,19 @@
 [project]
-name = "stage-04-script-skill"
+name = "homigo-ai-agent"
 version = "0.1.0"
-description = "Lab Agent Tools & Skills, stage 04: skill chạy script"
+description = "Homigo AI Agent - Intelligent Student Housing Recommendation Assistant with Multi-Criteria Decision Making"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.143.3",
-    "langchain>=1.4.3,<2",
-    "langchain-openai>=1.6.7,<2",
-    "python-dotenv>=1.2.4,<2",
-    "pyyaml>=6.0.3,<7",
-    "streamlit>=1.65.0,<2",
+    "fastapi>=0.115.0",
+    "httpx>=0.28.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langgraph>=0.2.0",
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
+    "streamlit>=1.35.0",
+    "uvicorn>=0.30.0",
 ]
 
 [dependency-groups]

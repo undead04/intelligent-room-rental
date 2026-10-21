@@ -13,8 +13,9 @@ from app.schemas.listing import (
     ListingResponse,
     VectorSearchBody,
     VectorSearchResult,
+    ListingCountResponse
 )
-from app.schemas.listing_count import ListingCountResponse
+
 from app.schemas.response import ErrorDTO, ResponseDTO
 from app.services.listing_service import ListingService
 
@@ -97,11 +98,13 @@ def get_total_listings(
 def get_price_stats(
     city_id: int = Query(..., ge=1, description="ID Tỉnh/Thành phố"),
     district_id: Optional[int] = Query(None, ge=1, description="ID Quận/Huyện"),
-    room_type_id: Optional[int] = Query(None, ge=1, description="ID loại phòng"),
+    room_type_id: Optional[int] = Query(None, ge=1, description="ID loại phòng (dạng số nguyên)"),
+    room_type: Optional[int] = Query(None, ge=1, description="ID loại phòng dạng số (alias của room_type_id)"),
     service: ListingService = Depends(get_listing_service),
 ) -> ResponseDTO[PriceStatsResponse]:
+    eff_room_type_id = room_type_id if room_type_id is not None else room_type
     return ResponseDTO[PriceStatsResponse](
-        data=service.get_price_stats(city_id, district_id, room_type_id),
+        data=service.get_price_stats(city_id, district_id, eff_room_type_id),
     )
 
 
@@ -139,6 +142,7 @@ def vector_search_listings(
         lat=body.lat,
         lng=body.lng,
         amenities=body.amenities,
+        preferred_amenities=body.preferred_amenities,
         weights=body.weights,
         city_id=body.city_id,
         district_id=body.district_id,
@@ -149,6 +153,7 @@ def vector_search_listings(
         max_price=body.max_price,
         min_area=body.min_area,
         max_area=body.max_area,
+        max_distance_km=body.max_distance_km,
         limit=body.limit,
         offset=body.offset,
     )

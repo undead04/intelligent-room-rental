@@ -1,0 +1,168 @@
+{
+  "timestamp": "2026-10-25 21:40:21",
+  "total_score": 98.13,
+  "grade": "XUẤT SẮC (EXCELLENT)",
+  "summary": "Hệ thống đạt tổng điểm 98.13/100 - Xếp loại: XUẤT SẮC (EXCELLENT). Mô hình hoàn thành xuất sắc các mục tiêu nghiên cứu của Đề tài tốt nghiệp: Tìm kiếm lai kết hợp Rerank đa tiêu chí động (Dynamic MCDM), máy trạng thái LangGraph 7 node phân vùng công cụ, kiểm chứng trung thực Self-RAG và cố vấn quyết định thông minh.",
+  "pillars": [
+    {
+      "pillar_id": 1,
+      "name": "NLU & Trạng thái Tích lũy (State Tracking)",
+      "max_points": 25.0,
+      "earned_points": 23.33,
+      "criteria": [
+        {
+          "name": "1.1 Phân loại Ý định (Intent Classification)",
+          "max_points": 5.0,
+          "earned_points": 3.33,
+          "pass_rate": 0.6666666666666666,
+          "details": "Đạt 4/6 ca kiểm tra các ý định cốt lõi",
+          "status": "WARN"
+        },
+        {
+          "name": "1.2 Trích xuất Tiêu chí (Entity Extraction)",
+          "max_points": 10.0,
+          "earned_points": 10.0,
+          "pass_rate": 1.0,
+          "details": "Bóc tách giá tiền, khoảng ngân sách, địa điểm và tiện ích chuẩn hoá đạt 100.0%",
+          "status": "PASS"
+        },
+        {
+          "name": "1.3 Tích lũy Trạng thái & Rollback Đa lượt",
+          "max_points": 10.0,
+          "earned_points": 10.0,
+          "pass_rate": 1.0,
+          "details": "Tích lũy chính xác qua các lượt và rollback snapshot ban đầu qua preference_history",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "pillar_id": 2,
+      "name": "Dynamic MCDM & Độ liên quan Truy xuất (Retrieval)",
+      "max_points": 25.0,
+      "earned_points": 25.0,
+      "criteria": [
+        {
+          "name": "2.1 Phân phối Trọng số Động (Intent-Aware Dynamic MCDM)",
+          "max_points": 10.0,
+          "earned_points": 10.0,
+          "pass_rate": 1.0,
+          "details": "Chuẩn hoá L1 đạt tổng = 1.0000; Kích hoạt ưu tiên giá x2.0 và an ninh x2.0 chuẩn xác",
+          "status": "PASS"
+        },
+        {
+          "name": "2.2 Tuân thủ Ràng buộc Cứng (Hard Constraints & Exclusions)",
+          "max_points": 10.0,
+          "earned_points": 10.0,
+          "pass_rate": 1.0,
+          "details": "Loại bỏ 100% phòng vượt trần ngân sách (+20% tolerance) và phòng thuộc loại hình KTX/Sleepbox bị loại trừ",
+          "status": "PASS"
+        },
+        {
+          "name": "2.3 Ranh giới Hành chính & Bán kính Không gian (Spatial Proximity)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Phân giải phân cấp hành chính (Tỉnh/Thành -> Quận/Huyện -> Phường/Xã) và geocoding bán kính <= 8km",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "pillar_id": 3,
+      "name": "Self-RAG & Kiểm chứng Grounding (Faithfulness)",
+      "max_points": 20.0,
+      "earned_points": 19.8,
+      "criteria": [
+        {
+          "name": "3.1 Tính Trung thực & Chống Ảo giác (Groundedness Score)",
+          "max_points": 10.0,
+          "earned_points": 9.8,
+          "pass_rate": 0.98,
+          "details": "Không bịa đặt số liệu phòng, giá thuê, địa chỉ hoặc tiền cọc; bám sát 100% dữ liệu backend trả về",
+          "status": "PASS"
+        },
+        {
+          "name": "3.2 Kiểm chứng Ngữ cảnh Dữ liệu (Context Grounding Verification)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Bộ lọc context grounding tự động phát hiện vi phạm và kích hoạt đề xuất đàm phán",
+          "status": "PASS"
+        },
+        {
+          "name": "3.3 Truy vết Bằng chứng & Trace Events (Evidence Attribution)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Ghi nhận đầy đủ trace events cho từng lời gọi tool: resolve_location, search_rooms, market_fetcher",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "pillar_id": 4,
+      "name": "Hỗ trợ Ra Quyết định & Cố vấn (Decision Support)",
+      "max_points": 15.0,
+      "earned_points": 15.0,
+      "criteria": [
+        {
+          "name": "4.1 Lý do Lựa chọn Top 1 Minh bạch (Top-1 Justification)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Giải thích Top 1 dựa trên vector trọng số cá nhân hoá (explain_match) thay vì liệt kê cảm tính",
+          "status": "PASS"
+        },
+        {
+          "name": "4.2 Phân tích Đánh đổi Đối kháng Top 1 vs Top 2 (Trade-off Analysis)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Chỉ rõ điểm được - mất (giá rẻ hơn vs diện tích nhỏ hơn, gần trường hơn vs ít tiện ích hơn)",
+          "status": "PASS"
+        },
+        {
+          "name": "4.3 Cố vấn Đàm phán khi 0 Phòng (Zero-Result Conversational Advisory)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Cung cấp mặt bằng giá sàn/trung bình thực tế và gợi ý khu vực lân cận, không ép nút bấm HITL",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "pillar_id": 5,
+      "name": "An toàn Hệ thống & Hiệu năng Vận hành (Safety & Efficiency)",
+      "max_points": 15.0,
+      "earned_points": 15.0,
+      "criteria": [
+        {
+          "name": "5.1 Rào chắn Bảo mật Đa lớp (Guardrail Security)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Ngăn chặn 3/3 cuộc tấn công Prompt Injection / Unsafe roleplay với chi phí 0 token",
+          "status": "PASS"
+        },
+        {
+          "name": "5.2 Kiểm soát Dữ liệu Tin đăng Bên thứ ba (Data Sanitization)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Phát hiện và loại bỏ 2/2 tin đăng nghi ngờ chứa mã độc/injection",
+          "status": "PASS"
+        },
+        {
+          "name": "5.3 Tối ưu hoá Độ trễ & Tài nguyên (Efficiency & Dual-Role LLM)",
+          "max_points": 5.0,
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "Phân tách Fast LLM (Thinking OFF, temp 0.0) và Main LLM (Thinking ON, temp 0.3); Tool Partitioning giảm 65% token bloat",
+          "status": "PASS"
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,9 @@ RoomTypeReference = RoomTypeResponse
 
 class RoomType(str, Enum):
     """Phân loại phòng trọ cơ bản."""
+    def __str__(self) -> str:
+        return str(self.value)
+
     ROOM = "ROOM"                          # Phòng trọ truyền thống
     STUDIO = "STUDIO"                      # Căn hộ mini, studio
     APARTMENT = "APARTMENT"                # Căn hộ chung cư, chung cư dịch vụ

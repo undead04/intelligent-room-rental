@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import type { AgentTraceEvent, ChatMessage } from "@/app/tim-kiem-ai/types";
 import { USER_AVATAR } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
-import { HitlDecisionCard } from "@/app/tim-kiem-ai/_components/HitlDecisionCard";
 
 interface ChatMessageItemProps {
   message: ChatMessage;
@@ -229,6 +228,12 @@ function formatUsageText(ev: AgentTraceEvent): string {
   return parts.length > 0 ? ` — ${parts.join(" · ")}` : "";
 }
 
+function cleanCriteriaText(text: string, prefixRegex: RegExp): string {
+  if (!text) return "";
+  const cleaned = text.replace(prefixRegex, "").trim();
+  return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : text;
+}
+
 export default function ChatMessageItem({
   message,
   isLatest = false,
@@ -256,6 +261,7 @@ export default function ChatMessageItem({
 
   const traceEvents = message.traceEvents || [];
   const hasTrace = traceEvents.length > 0 || Boolean(message.isStreaming);
+  const nodeStepCount = traceEvents.filter((e) => e.type === "node_step").length;
   const modelCallCount = traceEvents.filter((e) => e.type === "model_request").length;
   const toolCallCount = traceEvents.filter((e) => e.type === "tool_started").length;
 
@@ -294,6 +300,8 @@ export default function ChatMessageItem({
                 <span className="font-semibold text-[#1E293B] truncate">
                   {message.isStreaming
                     ? message.statusText || "Đang xử lý..."
+                    : nodeStepCount > 0
+                    ? `Tiến trình LangGraph (${nodeStepCount} node, ${modelCallCount} model call, ${toolCallCount} tool call)`
                     : `Các bước thực hiện (${modelCallCount} model call, ${toolCallCount} tool call)`}
                 </span>
               </div>
@@ -317,6 +325,40 @@ export default function ChatMessageItem({
                   </p>
                 ) : (
                   traceEvents.map((ev, idx) => {
+                    if (ev.type === "node_step") {
+                      const isOk = ev.status === "ok";
+                      const isWarn = ev.status === "warning";
+                      const statusIcon = isOk ? "check_circle" : isWarn ? "warning" : "error";
+                      const statusColor = isOk ? "text-emerald-600" : isWarn ? "text-amber-600" : "text-rose-600";
+                      return (
+                        <div key={idx} className="flex items-start gap-1.5 text-[#334155] py-1 border-b border-[#F1F5F9] last:border-b-0">
+                          <span className={`material-symbols-outlined text-[14px] ${statusColor} shrink-0 mt-0.5`}>
+                            {statusIcon}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-[#0F172A]">{ev.label || ev.node}</span>
+                              <code className="text-[9.5px] px-1 py-0.2 bg-[#F1F5F9] text-[#0F5F4A] rounded font-mono">
+                                {ev.node}
+                              </code>
+                            </div>
+                            {ev.details && (
+                              <p className="text-[10px] text-[#64748B] truncate mt-0.5">{ev.details}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (ev.type === "model_error") {
+                      return (
+                        <div key={idx} className="flex items-center gap-1.5 text-rose-600 text-[10.5px]">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          <span>Lỗi mô hình: {ev.error}</span>
+                        </div>
+                      );
+                    }
+
                     if (ev.type === "model_request") {
                       return (
                         <div key={idx} className="flex items-center gap-1.5 text-[#334155] pt-0.5">
@@ -456,7 +498,7 @@ export default function ChatMessageItem({
               {message.mandatoryCriteria.map((criteria, index) => (
                 <li key={index} className="flex items-center gap-2 text-[#0F5F4A]">
                   <span className="material-symbols-outlined text-[15px] font-bold">check_circle</span>
-                  <span>{criteria}</span>
+                  <span>{cleanCriteriaText(criteria, /^(?:bắt buộc|bat buoc)[:\s-]*/i)}</span>
                 </li>
               ))}
             </ul>
@@ -465,7 +507,7 @@ export default function ChatMessageItem({
 
         {/* Condition: Ưu tiên */}
         {message.priorityCriteria && (
-          <div className="space-y-1.5 pt-1 border-t border-[#F1F5F9]">
+          <div className={`space-y-1.5 ${message.mandatoryCriteria ? "pt-2 border-t border-[#F1F5F9]" : ""}`}>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-[#FFF5E6] text-[#D97706] text-[10px] font-bold rounded-full border border-[#FFE0B2]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B4A]"></span>
               <span>Ưu tiên</span>
@@ -473,8 +515,8 @@ export default function ChatMessageItem({
             <ul className="space-y-1.5 pl-1 text-[11px] text-[#3F4944] font-medium">
               {message.priorityCriteria.map((criteria, index) => (
                 <li key={index} className="flex items-center gap-2 text-[#B45309]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B4A]"></span>
-                  <span>{criteria}</span>
+                  <span className="material-symbols-outlined text-[15px] font-bold text-[#D97706]">star</span>
+                  <span>{cleanCriteriaText(criteria, /^(?:ưu tiên|uu tien)[:\s-]*/i)}</span>
                 </li>
               ))}
             </ul>
@@ -488,41 +530,21 @@ export default function ChatMessageItem({
           </p>
         ) : null}
 
-        {/* Human-in-the-Loop Confirmation Card (Claude Style) */}
-        {(() => {
-          const isHitl = Boolean(
-            message.hitlProposal ||
-              message.groundingReport?.needs_user_consent ||
-              (message.followUpQuestions &&
-                message.followUpQuestions.some(
-                  (q) =>
-                    q.startsWith("👍") ||
-                    q.startsWith("🧭") ||
-                    q.startsWith("❌") ||
-                    q.startsWith("🛌") ||
-                    q.startsWith("🪄") ||
-                    q.startsWith("✏️") ||
-                    q.includes("nới ngân sách") ||
-                    q.includes("Nới ngân sách") ||
-                    q.includes("Giữ nguyên tiêu chí") ||
-                    q.includes("Tùy chỉnh tiêu chí")
-                ))
-          );
-
-          if (isHitl) {
-            return (
-              <HitlDecisionCard
-                proposal={message.hitlProposal || undefined}
-                followUpQuestions={message.followUpQuestions}
-                selectedAction={message.selectedHitlAction}
-                isLocked={!isLatest || isTyping}
-                onSelect={(actionText) => onSelectQuestion?.(actionText)}
-              />
-            );
-          }
-
-          return null;
-        })()}
+        {/* Self-RAG Grounding Verification Badge */}
+        {message.groundingReport?.is_grounded && !message.isStreaming && message.summaryCount ? (
+          <div className="pt-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10.5px] font-semibold">
+              <span className="material-symbols-outlined text-[14px] text-emerald-600">verified</span>
+              <span>
+                Đã kiểm chứng tính xác thực (Self-RAG Grounded
+                {message.groundingReport.groundedness_score
+                  ? ` ${Math.round(Number(message.groundingReport.groundedness_score) * 100)}%`
+                  : ""}
+                )
+              </span>
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
