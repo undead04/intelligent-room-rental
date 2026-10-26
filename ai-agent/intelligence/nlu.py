@@ -251,10 +251,9 @@ def apply_priorities(current: Optional[dict[str, float]], priorities: Priorities
 # Prompt Tối Giản (Schema-Driven Minimalist Prompt)
 # ---------------------------------------------------------------------------
 INTENT_GUIDE = """INTENT:
-- new_search: Tìm phòng mới hoặc đổi hẳn khu vực/nhu cầu (đặt reset_priorities=true, clear các nhóm cũ không liên quan).
-- refine_search: Thêm/sửa/xoá tiêu chí trên nhu cầu hiện tại.
+- new_search: Tìm phòng mới từ đầu (vd: "tìm phòng mới", "tìm từ đầu", "reset") hoặc đổi toàn bộ yêu cầu (đặt reset_priorities=true).
+- refine_search: Thêm/sửa/xoá tiêu chí hoặc đổi khu vực nhưng vẫn giữ nhu cầu phòng hiện tại (vd: "đổi sang Quận 7", "qua Quận 12 cho rẻ", "thêm máy lạnh"). KHÔNG clear tiện ích cũ trừ khi người dùng bảo bỏ.
 - room_followup: Hỏi chi tiết/so sánh phòng ĐÃ đề xuất (điền referenced_room_rank 1-5 nếu có).
-- hitl_choice: CHỈ dùng khi "Đang chờ người dùng chọn phương án nới lỏng: True" và người dùng chọn phương án (điền hitl_action).
 - skill_advice: Hỏi kiến thức thuộc kỹ năng tư vấn hiện có (điền đúng skill_slug).
 - smalltalk / off_topic / prompt_injection: Chào hỏi mơ hồ / Ngoài lề nhà ở / Can thiệp chỉ dẫn hệ thống (để semantic_query=null)."""
 
@@ -262,9 +261,9 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
 1. Chỉ trích xuất thông tin MỚI trong lượt này. Nếu người dùng muốn "quay lại như lúc đầu/lúc nãy", đối chiếu lịch sử câu nói trước để khôi phục tiêu chí.
 2. TIỆN ÍCH & PHỦ ĐỊNH:
    - Yêu cầu trực tiếp -> amenities_add; yêu cầu giảm nhẹ ("ưu tiên", "càng tốt") -> preferred_amenities_add; bỏ tiện ích -> amenities_remove.
-   - Ngoại lệ: "không chung chủ / lối đi riêng" là tiện ích bắt buộc -> thêm 'no_shared_landlord' vào amenities_add.
+   - "không chung chủ / lối đi riêng" là tiện ích bắt buộc (chỉ thêm 'no_shared_landlord' vào amenities_add khi người dùng thực sự có nhắc đến trong câu).
    - Phủ định loại phòng ("không lấy KTX") -> đưa vào room_types_exclude, KHÔNG gán room_type.
-3. ĐỊA DANH MƠ HỒ: Danh từ chung chưa có tên riêng ("gần trường đại học", "gần khu công nghiệp") -> location_is_vague=true, location_text=null.
+3. ĐỊA DANH MƠ HỒ: Danh từ chung chưa có tên riêng ("gần trường đại học", "gần khu công nghiệp") -> location_is_vague=true, location_text=null. Tên trường hoặc địa danh cụ thể (UIT, Bách Khoa, KHTN, Hutech...) KHÔNG phải mơ hồ -> ghi vào location_text, đặt location_is_vague=false.
 4. MỨC ƯU TIÊN (priorities): Mặc định để null. Chỉ nâng ("high" / "very_high") khi có từ nhấn mạnh mức độ (vd: "rẻ nhất/tiết kiệm" -> price; "sát bên/đi bộ được" -> location; "an ninh cao/nữ ở 1 mình" -> safety; "full nội thất xịn" -> amenity).
 5. SEMANTIC_QUERY: Luôn viết lại 1 câu truy vấn RAG tiếng Việt tự nhiên tổng hợp nhu cầu hiện tại và lịch sử (loại bỏ hoàn toàn từ đệm giao tiếp/than phiền)."""
 
@@ -308,8 +307,7 @@ def _build_context(
         f"Tiêu chí hiện tại:\n{pref.to_context_string()}\n"
         f"Mức ưu tiên hiện tại: {multipliers_to_levels(multipliers)}\n"
         f"Lịch sử các câu nói trước của người dùng (dùng khi người dùng nói 'như lúc nãy', 'như lúc đầu'):\n{history_str}\n"
-        f"Phòng vừa đề xuất ở lượt trước: {rooms_brief or 'chưa có'}\n"
-        f"Đang chờ người dùng chọn phương án nới lỏng: {hitl_pending}"
+        f"Phòng vừa đề xuất ở lượt trước: {rooms_brief or 'chưa có'}"
     )
 
 
@@ -347,10 +345,26 @@ def _postprocess(
     if a.intent != "hitl_choice":
         a.hitl_action = None
 
+    if user_text and n_rooms > 0:
+        u_norm_q = norm_key(user_text)
+        is_about_room = any(w in u_norm_q for w in ("phong top", "phong so", "can so", "can do", "phong dau tien", "top 1", "top 2", "top 3", "phong 1", "phong 2", "phong 3", "can 1", "can 2", "can 3"))
+        is_question = any(w in u_norm_q for w in ("co duoc", "co dc", "co cho", "co ko", "co khong", "sao ta", "the nao", "bao nhieu", "tinh phi", "nuoi", "gap doi", "dia chi o dau", "chu nha"))
+        if is_about_room and is_question:
+            a.intent = "room_followup"
+            if a.referenced_room_rank is None:
+                m_rank = re.search(r"\b(?:top|so|phong|can)\s*(\d+)\b", u_norm_q)
+                if m_rank:
+                    a.referenced_room_rank = int(m_rank.group(1))
+                elif "dau tien" in u_norm_q or "top 1" in u_norm_q:
+                    a.referenced_room_rank = 1
+
     if a.intent == "room_followup" and n_rooms == 0:
         a.intent = "new_search"
     if a.intent != "room_followup" or not (a.referenced_room_rank and 1 <= a.referenced_room_rank <= max(n_rooms, 1)):
         a.referenced_room_rank = None
+
+    if a.intent == "room_followup":
+        a.patch = PreferencePatch()
 
     # --- CODE GUARDRAILS: Khắc phục các sai lệch phổ biến của LLM ---
     # 1. Chuyển tiện ích bị xếp nhầm vào special_requirements sang amenities_add hoặc preferred_amenities_add
@@ -381,7 +395,7 @@ def _postprocess(
             if a.patch.room_type == RoomType.SLEEPBOX:
                 a.patch.room_type = None
 
-        # 3. Chốt chặn "không chung chủ" (nếu LLM bỏ sót hoàn toàn)
+        # 3. Chốt chặn "không chung chủ"
         if any(kw in u_norm for kw in ("khong chung chu", "ko chung chu", "loi di rieng", "phong khong chung chu")):
             is_preferred = any(kw in u_norm for kw in ("uu tien khong chung chu", "uu tien ko chung chu", "khong chung chu cang tot", "ko chung chu cang tot"))
             if is_preferred:
@@ -390,13 +404,19 @@ def _postprocess(
             else:
                 if Amenity.NO_SHARED_LANDLORD not in a.patch.amenities_add:
                     a.patch.amenities_add.append(Amenity.NO_SHARED_LANDLORD)
-            # Dọn dẹp nếu còn sót trong special_requirements_add
             a.patch.special_requirements_add = [
                 s for s in a.patch.special_requirements_add
                 if not any(kw in norm_key(s) for kw in ("khong chung chu", "ko chung chu", "loi di rieng"))
             ]
+        elif Amenity.NO_SHARED_LANDLORD in a.patch.amenities_add:
+            # Chống ảo giác: Nếu câu không hề nhắc đến không chung chủ/lối đi riêng thì gỡ bỏ
+            if not any(kw in u_norm for kw in ("khong chung chu", "ko chung chu", "loi di rieng", "gio giac tu do", "khong chung voi chu", "tu do")):
+                a.patch.amenities_add.remove(Amenity.NO_SHARED_LANDLORD)
+        if Amenity.PRIVATE_WC in a.patch.amenities_add:
+            if not any(kw in u_norm for kw in ("wc", "ve sinh", "toilet", "khep kin", "nha tam", "tam rieng")):
+                a.patch.amenities_add.remove(Amenity.PRIVATE_WC)
 
-        # 4. Sửa nhầm lẫn Mandatory vs Preferred: nếu người dùng nói "ưu tiên X" mà LLM nhét vào amenities_add
+        # 4. Sửa nhầm lẫn Mandatory vs Preferred: không dùng regex tham lam .*
         if a.patch.amenities_add:
             from domain.enums import _AMENITY_META
             mand_to_keep: list[Amenity] = []
@@ -408,8 +428,17 @@ def _postprocess(
                     if not n_als:
                         continue
                     candidates = [n_als] + [w for w in n_als.replace("/", " ").split() if len(w) >= 3]
-                    if any(re.search(rf"\buu\s*tien.*{re.escape(c)}\b", u_norm) for c in candidates):
-                        is_pref = True
+                    for c in candidates:
+                        esc = re.escape(c)
+                        # Nếu có từ khóa khẳng định bắt buộc ngay trước amenity thì luôn giữ là Mandatory
+                        if re.search(rf"\b(?:bat\s*buoc|phai\s*co|can\s*phai\s*co)\s*[^,;.]{{0,40}}\b{esc}\b", u_norm):
+                            is_pref = False
+                            break
+                        # Chỉ coi là Ưu tiên nếu nằm cùng mệnh đề (không qua dấu phẩy/chấm) trong vòng 40 ký tự sau 'ưu tiên'
+                        if re.search(rf"\b(?:uu\s*tien|cang\s*tot|neu\s*co)\s*[^,;.]{{0,40}}\b{esc}\b", u_norm):
+                            is_pref = True
+                            break
+                    if is_pref:
                         break
                 if is_pref:
                     if am not in a.patch.preferred_amenities_add:
@@ -417,6 +446,48 @@ def _postprocess(
                 else:
                     mand_to_keep.append(am)
             a.patch.amenities_add = mand_to_keep
+
+        # 4b. Chống ảo giác loại trừ phòng nguyên căn nếu người dùng không nói
+        if RoomType.WHOLE_HOUSE in a.patch.room_types_exclude:
+            if not any(w in u_norm for w in ("nguyen can", "nha nguyen can", "nguyên căn", "nha rieng")):
+                a.patch.room_types_exclude.remove(RoomType.WHOLE_HOUSE)
+
+        # 4c. Whitelist Đại học & Địa danh cụ thể chống False Vague Location
+        major_landmarks = {
+            "uit": "UIT",
+            "dai hoc cong nghe thong tin": "Đại học Công nghệ Thông tin",
+            "khtn": "Đại học Khoa học Tự nhiên",
+            "khoa hoc tu nhien": "Đại học Khoa học Tự nhiên",
+            "bach khoa": "Đại học Bách Khoa",
+            "kinh te": "Đại học Kinh tế",
+            "y duoc": "Đại học Y Dược",
+            "su pham": "Đại học Sư phạm",
+            "hutech": "Hutech",
+            "van lang": "Văn Lang",
+            "ton duc thang": "Đại học Tôn Đức Thắng",
+            "nong lam": "Đại học Nông Lâm",
+            "su pham ky thuat": "Đại học Sư phạm Kỹ thuật",
+            "ute": "Đại học Sư phạm Kỹ thuật",
+            "fpt": "Đại học FPT",
+            "rmit": "Đại học RMIT",
+            "lang dai hoc": "Làng Đại học Thủ Đức",
+            "khu cong nghe cao": "Khu Công nghệ Cao",
+            "nga tu thu duc": "Ngã tư Thủ Đức",
+            "hang xanh": "Hàng Xanh",
+            "cau sai gon": "Cầu Sài Gòn",
+        }
+        for kw, official_name in major_landmarks.items():
+            if re.search(rf"\b{re.escape(kw)}\b", u_norm):
+                a.patch.location_is_vague = False
+                a.patch.vague_category = None
+                if not a.patch.location_text:
+                    a.patch.location_text = official_name
+                break
+
+        # 5. Chống ảo giác tự tiện xoá tiện ích khi người dùng chỉ đổi khu vực hoặc tinh chỉnh mà không nêu tiện ích mới
+        if "amenities" in a.patch.clear and not a.patch.amenities_add and not a.patch.preferred_amenities_add:
+            if not any(w in u_norm for w in ("bo tien ich", "khong can tien ich", "ko can tien ich", "bo het", "phong trong", "tim moi", "tu dau", "xoa het", "reset")):
+                a.patch.clear.remove("amenities")
 
         # 5. Fallback trích xuất giá nếu LLM bỏ sót
         if a.patch.max_price is None and a.patch.min_price is None:

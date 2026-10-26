@@ -35,9 +35,10 @@ DECISION_RULES = """Bạn đang ở bước TƯ VẤN HỎI TIẾP VỀ PHÒNG �
 Người dùng đang hỏi sâu về một phòng cụ thể trong danh sách đã đề xuất (liên hệ, tiền cọc, điện nước, nuôi pet, phụ phí...).
 
 Quy tắc ReAct Agent:
-1. Gọi công cụ `get_listing_detail(id)` (truyền đúng ID phòng) để lấy thông tin chi tiết chính xác của chủ trọ.
-2. Trả lời TRỰC TIẾP, chính xác theo dữ liệu trả về từ công cụ; nếu thiếu thông tin, hãy nói rõ và gợi ý liên hệ trực tiếp số điện thoại chủ trọ.
-3. Định dạng rõ ràng (ví dụ: đặt cọc 1 tháng, điện 3.500đ/kWh, giá thuê giữ nguyên định dạng "X triệu/tháng"). KHÔNG dùng bảng Markdown hay đường kẻ ngang (`---`, `***`)."""
+1. Nếu thông tin chi tiết đã có sẵn trong khối <prefetched_listing_detail>, hãy SỬ DỤNG NGAY để trả lời chính xác cho người dùng mà không cần gọi lại công cụ `get_listing_detail(id)`.
+2. Nếu người dùng hỏi thêm phòng khác chưa có chi tiết, hãy gọi công cụ `get_listing_detail(id)` (truyền đúng ID phòng) để lấy dữ liệu.
+3. Trả lời TRỰC TIẾP, chính xác theo dữ liệu trả về; nếu thiếu thông tin, hãy nói rõ và gợi ý liên hệ trực tiếp số điện thoại chủ trọ.
+4. Định dạng rõ ràng (ví dụ: đặt cọc 1 tháng, điện 3.500đ/kWh, giá thuê giữ nguyên định dạng "X triệu/tháng"). KHÔNG dùng bảng Markdown hay đường kẻ ngang (`---`, `***`)."""
 
 
 def build_decision_prompt() -> str:

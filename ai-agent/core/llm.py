@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:  # pragma: no cover
     from langchain_openai import ChatOpenAI
@@ -32,16 +32,21 @@ def build_model(settings: "Settings", role: Role = "main") -> "ChatOpenAI":
     enable_thinking = bool(getattr(settings, "enable_main_thinking", True)) if role == "main" else False
     max_retries = getattr(settings, "llm_max_retries", MAX_RETRIES)
 
+    extra_body: dict[str, Any] = {
+        "enable_thinking": enable_thinking,
+        "chat_template_kwargs": {"enable_thinking": enable_thinking},
+    }
+    # Tắt triệt để thinking trên LM Studio / llama.cpp cho model Gemma-4 / DeepSeek
+    if not enable_thinking:
+        extra_body["reasoning_effort"] = "none"
+
     kwargs = {
         "model": (fast_name if role == "fast" and fast_name else settings.model_name),
         "api_key": settings.api_key,
         "timeout": getattr(settings, "llm_timeout", REQUEST_TIMEOUT_S) or REQUEST_TIMEOUT_S,
         "max_retries": max_retries if max_retries is not None else MAX_RETRIES,
         "temperature": 0 if role == "fast" else 0.3,
-        "extra_body": {
-            "enable_thinking": enable_thinking,
-            "chat_template_kwargs": {"enable_thinking": enable_thinking},
-        },
+        "extra_body": extra_body,
     }
     if settings.base_url:
         kwargs["base_url"] = settings.base_url

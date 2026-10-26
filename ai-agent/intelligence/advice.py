@@ -40,6 +40,16 @@ def _clean(text: str, limit: int = MAX_FIELD_CHARS) -> str:
 
 
 def render_advice(advice: Advice, rooms: Sequence[RoomItem], max_rooms: int = 5) -> str:
+    if not rooms:
+        lines = [_clean(advice.intro) or "Homigo hiện chưa tìm thấy phòng trọ nào phù hợp."]
+        if _clean(advice.top_reason):
+            lines.extend(["", f"💡 **Nhận định:** {_clean(advice.top_reason)}"])
+        if _clean(advice.comparison):
+            lines.extend(["", f"⚖️ **Gợi ý mở rộng:** {_clean(advice.comparison)}"])
+        checklist = [c for c in (_clean(c, 200) for c in advice.checklist) if c][:3] or DEFAULT_CHECKLIST
+        lines.extend(["", "📋 **Lưu ý khi đi xem phòng:**", *[f"- {c}" for c in checklist]])
+        return "\n".join(lines)
+
     top1 = rooms[0]
     lines = [_clean(advice.intro) or f"Homigo đã tìm được {len(rooms)} phòng phù hợp với nhu cầu của bạn:", ""]
     for r in rooms[:max_rooms]:

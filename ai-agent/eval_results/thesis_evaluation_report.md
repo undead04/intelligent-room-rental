@@ -1,81 +1,79 @@
-# 🎓 BÁO CÁO ĐÁNH GIÁ ĐỊNH LƯỢNG HỆ THỐNG AI AGENT (HOMIGO)
-### Đề tài: Hệ thống hỗ trợ ra quyết định tìm kiếm phòng trọ thông minh
+# BÁO CÁO ĐÁNH GIÁ ĐỊNH LƯỢNG HỆ THỐNG AI AGENT (HOMIGO)
 **Đơn vị:** Trường Đại học Công nghệ Thông tin (UIT - ĐHQG TP.HCM)
-**Thời gian đánh giá:** 2026-10-25 21:40:21
+**Thời gian đánh giá:** 2026-10-26 11:31:44  
+**Chế độ NLU:** rule-based fallback (không gọi LLM)
 
----
+## 1. Tổng kết
 
-## 🏆 1. TỔNG KẾT ĐIỂM SỐ HỘI ĐỒNG
+- **Điểm thô:** 90.69 / 95.0 điểm đã đo (độ phủ 95% của thang 100)
+- **Điểm quy đổi thang 100:** **95.46**
+- **Xếp loại:** **XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo)**
+- **Nhận định (sinh tự động từ số liệu):** Điểm quy đổi 95.46/100 (độ phủ phép đo 95%) — xếp loại: XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo). Chế độ NLU: rule-based fallback (không gọi LLM). Tiêu chí yếu nhất: 2.1 Trọng số động theo ý định (Intent-Aware MCDM) (67%); 1.1 Phân loại ý định (Intent Classification) (92%); 4.3 Độ trung thực khi render lời khuyên (Advice) (92%). Chưa đo: 3.3 Tính toàn vẹn Trace Events.
 
-- **Tổng điểm đạt được:** **`98.13 / 100.0`** Điểm
-- **Xếp loại đồ án:** **`XUẤT SẮC (EXCELLENT)`**
-- **Nhận định chung:** Hệ thống đạt tổng điểm 98.13/100 - Xếp loại: XUẤT SẮC (EXCELLENT). Mô hình hoàn thành xuất sắc các mục tiêu nghiên cứu của Đề tài tốt nghiệp: Tìm kiếm lai kết hợp Rerank đa tiêu chí động (Dynamic MCDM), máy trạng thái LangGraph 7 node phân vùng công cụ, kiểm chứng trung thực Self-RAG và cố vấn quyết định thông minh.
+| Trụ cột | Trọng số | Điểm | Đã đo | Tỷ lệ |
+| :--- | :---: | :---: | :---: | :---: |
+| 1. NLU & Trạng thái Tích lũy (State Tracking) | 25 | 24.42 | 25 | 97.7% |
+| 2. Dynamic MCDM & Độ liên quan Truy xuất (Retrieval) | 25 | 21.67 | 25 | 86.7% |
+| 3. Self-RAG & Kiểm chứng Grounding (Faithfulness) | 20 | 15.00 | 15 | 100.0% |
+| 4. Hỗ trợ Ra Quyết định & Cố vấn (Decision Support) | 15 | 14.60 | 15 | 97.3% |
+| 5. An toàn Hệ thống & Hiệu năng Vận hành (Safety & Efficiency) | 15 | 15.00 | 15 | 100.0% |
 
-### 📊 Bảng điểm Tổng hợp 5 Trụ cột:
+## 2. Chi tiết từng tiêu chí
 
-| STT | Trụ cột Đánh giá | Trọng số | Điểm đạt được | Tỷ lệ Đạt | Đánh giá |
-| :---: | :--- | :---: | :---: | :---: | :---: |
-| 1 | NLU & Trạng thái Tích lũy (State Tracking) | 25.0 | **23.33** | 93.3% | 🟢 Đạt |
-| 2 | Dynamic MCDM & Độ liên quan Truy xuất (Retrieval) | 25.0 | **25.00** | 100.0% | 🟢 Đạt |
-| 3 | Self-RAG & Kiểm chứng Grounding (Faithfulness) | 20.0 | **19.80** | 99.0% | 🟢 Đạt |
-| 4 | Hỗ trợ Ra Quyết định & Cố vấn (Decision Support) | 15.0 | **15.00** | 100.0% | 🟢 Đạt |
-| 5 | An toàn Hệ thống & Hiệu năng Vận hành (Safety & Efficiency) | 15.0 | **15.00** | 100.0% | 🟢 Đạt |
-| | **TỔNG CỘNG** | **100.0** | **`98.13`** | **`98.1%`** | **`XUẤT SẮC (EXCELLENT)`** |
+### Trụ cột 1: NLU & Trạng thái Tích lũy (State Tracking) (24.42/25 đã đo)
 
----
+| Tiêu chí | Tối đa | Đạt | N | CI 95% | Trạng thái | Chi tiết |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| 1.1 Phân loại ý định (Intent Classification) | 7 | 6.42 | 12 | 65–98% | ✅ PASS | Chế độ NLU: rule-based fallback (KHÔNG gọi LLM). Đúng 11/12. Theo nhóm — new_search: 3/3, skill_advice: 3/4, room_followup: 3/3, refine_search: 2/2 |
+| 1.2 Trích xuất thực thể & ràng buộc (Entity Extraction) | 10 | 10.00 | 27 | 88–100% | ✅ PASS | Đúng 27/27 — tiền 9/9, diện tích 4/4, loại phòng 4/4, tiện ích 10/10 |
+| 1.3 Session store: snapshot & rollback tiêu chí | 8 | 8.00 | 3 | – | ✅ PASS | ✔ Ghi đủ 3 snapshot | ✔ Thứ tự & giá trị từng snapshot đúng (gồm snapshot đầu có thể rollback) | ✔ Snapshot cách ly khỏi sửa đổi về sau của đối tượng gốc — Đây là test của session store, chưa phải test NLU gộp state đa lượt |
 
-## 🔍 2. CHI TIẾT ĐÁNH GIÁ THEO TỪNG TIÊU CHÍ (RUBRIC BREAKDOWN)
+**Ca chưa đạt — 1.1 Phân loại ý định (Intent Classification):**
+- 'chủ trọ tự ý tăng tiền điện gấp đôi và dọa đuổi thì làm sao?' → new_search (kỳ vọng skill_advice)
 
-### Trụ cột 1: NLU & Trạng thái Tích lũy (State Tracking) (23.33/25.0 điểm)
+### Trụ cột 2: Dynamic MCDM & Độ liên quan Truy xuất (Retrieval) (21.67/25 đã đo)
 
-| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Tỷ lệ | Trạng thái | Chi tiết kiểm chứng |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| 1.1 Phân loại Ý định (Intent Classification) | 5.0 | 3.33 | 66.7% | ⚠️ WARN | Đạt 4/6 ca kiểm tra các ý định cốt lõi |
-| 1.2 Trích xuất Tiêu chí (Entity Extraction) | 10.0 | 10.00 | 100.0% | ✅ PASS | Bóc tách giá tiền, khoảng ngân sách, địa điểm và tiện ích chuẩn hoá đạt 100.0% |
-| 1.3 Tích lũy Trạng thái & Rollback Đa lượt | 10.0 | 10.00 | 100.0% | ✅ PASS | Tích lũy chính xác qua các lượt và rollback snapshot ban đầu qua preference_history |
+| Tiêu chí | Tối đa | Đạt | N | CI 95% | Trạng thái | Chi tiết |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| 2.1 Trọng số động theo ý định (Intent-Aware MCDM) | 10 | 6.67 | 6 | 30–90% | ⚠️ WARN | Đúng 4/6. Tiêu chí: chuẩn hoá L1, không âm, yếu tố ưu tiên tăng ≥ 5% so với baseline, câu trung tính không làm lệch > 2 điểm % |
+| 2.2 Cổng ràng buộc cứng sau truy xuất (Hard Constraints) | 9 | 9.00 | 7 | 65–100% | ✅ PASS | Đúng 7/7 phòng. Đo cổng lọc cuối (verify_context_grounding: ngân sách chặt, diện tích tối thiểu, loại hình bị cấm, ca biên). KHÔNG đo chất lượng xếp hạng/recall của truy xuất; dung sai ngân sách (nếu có) thuộc tầng retrieval. |
+| 2.3 Độ đúng của hàm khoảng cách Haversine | 6 | 6.00 | 6 | – | ✅ PASS | ✔ d(A,A) = 0 | ✔ Đối xứng d(A,B) = d(B,A) | ✔ 1° vĩ độ ≈ 111.2 km (±0.5%) | ✔ UIT→KTX khớp cài đặt tham chiếu (±0.5%) | ✔ UIT→Bách Khoa khớp cài đặt tham chiếu (±0.5%) | ✔ Bất đẳng thức tam giác UIT→BK ≤ UIT→KTX + KTX→BK — UIT→KTX 2.58 km, →Chợ Linh Trung 3.61 km, →ĐH Bách Khoa 19.22 km. Đây là test hàm tiện ích, không phải chất lượng truy xuất |
 
-### Trụ cột 2: Dynamic MCDM & Độ liên quan Truy xuất (Retrieval) (25.00/25.0 điểm)
+**Ca chưa đạt — 2.1 Trọng số động theo ý định (Intent-Aware MCDM):**
+- 'cần phòng full nội thất cao cấp xịn xò': thiếu yếu tố 'amenity' trong trọng số
+- 'vừa rẻ vừa an toàn bảo vệ': 'price' không tăng so với baseline (0.340 → 0.250)
 
-| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Tỷ lệ | Trạng thái | Chi tiết kiểm chứng |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| 2.1 Phân phối Trọng số Động (Intent-Aware Dynamic MCDM) | 10.0 | 10.00 | 100.0% | ✅ PASS | Chuẩn hoá L1 đạt tổng = 1.0000; Kích hoạt ưu tiên giá x2.0 và an ninh x2.0 chuẩn xác |
-| 2.2 Tuân thủ Ràng buộc Cứng (Hard Constraints & Exclusions) | 10.0 | 10.00 | 100.0% | ✅ PASS | Loại bỏ 100% phòng vượt trần ngân sách (+20% tolerance) và phòng thuộc loại hình KTX/Sleepbox bị loại trừ |
-| 2.3 Ranh giới Hành chính & Bán kính Không gian (Spatial Proximity) | 5.0 | 5.00 | 100.0% | ✅ PASS | Phân giải phân cấp hành chính (Tỉnh/Thành -> Quận/Huyện -> Phường/Xã) và geocoding bán kính <= 8km |
+### Trụ cột 3: Self-RAG & Kiểm chứng Grounding (Faithfulness) (15.00/15 đã đo)
 
-### Trụ cột 3: Self-RAG & Kiểm chứng Grounding (Faithfulness) (19.80/20.0 điểm)
+| Tiêu chí | Tối đa | Đạt | N | CI 95% | Trạng thái | Chi tiết |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| 3.1 Chống ảo giác câu trả lời (Answer Grounding) | 10 | 10.00 | 13 | – | ✅ PASS | Phát hiện ảo giác (recall) 7/7; không chặn nhầm câu sạch 6/6; điểm = trung bình hai tỷ lệ. Lưu ý: chỉ kiểm ID, giá, diện tích — không kiểm tiện ích/khoảng cách/nhận định định tính |
+| 3.2 Context grounding & đề xuất ngân sách | 5 | 5.00 | 3 | – | ✅ PASS | ✔ Context hợp lệ được giữ nguyên | ✔ Ngân sách 2tr (sàn thị trường 3.5tr) → báo market gap, gợi ý KTX, đề xuất > 2tr | ✔ Đối chứng: ngân sách 5tr KHÔNG bị báo market gap |
+| 3.3 Tính toàn vẹn Trace Events | 5 | 0.00 | – | – | ⏭️ SKIP | CHƯA ĐO: cần trace_events thật từ một lượt chạy service (truyền vào run_full_thesis_evaluation(trace_events=...)). Bản cũ tự tạo sự kiện giả rồi kiểm tra chính nó nên luôn đạt điểm tối đa. |
 
-| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Tỷ lệ | Trạng thái | Chi tiết kiểm chứng |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| 3.1 Tính Trung thực & Chống Ảo giác (Groundedness Score) | 10.0 | 9.80 | 98.0% | ✅ PASS | Không bịa đặt số liệu phòng, giá thuê, địa chỉ hoặc tiền cọc; bám sát 100% dữ liệu backend trả về |
-| 3.2 Kiểm chứng Ngữ cảnh Dữ liệu (Context Grounding Verification) | 5.0 | 5.00 | 100.0% | ✅ PASS | Bộ lọc context grounding tự động phát hiện vi phạm và kích hoạt đề xuất đàm phán |
-| 3.3 Truy vết Bằng chứng & Trace Events (Evidence Attribution) | 5.0 | 5.00 | 100.0% | ✅ PASS | Ghi nhận đầy đủ trace events cho từng lời gọi tool: resolve_location, search_rooms, market_fetcher |
+### Trụ cột 4: Hỗ trợ Ra Quyết định & Cố vấn (Decision Support) (14.60/15 đã đo)
 
-### Trụ cột 4: Hỗ trợ Ra Quyết định & Cố vấn (Decision Support) (15.00/15.0 điểm)
+| Tiêu chí | Tối đa | Đạt | N | CI 95% | Trạng thái | Chi tiết |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| 4.1 Giải thích Top 1 trung thực | 5 | 5.00 | 3 | – | ✅ PASS | ✔ Có top_1_reason và key_factors | ✔ Lý do nêu ít nhất một yếu tố thực sự của Top 1 (giá/an ninh) | ✔ Không nhắc yếu tố chỉ thuộc Top 2 (tiện nghi/vị trí) |
+| 4.2 Phân tích đánh đổi Top 1 vs Top 2 | 5 | 5.00 | 3 | – | ✅ PASS | ✔ Hướng so sánh nhất quán (rẻ↔nhỏ hoặc đắt↔rộng), không mâu thuẫn | ✔ Đảo chiều (Top 2 vs Top 1) cho kết quả đối xứng | ✔ Nêu đúng độ lệch: 500k và 6m² |
+| 4.3 Độ trung thực khi render lời khuyên (Advice) | 5 | 4.60 | 3 | – | ⚠️ WARN | ✘ Giữ nguyên mọi nội dung đầu vào (intro, lý do, so sánh, checklist) | ✔ Không bịa số tiền ngoài dữ liệu đầu vào | ✔ Trường hợp 0 phòng: không lỗi, vẫn có intro/checklist, không hiện 'Top pick' — Đo template render lời khuyên; chất lượng nội dung do LLM sinh cần chấm bằng người/LLM-judge |
 
-| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Tỷ lệ | Trạng thái | Chi tiết kiểm chứng |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| 4.1 Lý do Lựa chọn Top 1 Minh bạch (Top-1 Justification) | 5.0 | 5.00 | 100.0% | ✅ PASS | Giải thích Top 1 dựa trên vector trọng số cá nhân hoá (explain_match) thay vì liệt kê cảm tính |
-| 4.2 Phân tích Đánh đổi Đối kháng Top 1 vs Top 2 (Trade-off Analysis) | 5.0 | 5.00 | 100.0% | ✅ PASS | Chỉ rõ điểm được - mất (giá rẻ hơn vs diện tích nhỏ hơn, gần trường hơn vs ít tiện ích hơn) |
-| 4.3 Cố vấn Đàm phán khi 0 Phòng (Zero-Result Conversational Advisory) | 5.0 | 5.00 | 100.0% | ✅ PASS | Cung cấp mặt bằng giá sàn/trung bình thực tế và gợi ý khu vực lân cận, không ép nút bấm HITL |
+**Ca chưa đạt — 4.3 Độ trung thực khi render lời khuyên (Advice):**
+- Giữ nguyên mọi nội dung đầu vào (intro, lý do, so sánh, checklist): 4/5 mục xuất hiện
 
-### Trụ cột 5: An toàn Hệ thống & Hiệu năng Vận hành (Safety & Efficiency) (15.00/15.0 điểm)
+### Trụ cột 5: An toàn Hệ thống & Hiệu năng Vận hành (Safety & Efficiency) (15.00/15 đã đo)
 
-| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Tỷ lệ | Trạng thái | Chi tiết kiểm chứng |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| 5.1 Rào chắn Bảo mật Đa lớp (Guardrail Security) | 5.0 | 5.00 | 100.0% | ✅ PASS | Ngăn chặn 3/3 cuộc tấn công Prompt Injection / Unsafe roleplay với chi phí 0 token |
-| 5.2 Kiểm soát Dữ liệu Tin đăng Bên thứ ba (Data Sanitization) | 5.0 | 5.00 | 100.0% | ✅ PASS | Phát hiện và loại bỏ 2/2 tin đăng nghi ngờ chứa mã độc/injection |
-| 5.3 Tối ưu hoá Độ trễ & Tài nguyên (Efficiency & Dual-Role LLM) | 5.0 | 5.00 | 100.0% | ✅ PASS | Phân tách Fast LLM (Thinking OFF, temp 0.0) và Main LLM (Thinking ON, temp 0.3); Tool Partitioning giảm 65% token bloat |
+| Tiêu chí | Tối đa | Đạt | N | CI 95% | Trạng thái | Chi tiết |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| 5.1 Guardrail chống tấn công (có đo chặn nhầm) | 6 | 6.00 | 23 | – | ✅ PASS | Chặn 16/16 tấn công (en 4/4, vi 4/4, zwsp 2/2, homoglyph 1/1, no_accent 1/1, case 1/1, malicious 3/3); cho qua đúng 7/7 câu hợp lệ |
+| 5.2 Quét injection trong tin đăng bên thứ ba | 3 | 3.00 | 6 | 61–100% | ✅ PASS | Đúng 6/6 ca |
+| 5.3 Độ trễ xử lý nội tại (không gồm LLM/IO) | 3 | 3.00 | 200 | – | ✅ PASS | p50 0.598 ms, p95 1.183 ms, max 1.771 ms (200 lần, sau 20 lần warm-up); ngân sách p95 ≤ 10 ms. CHỈ gồm NLU rule-based + tính trọng số, KHÔNG gồm LLM/retrieval/IO — độ trễ end-to-end xem ở live eval |
+| 5.4 Nén payload & bảo toàn thông tin | 3 | 3.00 | 3 | – | ✅ PASS | ✔ Giảm ≥ 60% payload phình to | ✔ Giữ id/tiêu đề/giá/mô tả trong payload phình to | ✔ Không làm hỏng payload vốn đã gọn (giữ id/tiêu đề/giá/mô tả) — giảm 90.1% trên payload tổng hợp (số liệu này phụ thuộc payload mẫu, không phải trung bình thực tế) |
 
----
+## 3. Giới hạn của phép đo
 
-## 💡 3. ĐIỂM NỔI BẬT ĐÃ ĐƯỢC CHỨNG MINH KHI BÁO CÁO HỘI ĐỒNG
-
-1. **Giải quyết triệt để vấn đề Context Bloat & Tool Hallucination**:
-   - Nhờ cơ chế **Phân vùng công cụ (Tool Partitioning)** trong LangGraph, mỗi node chỉ nhận đúng scope công cụ cần thiết, tiết kiệm hơn 65% token overhead so với kiến trúc agent dùng chung một monolithic toolset.
-2. **Cá nhân hoá thông minh với Intent-Aware Dynamic MCDM**:
-   - Tự động nhận diện ý định ưu tiên (giá rẻ, an ninh cho nữ, vị trí sát trường) để tăng hệ số nhân và chuẩn hoá L1, giúp kết quả Rerank phản ánh chính xác nguyện vọng thực tế của người thuê trọ.
-3. **Kiểm chứng Trung thực Self-RAG không phụ thuộc Human-in-the-Loop nút bấm**:
-   - Toàn bộ lời khuyên khi không tìm thấy phòng trọ (Zero-Result) được sinh hoàn toàn đàm thoại tự nhiên, minh bạch số liệu thị trường thực tế (giá sàn, giá trung bình) và gợi ý khu vực lân cận, loại bỏ hoàn toàn các nút bấm HITL gượng gạo.
-4. **Kiến trúc Tách biệt Fast Role & Main Role (Thinking Control)**:
-   - Fast LLM (NLU, bóc tách tiêu chí) tắt chế độ Thinking và set `temperature=0.0` để tối ưu tốc độ phản hồi cực nhanh.
-   - Main LLM (Decision Support, Cố vấn đánh đổi) bật chế độ Thinking để phân tích logic đối kháng đa chiều sâu sắc.
+1. Bộ ca kiểm thử do chính nhóm phát triển viết, nên điểm số phản ánh mức tuân thủ các hành vi đã dự kiến, chưa phải khả năng tổng quát hoá. Nên bổ sung tập kiểm thử giữ riêng (held-out) lấy từ log thật, có người gán nhãn độc lập.
+2. Số ca mỗi tiêu chí nhỏ; hãy đọc cột khoảng tin cậy 95% (Wilson) thay vì chỉ nhìn phần trăm.
+3. Đây là kiểm thử mức thành phần. Chất lượng truy xuất (Precision@k/Recall/nDCG), độ đúng của câu trả lời do LLM sinh và độ trễ end-to-end được đo ở run_comprehensive_real_data_eval.py.
+4. Khi model=None, NLU chạy ở chế độ rule-based fallback; kết quả không đại diện cho đường LLM.

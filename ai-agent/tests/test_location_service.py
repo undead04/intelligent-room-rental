@@ -140,3 +140,13 @@ def test_geocode_hint_from_tail_city_or_region():
 ])
 def test_search_term(raw, term):
     assert search_term(raw) == term
+
+
+def test_historical_district_aliases():
+    lookup = lambda level, query, **kw: [{"id": 119, "city_id": 13, "name": "Thành phố Thủ Đức"}] if level == "district" and "thủ đức" in query.lower() else []
+    r1 = resolve_admin("Quận 2 (nay là TP. Thủ Đức)", lookup)
+    assert r1.kind == "admin" and r1.district_id == 119
+    r2 = resolve_admin("Quận 2", lookup)
+    assert r2.kind == "admin" and r2.district_id == 119
+    r3 = resolve_admin("Q2", lookup)
+    assert r3.kind == "admin" and r3.district_id == 119

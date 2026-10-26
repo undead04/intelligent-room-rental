@@ -201,22 +201,97 @@ def interpret_turn(
         from intelligence.nlu import sanitize_user_text
         from utils.text import strip_accents
         clean_user_text = strip_accents(sanitize_user_text(user_text)).lower()
-        is_revert_initial = any(kw in clean_user_text for kw in ("nhu luc dau", "nhu ban dau", "quay lai luc dau", "quay lai ban dau"))
+
+        # Người dùng muốn giữ nguyên tiêu chí không nới lỏng
+        if any(kw in clean_user_text for kw in ("giu nguyen", "khong noi", "khong doi", "de nguyen", "cu nhu cu")):
+            return plan(is_keep=True, direct_reply=True, final_text=KEEP_TEXT)
+
+        import re
+        turn_match = re.search(r"\b(?:luot|buoc|lan)\s*(?:chat\s*)?(?:thu\s*)?(\d+)\b", clean_user_text)
+        is_revert_explicit_turn = False
+        target_turn_num: Optional[int] = None
+        if turn_match and any(kw in clean_user_text for kw in ("quay lai", "tro ve", "nhu", "y chang", "giong", "tim lai")):
+            target_turn_num = int(turn_match.group(1))
+            is_revert_explicit_turn = True
+
+        is_revert_initial = (target_turn_num == 1) or any(kw in clean_user_text for kw in ("nhu luc dau", "nhu ban dau", "quay lai luc dau", "quay lai ban dau"))
         is_revert_previous = any(kw in clean_user_text for kw in ("nhu luc nay", "quay lai truoc do", "quay lai nhu cu", "nhu cu"))
 
         base_pref = pref0
-        if is_revert_initial and history_snapshots:
-            base_pref = history_snapshots[0].model_copy(deep=True)
+        turn_snaps = getattr(session, "turn_snapshots", []) or []
+        if is_revert_explicit_turn and target_turn_num and 1 <= target_turn_num <= len(turn_snaps):
+            base_pref = turn_snaps[target_turn_num - 1].model_copy(deep=True)
+            incremental_patch = analysis.patch.model_copy(deep=True)
+            incremental_patch.clear = []  # Khong cho clear xoa mat snapshot phuc hoi
+            if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
+                incremental_patch.min_price = None
+                incremental_patch.max_price = None
+            incremental_patch.amenities_add = [
+                am for am in incremental_patch.amenities_add
+                if any(w in clean_user_text for w in (am.value, am.label_vi.lower(), "pet", "thú cưng", "thu cung"))
+            ]
+            pref = apply_patch(base_pref, incremental_patch)
+            if analysis.semantic_query and pref0.location_text:
+                if pref0.location_text.lower() in analysis.semantic_query.lower() and pref0.location_text.lower() not in (base_pref.location_text or "").lower():
+                    analysis.semantic_query = None
+            mult = {k: 1.0 for k in CRITERIA}
+            explanations.append(f"đã quay lại tiêu chí của lượt chat thứ {target_turn_num} theo yêu cầu")
+            reset_hitl = True
+        elif is_revert_explicit_turn and target_turn_num and target_turn_num > len(turn_snaps):
+            # Người dùng đòi lượt vượt quá lịch sử hiện có -> Fallback giữ mốc gần nhất an toàn
+            if turn_snaps:
+                pref = turn_snaps[-1].model_copy(deep=True)
+                explanations.append(f"phiên hiện có {len(turn_snaps)} lượt tìm kiếm, giữ tiêu chí gần nhất")
+            elif getattr(session, "initial_preference", None):
+                pref = session.initial_preference.model_copy(deep=True)
+                explanations.append("giữ tiêu chí tìm kiếm ban đầu")
+            else:
+                pref = pref0
+            reset_hitl = True
+        elif is_revert_initial and (getattr(session, "initial_preference", None) or history_snapshots or turn_snaps):
+            base_pref = (
+                session.initial_preference.model_copy(deep=True)
+                if getattr(session, "initial_preference", None)
+                else history_snapshots[0].model_copy(deep=True)
+            )
+            incremental_patch = analysis.patch.model_copy(deep=True)
+            incremental_patch.clear = []  # Khong cho clear xoa mat snapshot phuc hoi
+            if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
+                incremental_patch.min_price = None
+                incremental_patch.max_price = None
+            incremental_patch.amenities_add = [
+                am for am in incremental_patch.amenities_add
+                if any(w in clean_user_text for w in (am.value, am.label_vi.lower(), "pet", "thú cưng", "thu cung"))
+            ]
+            pref = apply_patch(base_pref, incremental_patch)
+            # Chỉ xoá semantic_query nếu còn dính vết tích địa danh của turn trước bị rollback
+            if analysis.semantic_query and pref0.location_text:
+                if pref0.location_text.lower() in analysis.semantic_query.lower() and pref0.location_text.lower() not in (base_pref.location_text or "").lower():
+                    analysis.semantic_query = None
+            mult = {k: 1.0 for k in CRITERIA}
             explanations.append("đã quay lại tiêu chí ban đầu theo yêu cầu")
             reset_hitl = True
         elif is_revert_previous and history_snapshots:
             target = history_snapshots[-2] if len(history_snapshots) >= 2 else history_snapshots[0]
             base_pref = target.model_copy(deep=True)
+            incremental_patch = analysis.patch.model_copy(deep=True)
+            incremental_patch.clear = []  # Khong cho clear xoa mat snapshot phuc hoi
+            if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
+                incremental_patch.min_price = None
+                incremental_patch.max_price = None
+            incremental_patch.amenities_add = [
+                am for am in incremental_patch.amenities_add
+                if any(w in clean_user_text for w in (am.value, am.label_vi.lower(), "pet", "thú cưng", "thu cung"))
+            ]
+            pref = apply_patch(base_pref, incremental_patch)
+            if analysis.semantic_query and pref0.location_text:
+                if pref0.location_text.lower() in analysis.semantic_query.lower() and pref0.location_text.lower() not in (base_pref.location_text or "").lower():
+                    analysis.semantic_query = None
             explanations.append("đã quay lại tiêu chí trước đó theo yêu cầu")
             reset_hitl = True
-
-        pref = apply_patch(base_pref, analysis.patch)
-        mult = apply_priorities(mult0, analysis.priorities, reset=analysis.reset_priorities)
+        else:
+            pref = apply_patch(base_pref, analysis.patch)
+            mult = apply_priorities(mult0, analysis.priorities, reset=analysis.reset_priorities)
         explanations.extend([r for r in analysis.priority_reasons if r][:3])
 
         # Xử lý giảm ngân sách 2 chiều: hỗ trợ cả tăng (nới giá) lẫn giảm (thắt chặt chi tiêu)

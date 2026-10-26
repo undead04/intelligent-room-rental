@@ -56,6 +56,7 @@ def build_decision_user_message(
     *,
     retry_issues: Optional[Sequence[str]] = None,
     focus_rank: Optional[int] = None,
+    target_room_detail: Optional[str] = None,
 ) -> str:
     q = (question or "").replace("</user_message>", "").replace("<user_message>", "")
     parts = [
@@ -65,6 +66,8 @@ def build_decision_user_message(
     if focus_rank:
         parts.append(f"<focus>Người dùng đang hỏi về phòng Top {focus_rank}.</focus>")
     parts.append(f"<rooms_data>\n{json.dumps([compact_room(r) for r in rooms], ensure_ascii=False)}\n</rooms_data>")
+    if target_room_detail:
+        parts.append(f"<prefetched_listing_detail>\n{target_room_detail}\n</prefetched_listing_detail>")
     if retry_issues:
         parts.append(format_retry_feedback(retry_issues))
     return "\n".join(parts)

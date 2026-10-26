@@ -52,6 +52,8 @@ class SessionData:
         self.lock = threading.RLock()
         self.version: int = 0          # số phiên bản đã lưu (PersistentSessionStore dùng để biết cache có cũ không)
         self.preference_history: list[UserPreferenceState] = []
+        self.initial_preference: Optional[UserPreferenceState] = None
+        self.turn_snapshots: list[UserPreferenceState] = []
 
     def record_preference_snapshot(self, pref: UserPreferenceState) -> None:
         """Lưu snapshot vào preference_history (tối đa 5 snapshots khác nhau gần nhất)."""
@@ -62,7 +64,10 @@ class SessionData:
             last_dumped = self.preference_history[-1].model_dump(exclude_defaults=True)
             if dumped == last_dumped:
                 return
+        if self.initial_preference is None:
+            self.initial_preference = pref.model_copy(deep=True)
         self.preference_history.append(pref.model_copy(deep=True))
+        self.turn_snapshots.append(pref.model_copy(deep=True))
         if len(self.preference_history) > 5:
             self.preference_history = self.preference_history[-5:]
 
@@ -74,6 +79,35 @@ class SessionData:
         from langchain_core.messages import AIMessage, HumanMessage
 
         return [(HumanMessage if role == "user" else AIMessage)(content=text) for role, text in self.history[-window:]]
+
+    def compact_history_as_messages(self, window: int = 4) -> list[Any]:
+        """Tạo danh sách message tối ưu context window:
+        - Giữ nguyên tin nhắn của user.
+        - Với tin nhắn của assistant: nếu chứa danh sách phòng markdown ('### 1.' hoặc '1. **' hoặc 'Homigo đã tìm được'),
+          rút gọn khối markdown dài dòng thành tóm tắt ngắn, loại bỏ 70-80% token rác tích tụ qua nhiều lượt."""
+        import re
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        slice_hist = self.history[-window:] if window > 0 else self.history
+        out: list[Any] = []
+        for role, text_msg in slice_hist:
+            if role == "user":
+                out.append(HumanMessage(content=text_msg))
+            else:
+                cleaned = text_msg
+                split_match = re.search(r"(?:\n|^)(?:###\s*1\.|1\.\s+\*\*|\d+\.\s+\*\*)", text_msg)
+                if split_match or "Homigo đã tìm được" in text_msg or "Homigo đã nhận được" in text_msg:
+                    if split_match:
+                        header = text_msg[:split_match.start()].strip()
+                    else:
+                        header = text_msg.split("Homigo đã")[0].strip()
+
+                    if len(header) > 30:
+                        cleaned = f"{header}\n[Đã cung cấp danh sách phòng kèm phân tích chi tiết]"
+                    else:
+                        cleaned = "[Đã gợi ý danh sách các phòng phù hợp với yêu cầu]"
+                out.append(AIMessage(content=cleaned))
+        return out
 
 
 class SessionStore:
@@ -131,6 +165,7 @@ def _dump(s: SessionData) -> str:
         "preferences": s.preferences.model_dump(mode="json"), "multipliers": s.multipliers, "proposed_budget": s.proposed_budget,
         "hitl_streak": s.hitl_streak, "history": s.history, "last_rooms": [r.model_dump(mode="json") for r in s.last_rooms],
         "preference_history": [p.model_dump(mode="json") for p in s.preference_history],
+        "turn_snapshots": [p.model_dump(mode="json") for p in s.turn_snapshots], "initial_preference": s.initial_preference.model_dump(mode="json") if s.initial_preference else None,
     }, ensure_ascii=False)
 
 
@@ -144,6 +179,8 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s.history = [(str(r), str(t)) for r, t in d.get("history") or []]
     s.last_rooms = [RoomItem.model_validate(r) for r in d.get("last_rooms") or []]
     s.preference_history = [UserPreferenceState.model_validate(p) for p in d.get("preference_history") or []]
+    s.turn_snapshots = [UserPreferenceState.model_validate(p) for p in d.get("turn_snapshots") or []]
+    s.initial_preference = UserPreferenceState.model_validate(d["initial_preference"]) if d.get("initial_preference") else None
     s.version, s.last_active = version, last_active
     return s
 

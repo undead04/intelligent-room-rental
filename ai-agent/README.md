@@ -42,27 +42,28 @@ flowchart LR
 
 ---
 
-## 📂 2. Cấu Trúc Thư Mục
+## 📂 2. Cấu Trúc Thư Mục (Layered Architecture 6 Tầng)
 
 ```text
 ai-agent/
-├── agent.py                     # Khởi tạo LangChain Agent & Middleware giới hạn Model/Tool calls
-├── config.py                    # Cấu hình biến môi trường & giới hạn thực thi
-├── graph.py                     # Máy trạng thái LangGraph 7 Node & Decision Support Builder
-├── guardrails.py                # Chặn Prompt Injection, SQLi payload & câu hỏi Off-topic
-├── intent_weights.py            # Nhận diện Intent Multipliers & chuẩn hóa trọng số MCDM
-├── memory.py                    # Quản lý phiên hội thoại & tích lũy UserPreferenceState
-├── schemas.py                   # Pydantic DTOs (RoomItem, DecisionInsight, AgentResponse)
-├── service.py                   # HousingAgentService — Giao diện tích hợp chính
-├── skills_discovery.py          # Engine tự động phát hiện Housing Skills từ SKILL.md
-├── tools/
-│   ├── __init__.py
-│   ├── housing_tools.py         # Native HTTP Tools gọi Backend API (/geocode, /vector-search...)
-│   └── registry.py              # Phân vùng Tools theo Scope (RETRIEVAL, DETAIL, ADVISORY)
-├── workspace/skills/            # Thư mục chứa các kỹ năng chuyên sâu (rental-contract-advisor)
-├── eval/                        # Bộ benchmark đánh giá RAG Triad Grounding
-└── tests/
-    └── test_housing_agent.py    # 19 Unit Tests kiểm thử toàn diện AI Agent
+├── api/                         # FastAPI Endpoints (/chat, /chat/stream SSE, /health, /session)
+├── core/                        # Cấu hình Pydantic Settings, LLM Factory, Paths, SQLite SessionStore
+├── domain/                      # Schemas chuẩn (AgentResponse, RoomItem, DecisionInsight), Enums, Budget
+├── intelligence/                # Logic NLU, Intent Multipliers & L1 Dynamic MCDM, Trade-offs & Checklist
+├── safety/                      # Guardrails (Prompt Injection, Homoglyph/ZWSP) & Self-RAG Grounding Check
+├── graph/                       # LangGraph State Machine 8 Node
+│   ├── builder.py               # StateGraph construction & Conditional edges
+│   ├── state.py                 # HousingAgentState TypedDict
+│   ├── routing.py               # Dynamic Routing logic
+│   └── nodes/                   # guardrail, understand, clarification, advisory, retrieval, decision, verify, formatter
+├── tools/                       # Native LangChain Tools & Phân vùng Scopes (RETRIEVAL, DETAIL, ADVISORY)
+├── skills/                      # Dynamic Skill Discovery qua YAML triggers (rental-contract-advisor)
+├── eval/                        # Bộ benchmark đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding...)
+├── tests/                       # 488 Unit & Integration Tests (100% Passed)
+├── main.py                      # Uvicorn entrypoint (Port 8001)
+├── service.py                   # HousingAgentService shim tương thích ngược
+├── pyproject.toml / uv.lock     # Quản lý phụ thuộc uv
+└── requirements.txt
 ```
 
 ---
@@ -101,7 +102,7 @@ if res.insights:
 
 ## 🧪 4. Chạy Kiểm Thử (Unit Tests)
 
-Chạy toàn bộ 19 unit tests của Homigo AI Agent (không cần kết nối mạng hay tốn phí API):
+Chạy toàn bộ 488 unit & integration tests của Homigo AI Agent (100% Passed):
 ```powershell
-.\ai-agent\.venv\Scripts\python.exe -m pytest ai-agent/tests/test_housing_agent.py -v
+.\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 ```

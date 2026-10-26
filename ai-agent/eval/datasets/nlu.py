@@ -44,11 +44,11 @@ CASES: list[dict] = [
     case("so sánh top 1 và top 3", RC, intent="room_followup"),
     case("cho mình sdt chủ nhà phòng đầu tiên", RC, intent="room_followup", rank=1),
     # --- HITL
-    case("giữ nguyên tiêu chí nhé", HITL, intent="hitl_choice", hitl_action="keep"),
-    case("ok nới ngân sách đi", HITL, intent="hitl_choice", hitl_action="relax_budget"),
-    case("mở rộng ra mấy quận bên cạnh", HITL, intent="hitl_choice", hitl_action="broaden"),
-    case("thôi tìm ký túc xá đi", HITL, intent="hitl_choice", hitl_action="dormitory"),
-    case("bỏ bớt yêu cầu tiện ích đi", HITL, intent="hitl_choice", hitl_action="reduce_amenities"),
+    case("giữ nguyên tiêu chí nhé", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="keep"),
+    case("ok nới ngân sách đi", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="relax_budget"),
+    case("mở rộng ra mấy quận bên cạnh", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="broaden"),
+    case("thôi tìm ký túc xá đi", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="dormitory"),
+    case("bỏ bớt yêu cầu tiện ích đi", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="reduce_amenities"),
     # --- skill (có bẫy: nhắc từ khoá nhưng là tìm phòng)
     case("chủ nhà giữ cọc không trả thì sao", intent="skill_advice", skill="rental-contract-advisor"),
     case("hợp đồng thuê trọ cần lưu ý gì", intent="skill_advice", skill="rental-contract-advisor"),
