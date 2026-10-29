@@ -1,20 +1,20 @@
 # BÁO CÁO ĐÁNH GIÁ ĐỊNH LƯỢNG HỆ THỐNG AI AGENT (HOMIGO)
 **Đơn vị:** Trường Đại học Công nghệ Thông tin (UIT - ĐHQG TP.HCM)
-**Thời gian đánh giá:** 2026-10-26 11:31:44  
+**Thời gian đánh giá:** 2026-10-29 15:19:16  
 **Chế độ NLU:** rule-based fallback (không gọi LLM)
 
 ## 1. Tổng kết
 
-- **Điểm thô:** 90.69 / 95.0 điểm đã đo (độ phủ 95% của thang 100)
-- **Điểm quy đổi thang 100:** **95.46**
+- **Điểm thô:** 91.69 / 96.0 điểm đã đo (độ phủ 96% của thang 100)
+- **Điểm quy đổi thang 100:** **95.51**
 - **Xếp loại:** **XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo)**
-- **Nhận định (sinh tự động từ số liệu):** Điểm quy đổi 95.46/100 (độ phủ phép đo 95%) — xếp loại: XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo). Chế độ NLU: rule-based fallback (không gọi LLM). Tiêu chí yếu nhất: 2.1 Trọng số động theo ý định (Intent-Aware MCDM) (67%); 1.1 Phân loại ý định (Intent Classification) (92%); 4.3 Độ trung thực khi render lời khuyên (Advice) (92%). Chưa đo: 3.3 Tính toàn vẹn Trace Events.
+- **Nhận định (sinh tự động từ số liệu):** Điểm quy đổi 95.51/100 (độ phủ phép đo 96%) — xếp loại: XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo). Chế độ NLU: rule-based fallback (không gọi LLM). Tiêu chí yếu nhất: 2.1 Trọng số động theo ý định (Intent-Aware MCDM) (67%); 1.1 Phân loại ý định (Intent Classification) (92%); 4.3 Độ trung thực khi render lời khuyên (Advice) (92%). Chưa đo: 3.3 Tính toàn vẹn Trace Events.
 
 | Trụ cột | Trọng số | Điểm | Đã đo | Tỷ lệ |
 | :--- | :---: | :---: | :---: | :---: |
 | 1. NLU & Trạng thái Tích lũy (State Tracking) | 25 | 24.42 | 25 | 97.7% |
 | 2. Dynamic MCDM & Độ liên quan Truy xuất (Retrieval) | 25 | 21.67 | 25 | 86.7% |
-| 3. Self-RAG & Kiểm chứng Grounding (Faithfulness) | 20 | 15.00 | 15 | 100.0% |
+| 3. Self-RAG & Kiểm chứng Grounding (Faithfulness & Relevance) | 20 | 16.00 | 16 | 100.0% |
 | 4. Hỗ trợ Ra Quyết định & Cố vấn (Decision Support) | 15 | 14.60 | 15 | 97.3% |
 | 5. An toàn Hệ thống & Hiệu năng Vận hành (Safety & Efficiency) | 15 | 15.00 | 15 | 100.0% |
 
@@ -43,13 +43,14 @@
 - 'cần phòng full nội thất cao cấp xịn xò': thiếu yếu tố 'amenity' trong trọng số
 - 'vừa rẻ vừa an toàn bảo vệ': 'price' không tăng so với baseline (0.340 → 0.250)
 
-### Trụ cột 3: Self-RAG & Kiểm chứng Grounding (Faithfulness) (15.00/15 đã đo)
+### Trụ cột 3: Self-RAG & Kiểm chứng Grounding (Faithfulness & Relevance) (16.00/16 đã đo)
 
 | Tiêu chí | Tối đa | Đạt | N | CI 95% | Trạng thái | Chi tiết |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| 3.1 Chống ảo giác câu trả lời (Answer Grounding) | 10 | 10.00 | 13 | – | ✅ PASS | Phát hiện ảo giác (recall) 7/7; không chặn nhầm câu sạch 6/6; điểm = trung bình hai tỷ lệ. Lưu ý: chỉ kiểm ID, giá, diện tích — không kiểm tiện ích/khoảng cách/nhận định định tính |
-| 3.2 Context grounding & đề xuất ngân sách | 5 | 5.00 | 3 | – | ✅ PASS | ✔ Context hợp lệ được giữ nguyên | ✔ Ngân sách 2tr (sàn thị trường 3.5tr) → báo market gap, gợi ý KTX, đề xuất > 2tr | ✔ Đối chứng: ngân sách 5tr KHÔNG bị báo market gap |
-| 3.3 Tính toàn vẹn Trace Events | 5 | 0.00 | – | – | ⏭️ SKIP | CHƯA ĐO: cần trace_events thật từ một lượt chạy service (truyền vào run_full_thesis_evaluation(trace_events=...)). Bản cũ tự tạo sự kiện giả rồi kiểm tra chính nó nên luôn đạt điểm tối đa. |
+| 3.1 Chống ảo giác câu trả lời (Answer Grounding) | 8 | 8.00 | 13 | – | ✅ PASS | Phát hiện ảo giác (recall) 7/7; không chặn nhầm câu sạch 6/6; điểm = trung bình hai tỷ lệ. Lưu ý: chỉ kiểm ID, giá, diện tích — không kiểm tiện ích/khoảng cách/nhận định định tính |
+| 3.2 Context grounding & đề xuất ngân sách | 4 | 4.00 | 3 | – | ✅ PASS | ✔ Context hợp lệ được giữ nguyên | ✔ Ngân sách 2tr (sàn thị trường 3.5tr) → báo market gap, gợi ý KTX, đề xuất > 2tr | ✔ Đối chứng: ngân sách 5tr KHÔNG bị báo market gap |
+| 3.3 Tính toàn vẹn Trace Events | 4 | 0.00 | – | – | ⏭️ SKIP | CHƯA ĐO: cần trace_events thật từ một lượt chạy service (truyền vào run_full_thesis_evaluation(trace_events=...)). Bản cũ tự tạo sự kiện giả rồi kiểm tra chính nó nên luôn đạt điểm tối đa. |
+| 3.4 Độ phù hợp & Khớp câu hỏi (Answer Relevance Judge) | 4 | 4.00 | 8 | – | ✅ PASS | Đánh giá Answer Relevance (Rule-based Intent Coverage): Phát hiện trả lời lạc đề/bỏ sót câu hỏi 4/4; xác nhận câu trả lời đúng trọng tâm 4/4. |
 
 ### Trụ cột 4: Hỗ trợ Ra Quyết định & Cố vấn (Decision Support) (14.60/15 đã đo)
 
@@ -68,7 +69,7 @@
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | 5.1 Guardrail chống tấn công (có đo chặn nhầm) | 6 | 6.00 | 23 | – | ✅ PASS | Chặn 16/16 tấn công (en 4/4, vi 4/4, zwsp 2/2, homoglyph 1/1, no_accent 1/1, case 1/1, malicious 3/3); cho qua đúng 7/7 câu hợp lệ |
 | 5.2 Quét injection trong tin đăng bên thứ ba | 3 | 3.00 | 6 | 61–100% | ✅ PASS | Đúng 6/6 ca |
-| 5.3 Độ trễ xử lý nội tại (không gồm LLM/IO) | 3 | 3.00 | 200 | – | ✅ PASS | p50 0.598 ms, p95 1.183 ms, max 1.771 ms (200 lần, sau 20 lần warm-up); ngân sách p95 ≤ 10 ms. CHỈ gồm NLU rule-based + tính trọng số, KHÔNG gồm LLM/retrieval/IO — độ trễ end-to-end xem ở live eval |
+| 5.3 Độ trễ xử lý nội tại (không gồm LLM/IO) | 3 | 3.00 | 200 | – | ✅ PASS | p50 0.725 ms, p95 0.824 ms, max 0.983 ms (200 lần, sau 20 lần warm-up); ngân sách p95 ≤ 10 ms. CHỈ gồm NLU rule-based + tính trọng số, KHÔNG gồm LLM/retrieval/IO — độ trễ end-to-end xem ở live eval |
 | 5.4 Nén payload & bảo toàn thông tin | 3 | 3.00 | 3 | – | ✅ PASS | ✔ Giảm ≥ 60% payload phình to | ✔ Giữ id/tiêu đề/giá/mô tả trong payload phình to | ✔ Không làm hỏng payload vốn đã gọn (giữ id/tiêu đề/giá/mô tả) — giảm 90.1% trên payload tổng hợp (số liệu này phụ thuộc payload mẫu, không phải trung bình thực tế) |
 
 ## 3. Giới hạn của phép đo

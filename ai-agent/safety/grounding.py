@@ -923,3 +923,69 @@ def critic_unsupported_claims(model: Any, answer_text: str, rooms: Sequence[Room
 
         return []
 
+
+
+class CriticVerificationReport(BaseModel):
+    unsupported_claims: list[str] = Field(default_factory=list, description="Phát biểu về phòng KHÔNG có căn cứ trong dữ liệu")
+    unaddressed_questions: list[str] = Field(default_factory=list, description="Câu hỏi hoặc yêu cầu cụ thể của người dùng trong <user_query> mà <answer> bỏ qua hoặc trả lời lạc đề")
+
+
+def critic_answer_validation(
+    model: Any,
+    answer_text: str,
+    rooms: Sequence[RoomItem],
+    extra_texts: Iterable[str] = (),
+    user_text: str = "",
+) -> CriticVerificationReport:
+    """Kiểm tra 2 chiều ở runtime:
+    1. Groundedness/Faithfulness: Bắt các phát biểu ảo giác, bịa đặt về phòng (unsupported_claims).
+    2. Answer Relevance: Bắt các câu hỏi/tiêu chí cụ thể của người dùng mà câu trả lời bỏ qua hoặc trả lời lạc đề (unaddressed_questions).
+    """
+    if model is None or not (answer_text or "").strip():
+        return CriticVerificationReport()
+    data = json.dumps([compact_room(r) for r in rooms], ensure_ascii=False)
+    tool_data = "\n".join(extra_texts)[:6000]
+    user_section = f"<user_query>\n{user_text}\n</user_query>\n" if (user_text or "").strip() else ""
+
+    system_prompt = (
+        "Bạn là kiểm chứng viên chất lượng câu trả lời của AI tư vấn phòng trọ Homigo.\n"
+        "Nhiệm vụ của bạn:\n"
+        "1. unsupported_claims: Liệt kê các phát biểu cụ thể về phòng trong <answer> mà KHÔNG được hỗ trợ bởi <rooms_data> hoặc <tool_data>. "
+        "(Bỏ qua lời chào, câu xưng hô, lời khuyên chung, và gợi ý người dùng tự xác nhận khi xem phòng).\n"
+        "2. unaddressed_questions: Nếu người dùng trong <user_query> có câu hỏi cụ thể hoặc thắc mắc trực tiếp "
+        "(ví dụ: hỏi về cho nuôi thú cưng không, giờ giấc thế nào, tiền cọc mấy tháng, chi phí điện nước, chỗ để xe...) "
+        "mà <answer> hoàn toàn bỏ qua hoặc trả lời lạc đề, hãy liệt kê câu hỏi bị bỏ sót.\n"
+        "LƯU Ý: Nếu <user_query> chỉ là câu tìm kiếm phòng thông thường (ví dụ: 'tìm phòng dưới 3 triệu gần UIT') "
+        "và <answer> đã đề xuất các phòng phù hợp thì unaddressed_questions là rỗng [].\n"
+        "Nếu mọi tiêu chí đều đạt chuẩn, trả về 2 danh sách rỗng."
+    )
+    human_prompt = (
+        f"<rooms_data>\n{data}\n</rooms_data>\n"
+        f"<tool_data>\n{tool_data}\n</tool_data>\n"
+        f"{user_section}"
+        f"<answer>\n{answer_text}\n</answer>"
+    )
+    try:
+        rep = model.with_structured_output(CriticVerificationReport).invoke([
+            ("system", system_prompt),
+            ("human", human_prompt),
+        ])
+        if isinstance(rep, CriticVerificationReport):
+            return CriticVerificationReport(
+                unsupported_claims=[c for c in rep.unsupported_claims if c.strip()][:5],
+                unaddressed_questions=[q for q in rep.unaddressed_questions if q.strip()][:5],
+            )
+        elif isinstance(rep, dict):
+            return CriticVerificationReport(
+                unsupported_claims=[c for c in rep.get("unsupported_claims", []) if str(c).strip()][:5],
+                unaddressed_questions=[q for q in rep.get("unaddressed_questions", []) if str(q).strip()][:5],
+            )
+        elif isinstance(rep, ClaimsReport):
+            return CriticVerificationReport(
+                unsupported_claims=[c for c in rep.unsupported_claims if c.strip()][:5],
+                unaddressed_questions=[],
+            )
+        return CriticVerificationReport()
+    except Exception:
+        logger.warning("critic_answer_validation lỗi, bỏ qua", exc_info=True)
+        return CriticVerificationReport()

@@ -34,7 +34,27 @@ class TraceCollector(BaseCallbackHandler):
             names = [tc.get("name") for tc in (getattr(response.generations[0][0].message, "tool_calls", None) or [])]
         except Exception:
             pass
-        self.events.append({"type": "model_response", "requested_tools": names, "elapsed_ms": round((time.time() - self._start.pop(run_id, time.time())) * 1000)})
+        prompt_tokens: int = 0
+        cached_tokens: int = 0
+        try:
+            gen = response.generations[0][0]
+            meta = getattr(gen.message, "response_metadata", {}) or {}
+            usage = meta.get("token_usage", {}) or getattr(response, "llm_output", {}).get("token_usage", {}) or {}
+            prompt_tokens = usage.get("prompt_tokens") or 0
+            details = usage.get("prompt_tokens_details") or {}
+            cached_tokens = details.get("cached_tokens") or 0
+        except Exception:
+            pass
+        ev: dict[str, Any] = {
+            "type": "model_response",
+            "requested_tools": names,
+            "elapsed_ms": round((time.time() - self._start.pop(run_id, time.time())) * 1000),
+        }
+        if prompt_tokens > 0:
+            ev["prompt_tokens"] = prompt_tokens
+        if cached_tokens > 0:
+            ev["cached_tokens"] = cached_tokens
+        self.events.append(ev)
 
     def on_tool_start(self, serialized, input_str, *, run_id, **kwargs):
         name = (serialized or {}).get("name") or kwargs.get("name") or "tool"

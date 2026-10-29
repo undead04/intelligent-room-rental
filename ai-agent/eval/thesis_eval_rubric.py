@@ -79,9 +79,10 @@ CRITERIA: dict[str, tuple[str, float]] = {
     "2.1": ("2.1 Trọng số động theo ý định (Intent-Aware MCDM)", 10.0),
     "2.2": ("2.2 Cổng ràng buộc cứng sau truy xuất (Hard Constraints)", 9.0),
     "2.3": ("2.3 Độ đúng của hàm khoảng cách Haversine", 6.0),
-    "3.1": ("3.1 Chống ảo giác câu trả lời (Answer Grounding)", 10.0),
-    "3.2": ("3.2 Context grounding & đề xuất ngân sách", 5.0),
-    "3.3": ("3.3 Tính toàn vẹn Trace Events", 5.0),
+    "3.1": ("3.1 Chống ảo giác câu trả lời (Answer Grounding)", 8.0),
+    "3.2": ("3.2 Context grounding & đề xuất ngân sách", 4.0),
+    "3.3": ("3.3 Tính toàn vẹn Trace Events", 4.0),
+    "3.4": ("3.4 Độ phù hợp & Khớp câu hỏi (Answer Relevance Judge)", 4.0),
     "4.1": ("4.1 Giải thích Top 1 trung thực", 5.0),
     "4.2": ("4.2 Phân tích đánh đổi Top 1 vs Top 2", 5.0),
     "4.3": ("4.3 Độ trung thực khi render lời khuyên (Advice)", 5.0),
@@ -642,13 +643,48 @@ def _c_trace(trace_events: Optional[Sequence[dict]]) -> SubCriterionResult:
     return _from_checks("3.3", checks, f"{len(trace_events)} sự kiện")
 
 
-def evaluate_pillar_3_self_rag_and_grounding(trace_events: Optional[Sequence[dict]] = None) -> PillarResult:
+def _c_answer_relevance(model: Any = None) -> SubCriterionResult:
+    from eval.answer_relevance import RELEVANCE_CASES, evaluate_answer_relevance
+
+    tp = fn = tn = fp = 0
+    failures: list[str] = []
+    for c in RELEVANCE_CASES:
+        rep = evaluate_answer_relevance(model, c.user_query, c.answer)
+        got_relevant = rep.score >= 0.7
+        if c.expected_relevant and got_relevant:
+            tn += 1
+        elif c.expected_relevant and not got_relevant:
+            fp += 1
+            failures.append(f"CHẶN NHẦM CÂU KHỚP — {c.description}: score={rep.score}, unaddressed={rep.unaddressed_aspects}")
+        elif not c.expected_relevant and not got_relevant:
+            tp += 1
+        else:
+            fn += 1
+            failures.append(f"BỎ LỌT LẠC ĐỀ — {c.description}: score={rep.score}, lý do={rep.reason}")
+
+    n_bad, n_clean = tp + fn, tn + fp
+    tpr = tp / n_bad if n_bad else 0.0
+    tnr = tn / n_clean if n_clean else 0.0
+    balanced = (tpr + tnr) / 2.0
+    name, max_points = CRITERIA["3.4"]
+    mode_str = "LLM Judge" if model is not None else "Rule-based Intent Coverage"
+    return SubCriterionResult(
+        name=name, max_points=max_points, earned_points=round(balanced * max_points, 2),
+        pass_rate=round(balanced, 4),
+        details=(f"Đánh giá Answer Relevance ({mode_str}): Phát hiện trả lời lạc đề/bỏ sót câu hỏi {tp}/{n_bad}; "
+                 f"xác nhận câu trả lời đúng trọng tâm {tn}/{n_clean}."),
+        status=status_from_rate(balanced, 0.85, 0.60), n_cases=len(RELEVANCE_CASES), failures=failures,
+    )
+
+
+def evaluate_pillar_3_self_rag_and_grounding(trace_events: Optional[Sequence[dict]] = None, model: Any = None) -> PillarResult:
     criteria = [
         _guard("3.1", _c_answer_grounding),
         _guard("3.2", _c_context_grounding),
         _guard("3.3", lambda: _c_trace(trace_events)),
+        _guard("3.4", lambda: _c_answer_relevance(model=model)),
     ]
-    return _build_pillar(3, "Self-RAG & Kiểm chứng Grounding (Faithfulness)", 20.0, criteria)
+    return _build_pillar(3, "Self-RAG & Kiểm chứng Grounding (Faithfulness & Relevance)", 20.0, criteria)
 
 
 # ==============================================================================
@@ -958,7 +994,7 @@ def run_full_thesis_evaluation(
     pillars = [
         evaluate_pillar_1_nlu_and_state(model=model),
         evaluate_pillar_2_retrieval_and_mcdm(),
-        evaluate_pillar_3_self_rag_and_grounding(trace_events=trace_events),
+        evaluate_pillar_3_self_rag_and_grounding(trace_events=trace_events, model=model),
         evaluate_pillar_4_decision_and_advisory(),
         evaluate_pillar_5_safety_and_efficiency(),
     ]
@@ -1042,9 +1078,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Rubric đánh giá định lượng Homigo AI (thang 100)")
     ap.add_argument("--out-dir", default=None, help="Thư mục xuất báo cáo (mặc định: ../eval_results)")
     ap.add_argument("--fail-under", type=float, default=None, help="Thoát mã 1 nếu điểm quy đổi thấp hơn ngưỡng (dùng cho CI)")
+    ap.add_argument("--with-model", action="store_true", help="Bật LLM cho NLU và Answer Relevance Judge")
     args = ap.parse_args(argv)
 
-    rep = run_full_thesis_evaluation(args.out_dir)
+    model = None
+    if args.with_model:
+        try:
+            from core.llm import get_model
+            model = get_model("fast")
+        except Exception as e:
+            print(f"Cảnh báo: không thể khởi tạo LLM ({e}), chạy fallback.")
+
+    rep = run_full_thesis_evaluation(args.out_dir, model=model)
     print("=" * 64)
     print(f"ĐIỂM QUY ĐỔI: {rep.total_score}/100 | xếp loại: {rep.grade}")
     print(f"Điểm thô {rep.raw_points}/{rep.measured_max} | độ phủ phép đo {rep.coverage * 100:.0f}% | NLU: {rep.mode}")

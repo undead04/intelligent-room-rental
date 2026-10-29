@@ -38,6 +38,8 @@ from intelligence.nlu_fallback import (
     legacy_analysis,
 )
 from intelligence.payload_builder import (
+    build_decision_context_message,
+    build_decision_query_message,
     build_decision_user_message,
     compact_room,
     format_retry_feedback,
@@ -80,6 +82,8 @@ __all__ = [
     "compact_room",
     "format_retry_feedback",
     "build_decision_user_message",
+    "build_decision_context_message",
+    "build_decision_query_message",
     # Decision
     "FACTOR_VN",
     "DEFAULT_CHECKLIST",

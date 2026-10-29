@@ -49,6 +49,38 @@ def format_retry_feedback(issues: Sequence[str]) -> str:
     )
 
 
+def build_decision_context_message(
+    pref: UserPreferenceState,
+    rooms: Sequence[RoomItem],
+    *,
+    target_room_detail: Optional[str] = None,
+) -> str:
+    """Tạo khối ngữ cảnh dữ liệu phòng & tiêu chí cố định (Prefix) nhằm tối ưu KV-Cache / Prompt Caching."""
+    parts = [
+        f"<criteria>\n{pref.to_context_string()}\n</criteria>",
+        f"<rooms_data>\n{json.dumps([compact_room(r) for r in rooms], ensure_ascii=False)}\n</rooms_data>",
+    ]
+    if target_room_detail:
+        parts.append(f"<prefetched_listing_detail>\n{target_room_detail}\n</prefetched_listing_detail>")
+    return "\n".join(parts)
+
+
+def build_decision_query_message(
+    question: str,
+    *,
+    focus_rank: Optional[int] = None,
+    retry_issues: Optional[Sequence[str]] = None,
+) -> str:
+    """Tạo message chứa câu hỏi người dùng và feedback retry (phần đuôi động, đặt sau Context Prefix)."""
+    q = (question or "").replace("</user_message>", "").replace("<user_message>", "")
+    parts = [f"<user_message>\n{q}\n</user_message>"]
+    if focus_rank:
+        parts.append(f"<focus>Người dùng đang hỏi về phòng Top {focus_rank}.</focus>")
+    if retry_issues:
+        parts.append(format_retry_feedback(retry_issues))
+    return "\n".join(parts)
+
+
 def build_decision_user_message(
     question: str,
     pref: UserPreferenceState,

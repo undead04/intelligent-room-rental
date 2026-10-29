@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-10-26 11:31:44",
+  "timestamp": "2026-10-29 15:19:16",
   "mode": "rule-based fallback (không gọi LLM)",
-  "raw_points": 90.69,
-  "measured_max": 95.0,
-  "coverage": 0.95,
-  "total_score": 95.46,
+  "raw_points": 91.69,
+  "measured_max": 96.0,
+  "coverage": 0.96,
+  "total_score": 95.51,
   "grade": "XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo)",
-  "summary": "Điểm quy đổi 95.46/100 (độ phủ phép đo 95%) — xếp loại: XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo). Chế độ NLU: rule-based fallback (không gọi LLM). Tiêu chí yếu nhất: 2.1 Trọng số động theo ý định (Intent-Aware MCDM) (67%); 1.1 Phân loại ý định (Intent Classification) (92%); 4.3 Độ trung thực khi render lời khuyên (Advice) (92%). Chưa đo: 3.3 Tính toàn vẹn Trace Events.",
+  "summary": "Điểm quy đổi 95.51/100 (độ phủ phép đo 96%) — xếp loại: XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo). Chế độ NLU: rule-based fallback (không gọi LLM). Tiêu chí yếu nhất: 2.1 Trọng số động theo ý định (Intent-Aware MCDM) (67%); 1.1 Phân loại ý định (Intent Classification) (92%); 4.3 Độ trung thực khi render lời khuyên (Advice) (92%). Chưa đo: 3.3 Tính toàn vẹn Trace Events.",
   "pillars": [
     {
       "pillar_id": 1,
@@ -117,15 +117,15 @@
     },
     {
       "pillar_id": 3,
-      "name": "Self-RAG & Kiểm chứng Grounding (Faithfulness)",
+      "name": "Self-RAG & Kiểm chứng Grounding (Faithfulness & Relevance)",
       "max_points": 20.0,
-      "earned_points": 15.0,
-      "measured_max": 15.0,
+      "earned_points": 16.0,
+      "measured_max": 16.0,
       "criteria": [
         {
           "name": "3.1 Chống ảo giác câu trả lời (Answer Grounding)",
-          "max_points": 10.0,
-          "earned_points": 10.0,
+          "max_points": 8.0,
+          "earned_points": 8.0,
           "pass_rate": 1.0,
           "details": "Phát hiện ảo giác (recall) 7/7; không chặn nhầm câu sạch 6/6; điểm = trung bình hai tỷ lệ. Lưu ý: chỉ kiểm ID, giá, diện tích — không kiểm tiện ích/khoảng cách/nhận định định tính",
           "status": "PASS",
@@ -136,8 +136,8 @@
         },
         {
           "name": "3.2 Context grounding & đề xuất ngân sách",
-          "max_points": 5.0,
-          "earned_points": 5.0,
+          "max_points": 4.0,
+          "earned_points": 4.0,
           "pass_rate": 1.0,
           "details": "✔ Context hợp lệ được giữ nguyên | ✔ Ngân sách 2tr (sàn thị trường 3.5tr) → báo market gap, gợi ý KTX, đề xuất > 2tr | ✔ Đối chứng: ngân sách 5tr KHÔNG bị báo market gap",
           "status": "PASS",
@@ -148,7 +148,7 @@
         },
         {
           "name": "3.3 Tính toàn vẹn Trace Events",
-          "max_points": 5.0,
+          "max_points": 4.0,
           "earned_points": 0.0,
           "pass_rate": 0.0,
           "details": "CHƯA ĐO: cần trace_events thật từ một lượt chạy service (truyền vào run_full_thesis_evaluation(trace_events=...)). Bản cũ tự tạo sự kiện giả rồi kiểm tra chính nó nên luôn đạt điểm tối đa.",
@@ -157,6 +157,18 @@
           "ci95": null,
           "failures": [],
           "skipped": true
+        },
+        {
+          "name": "3.4 Độ phù hợp & Khớp câu hỏi (Answer Relevance Judge)",
+          "max_points": 4.0,
+          "earned_points": 4.0,
+          "pass_rate": 1.0,
+          "details": "Đánh giá Answer Relevance (Rule-based Intent Coverage): Phát hiện trả lời lạc đề/bỏ sót câu hỏi 4/4; xác nhận câu trả lời đúng trọng tâm 4/4.",
+          "status": "PASS",
+          "n_cases": 8,
+          "ci95": null,
+          "failures": [],
+          "skipped": false
         }
       ]
     },
@@ -246,7 +258,7 @@
           "max_points": 3.0,
           "earned_points": 3.0,
           "pass_rate": 1.0,
-          "details": "p50 0.598 ms, p95 1.183 ms, max 1.771 ms (200 lần, sau 20 lần warm-up); ngân sách p95 ≤ 10 ms. CHỈ gồm NLU rule-based + tính trọng số, KHÔNG gồm LLM/retrieval/IO — độ trễ end-to-end xem ở live eval",
+          "details": "p50 0.725 ms, p95 0.824 ms, max 0.983 ms (200 lần, sau 20 lần warm-up); ngân sách p95 ≤ 10 ms. CHỈ gồm NLU rule-based + tính trọng số, KHÔNG gồm LLM/retrieval/IO — độ trễ end-to-end xem ở live eval",
           "status": "PASS",
           "n_cases": 200,
           "ci95": null,

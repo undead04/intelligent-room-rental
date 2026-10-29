@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from domain.budget import round_up_step, tighten_budget
+from domain.budget import tighten_budget
 from domain.enums import HitlAction, RoomType
 from domain.schemas import UserPreferenceState, format_vnd_million
 from intelligence.intent_weights import compute_normalized_weights

@@ -189,9 +189,9 @@ def test_llm_failure_in_advice_uses_template_directly():
 
 
 def test_critic_blocks_unsupported_qualitative_claims_when_enabled():
-    from safety.grounding import ClaimsReport
+    from safety.grounding import CriticVerificationReport
     llm = (FakeLLM().on("TurnAnalysis", nlu(location_text="UIT", location_kind="place")).on("Advice", GOOD_ADVICE)
-           .on("ClaimsReport", ClaimsReport(unsupported_claims=["Phòng 1 yên tĩnh"]), ClaimsReport()))
+           .on("CriticVerificationReport", CriticVerificationReport(unsupported_claims=["Phòng 1 yên tĩnh"]), CriticVerificationReport()))
     r = Harness(llm, THREE, critic=True).turn("tìm phòng gần UIT")
     assert llm.count("Advice") == 2 and r.grounding_report.answer_retries == 1
 

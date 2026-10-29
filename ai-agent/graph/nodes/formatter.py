@@ -25,32 +25,30 @@ def make_formatter_node(deps: Deps):
         cands = state.get("ambiguous_candidates") or []
 
         if blocked:
-            follow_up, hitl = [], None
+            follow_up = []
         elif advisory:
             slug = state.get("matched_skill")
             skill = deps.skills().get(slug) if slug else None
-            follow_up, hitl = list(getattr(skill, "follow_ups", [])) if skill else [], None
+            follow_up = list(getattr(skill, "follow_ups", [])) if skill else []
         elif state.get("search_error"):
-            follow_up, hitl = ["🔄 Thử tìm lại", "✏️ Tùy chỉnh tiêu chí"], None
+            follow_up = ["🔄 Thử tìm lại", "✏️ Tùy chỉnh tiêu chí"]
             report = {"is_grounded": True, "context_grounded": False, "needs_user_consent": False, "hitl_streak": streak}
         elif state.get("admin_not_found") or state.get("is_keep_criteria"):
-            follow_up, hitl, rooms, insights = ["🔍 Thử tìm khu vực khác", "✏️ Tùy chỉnh tiêu chí"], None, [], None
+            follow_up, rooms, insights = ["🔍 Thử tìm khu vực khác", "✏️ Tùy chỉnh tiêu chí"], [], None
             report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False, "needs_user_consent": False, "hitl_streak": 0}
         elif cands:
-            follow_up, hitl, rooms, insights = [str(c.get("name")) for c in cands[:4] if c.get("name")], None, [], None
+            follow_up, rooms, insights = [str(c.get("name")) for c in cands[:4] if c.get("name")], [], None
             need_clarify = True
             report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False, "needs_user_consent": False, "hitl_streak": 0}
         elif need_clarify:
             follow_up = list(state.get("follow_up_questions") or [])
-            hitl = None
         elif rooms:
             follow_up = [f"Bạn có muốn xem chi tiết phòng Top 1 ({rooms[0].title[:30]}...) không?"] if rooms else []
-            hitl = None
         elif streak > MAX_HITL_STREAK:
-            follow_up, hitl = [], None
+            follow_up = []
             report = {"is_grounded": True, "context_grounded": False, "needs_user_consent": False, "hitl_streak": streak, "hitl_limit_reached": True}
         else:
-            follow_up, hitl = [], None
+            follow_up = []
             report = dict(report or {})
             report.update({"needs_user_consent": False, "hitl_streak": streak, "hitl_max_streak": MAX_HITL_STREAK})
 
