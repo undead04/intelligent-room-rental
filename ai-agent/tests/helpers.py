@@ -24,11 +24,11 @@ class FakeModel:
         return self.structured
 
 
-def make_session(*, pref=None, rooms=None, hitl_streak=0, proposed_budget=None, messages=None, multipliers=None):
+def make_session(*, pref=None, rooms=None, zero_result_streak=0, proposed_budget=None, messages=None, multipliers=None):
     return SimpleNamespace(
         preferences=pref or UserPreferenceState(),
         multipliers=multipliers or {"price": 1.0, "location": 1.0, "safety": 1.0, "amenity": 1.0, "semantic": 1.0},
-        last_rooms=rooms or [], hitl_streak=hitl_streak, proposed_budget=proposed_budget, messages=messages or [],
+        last_rooms=rooms or [], zero_result_streak=zero_result_streak, proposed_budget=proposed_budget, messages=messages or [],
     )
 
 

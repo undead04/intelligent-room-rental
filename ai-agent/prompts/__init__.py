@@ -8,8 +8,14 @@ from prompts.decision_prompt import (
     DECISION_RULES,
     build_advice_prompt,
     build_decision_prompt,
+    build_zero_result_user_prompt,
 )
-from prompts.nlu_prompt import BASE_PROMPT
+from prompts.nlu_prompt import (
+    BASE_PROMPT,
+    INTENT_GUIDE,
+    NLU_RULES,
+    build_nlu_system_prompt,
+)
 
 CAPABILITY_PROMPT = f"{DECISION_RULES}"
 
@@ -20,11 +26,15 @@ def build_system_prompt() -> str:
 
 __all__ = [
     "BASE_PROMPT",
+    "INTENT_GUIDE",
+    "NLU_RULES",
     "ADVICE_RULES",
     "DECISION_RULES",
     "CAPABILITY_PROMPT",
+    "build_nlu_system_prompt",
     "build_advice_prompt",
     "build_decision_prompt",
+    "build_zero_result_user_prompt",
     "build_advisory_prompt",
     "build_system_prompt",
 ]

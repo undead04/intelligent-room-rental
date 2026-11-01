@@ -6,10 +6,9 @@ from typing import Any, Optional
 from domain.enums import amenity_label
 from domain.schemas import UserPreferenceState
 from graph.deps import Deps
-from graph.replies import _format_nearby_bullets, _get_neighboring_areas, reply_when_no_rooms
+from graph.replies import _format_nearby_bullets, reply_when_no_rooms
 from graph.tracing import TraceCollector, traced_call
 from intelligence.advice import (
-    Advice,
     ZeroResultAdvice,
     generate_advice,
     render_advice,
@@ -19,8 +18,8 @@ from intelligence.insights import build_decision_insights, template_reply
 from intelligence.payload_builder import (
     build_decision_context_message,
     build_decision_query_message,
-    build_decision_user_message,
 )
+from prompts.decision_prompt import build_zero_result_user_prompt
 
 logger = logging.getLogger(__name__)
 MIN_AGENT_REPLY = 30
@@ -32,7 +31,7 @@ def _text(m: Any) -> str:
 
 
 def followup_fallback_reply(room: Optional[Any], details: Optional[dict[str, Any]] = None) -> str:
-    """Fallback an toàn khi việc giải đáp chi tiết phòng gặp lỗi, trích xuất thông tin thực tế từ dữ liệu phòng thay vì dump danh sách phòng."""
+    """Fallback an toàn khi việc giải đáp chi tiết phòng gặp lỗi, trích xuất thông tin thực tế từ dữ liệu phòng."""
     if not room:
         return "Rất tiếc, Homigo chưa thể tải thông tin chi tiết của phòng này. Bạn vui lòng thử lại hoặc liên hệ trực tiếp chủ trọ nhé."
     title = (details and details.get("title")) or getattr(room, "title", "phòng trọ")
@@ -106,7 +105,6 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
     except Exception:
         logger.warning("_followup_via_agent: agent invoke gặp lỗi", exc_info=True)
 
-    # Nếu agent không trả lời được nhưng có model, thực hiện single-pass QA trực tiếp
     model = deps.get_llm("main")
     if model is not None and target_room and compact_detail:
         try:
@@ -144,31 +142,30 @@ def make_decision_node(deps: Deps):
             model = deps.get_llm("main")
             if model is not None and not state.get("search_error") and not state.get("admin_not_found") and not state.get("ambiguous_candidates"):
                 try:
-                    hitl = state.get("hitl_proposal")
+                    market = state.get("market_context")
                     pref = state.get("preferences") or UserPreferenceState()
-                    loc = (hitl.area_name if hitl and hitl.area_name else None) or pref.location_text or "khu vực này"
+                    loc = (market.area_name if market and market.area_name else None) or pref.location_text or "khu vực này"
                     search_args = state.get("last_search_args") or {}
-                    neighbor_bullets = _format_nearby_bullets(loc, pref, search_args)
+                    neighbor_bullets = _format_nearby_bullets(pref, search_args)
 
                     market_ctx = []
-                    if hitl and hitl.market_min_price_str:
-                        market_ctx.append(f"Giá sàn thấp nhất: {hitl.market_min_price_str}")
-                    if hitl and hitl.market_avg_price_str:
-                        market_ctx.append(f"Giá trung bình: {hitl.market_avg_price_str}")
-                    if hitl and hitl.user_budget_str:
-                        market_ctx.append(f"Ngân sách người dùng: {hitl.user_budget_str}")
+                    if market and market.market_min_price_str:
+                        market_ctx.append(f"Giá sàn thấp nhất: {market.market_min_price_str}")
+                    if market and market.market_avg_price_str:
+                        market_ctx.append(f"Giá trung bình: {market.market_avg_price_str}")
+                    if market and market.user_budget_str:
+                        market_ctx.append(f"Ngân sách người dùng: {market.user_budget_str}")
                     market_str = ", ".join(market_ctx) if market_ctx else "Chưa có số liệu giá chi tiết"
 
                     amenities_desc = ", ".join(amenity_label(a) for a in pref.amenities) if pref.amenities else "Không yêu cầu tiện ích bắt buộc"
 
-                    prompt = (
-                        "Chưa tìm thấy phòng trọ nào khớp 100% điều kiện.\n"
-                        f"- Yêu cầu người dùng: '{state.get('user_message', '')}'\n"
-                        f"- Khu vực: {loc} | Ngân sách: {pref.max_price / 1e6 if pref.max_price else 'Chưa nêu'} triệu/tháng\n"
-                        f"- Tiện ích bắt buộc: {amenities_desc}\n"
-                        f"- Số liệu thị trường thực tế: {market_str}\n"
-                        f"- Khu vực lân cận thực tế gợi ý:\n{neighbor_bullets}\n\n"
-                        "Lưu ý: Đóng vai trò Cố vấn Homigo AI khách quan, chân thành; tuyệt đối không nhắc người dùng bấm nút hay chọn phương án bên dưới."
+                    prompt = build_zero_result_user_prompt(
+                        user_message=state.get("user_message", ""),
+                        loc=loc,
+                        max_price=pref.max_price,
+                        amenities_desc=amenities_desc,
+                        market_str=market_str,
+                        neighbor_bullets=neighbor_bullets,
                     )
                     z_advice = traced_call(trace, lambda: model.with_structured_output(ZeroResultAdvice).invoke([
                         ("system", deps.base_prompt),
@@ -191,8 +188,18 @@ def make_decision_node(deps: Deps):
             else:
                 model = deps.get_llm("main")
                 advice_sys_prompt = getattr(deps, "advice_system_prompt", None) or deps.decision_system_prompt
-                advice = traced_call(trace, lambda: generate_advice(model, advice_sys_prompt, state.get("user_message", ""), pref, rooms,
-                                                                    retry_issues=state.get("answer_issues"), focus_rank=state.get("focus_rank"))) if model else None
+                advice = traced_call(
+                    trace,
+                    lambda: generate_advice(
+                        model,
+                        advice_sys_prompt,
+                        state.get("user_message", ""),
+                        pref,
+                        rooms,
+                        retry_issues=state.get("answer_issues"),
+                        focus_rank=state.get("focus_rank"),
+                    ),
+                ) if model else None
                 text = render_advice(advice, rooms) if advice else ""
         except Exception:
             logger.warning("decision_node: lỗi khi tạo câu tư vấn", exc_info=True)

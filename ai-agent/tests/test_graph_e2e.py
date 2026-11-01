@@ -1,11 +1,8 @@
-import pytest
-
 from intelligence.advice import Advice
-from domain.enums import HitlAction, RoomType
+from domain.enums import RoomType
 from graph.nodes.clarification import ClarifyReply
 from intelligence.nlu import Priorities
 from tests.e2e_helpers import GOOD_ADVICE, SKILL, FakeAgent, FakeLLM, Harness, agent_reply, nlu, raw_room
-from intelligence.understand import KEEP_TEXT
 
 THREE = [raw_room(1, 2_400_000, 25), raw_room(2, 2_800_000, 21), raw_room(3, 3_000_000, 30)]
 
@@ -26,7 +23,7 @@ def test_new_search_by_place_end_to_end():
     assert a["weights"]["location"] > a["weights"]["price"] and abs(sum(a["weights"].values()) - 1) < 1e-3
     assert "Giá thuê: 2.4 triệu/tháng" in r.text_reply and "Điểm phù hợp: 84%" in r.text_reply and "Mình tìm được vài phòng" in r.text_reply
     assert r.grounding_report.is_grounded and r.grounding_report.checked >= 6 and r.grounding_report.answer_retries == 0
-    assert r.current_preferences.lat == 10.87 and r.hitl_proposal is None and not r.need_clarification
+    assert r.current_preferences.lat == 10.87 and not r.need_clarification
     assert r.follow_up_questions[0].startswith("Bạn có muốn xem chi tiết")
     assert [x.id for x in h.session.last_rooms] == ["nhatot_1", "nhatot_2", "nhatot_3"] and len(h.session.history) == 2
     kinds = [e["type"] for e in r.trace_events]
@@ -75,54 +72,13 @@ def test_suspicious_listing_is_dropped_and_traced():
     assert any(e["type"] == "suspicious_listing" and e["listing_id"] == "nhatot_4" for e in r.trace_events)
 
 
-# ---------------- không có phòng / HITL ----------------
-def _no_room_harness():
+# ---------------- không có phòng ----------------
+def test_empty_results_provide_market_advice_and_update_proposed_budget():
     llm = FakeLLM().on("TurnAnalysis", nlu(location_text="Dĩ An", location_kind="admin", max_price=1_500_000)).on("Advice", GOOD_ADVICE)
-    return Harness(llm, rooms=[])
-
-
-def test_empty_results_trigger_hitl_then_relax_budget_button_completes_the_loop():
-    h = _no_room_harness()
-    r1 = h.turn("tìm phòng ở Dĩ An dưới 1tr5")
-    assert r1.rooms == [] and r1.hitl_proposal is None and "chưa tìm thấy" in r1.text_reply
-    assert r1.follow_up_questions == []
-    assert h.session.hitl_streak == 1 and h.session.proposed_budget == 1_750_000
-
-    h.rooms = [raw_room(1, 1_700_000, 18), raw_room(2, 1_600_000, 16)]       # sau khi nới, backend có phòng trong ngân sách mới
-    r2 = h.turn("👍 Đồng ý nới ngân sách lên 1.75 triệu", ui_action="relax_budget")
-    assert h.search_calls[-1]["max_price"] == 1_750_000 and h.search_calls[-1]["district_id"] == 724
-    assert len(r2.rooms) == 2 and h.session.hitl_streak == 0 and h.llm.count("TurnAnalysis") == 1   # nút bấm không tốn LLM NLU
-
-
-def test_hitl_streak_limit_stops_offering_relaxation():
-    h = _no_room_harness()
-    for _ in range(3):
-        r = h.turn("tìm phòng ở Dĩ An dưới 1tr5")
-    assert "nới lỏng nhiều tiêu chí" in r.text_reply and r.hitl_proposal is None
-    assert r.follow_up_questions == []
-
-
-def test_keep_criteria_button():
-    h = _no_room_harness()
-    h.turn("tìm phòng ở Dĩ An dưới 1tr5")
-    n = len(h.search_calls)
-    r = h.turn("❌ Giữ nguyên", ui_action="keep")
-    assert r.text_reply == KEEP_TEXT and len(h.search_calls) == n and r.rooms == []
-
-
-def test_custom_button_answers_directly_without_llm_clarification():
-    h = _no_room_harness()
-    h.turn("tìm phòng ở Dĩ An dưới 1tr5")
-    r = h.turn("✏️ Tùy chỉnh", ui_action="custom")
-    assert "nhập trực tiếp tiêu chí" in r.text_reply and r.need_clarification and h.llm.count("ClarifyReply") == 0
-
-
-def test_dormitory_button_switches_type_and_respects_budget_multiplier():
-    h = _no_room_harness()
-    h.turn("tìm phòng ở Dĩ An dưới 1tr5")
-    h.rooms = THREE
-    h.turn("🛌 ktx", ui_action="dormitory")
-    assert h.search_calls[-1]["room_type"] == "SLEEPBOX"
+    h = Harness(llm, rooms=[])
+    r = h.turn("tìm phòng ở Dĩ An dưới 1tr5")
+    assert r.rooms == [] and "chưa tìm thấy" in r.text_reply
+    assert h.session.zero_result_streak == 1 and h.session.proposed_budget == 1_750_000
 
 
 def test_admin_not_in_database():
@@ -198,7 +154,7 @@ def test_critic_blocks_unsupported_qualitative_claims_when_enabled():
 
 # ---------------- hỏi tiếp về phòng ----------------
 def test_followup_uses_agent_and_tool_output_counts_as_evidence():
-    llm = FakeLLM().on("TurnAnalysis", nlu(location_text="UIT", location_kind="place"), nlu("room_followup", ) .model_copy(update={"referenced_room_rank": 2})).on("Advice", GOOD_ADVICE)
+    llm = FakeLLM().on("TurnAnalysis", nlu(location_text="UIT", location_kind="place"), nlu("room_followup").model_copy(update={"referenced_room_rank": 2})).on("Advice", GOOD_ADVICE)
     agent = FakeAgent(agent_reply("Phòng Top 2 cần cọc 3 triệu và phí dịch vụ 200k mỗi tháng nhé bạn.", tool='{"deposit": 3000000, "service_fee": "200.000đ"}'))
     h = Harness(llm, THREE, agent=agent)
     h.turn("tìm phòng gần UIT")
@@ -228,22 +184,19 @@ def test_followup_without_agent_falls_back_to_template():
 
 
 def test_new_search_replaces_old_rooms_so_followup_never_sees_stale_results():
-    llm = FakeLLM().on("TurnAnalysis", nlu(location_text="UIT", location_kind="place"), nlu(location_text="Quảng Ngãi", location_kind="admin"), nlu("room_followup")).on("Advice", GOOD_ADVICE)
+    llm = (
+        FakeLLM()
+        .on("TurnAnalysis", nlu(location_text="UIT", location_kind="place"), nlu(location_text="Quảng Ngãi", location_kind="admin"), nlu("room_followup"))
+        .on("Advice", GOOD_ADVICE)
+        .on("ClarifyReply", ClarifyReply(text="Hiện tại chưa có phòng nào để so sánh, bạn muốn tìm ở khu vực nào?", suggestions=["Tìm gần UIT"]))
+    )
     h = Harness(llm, THREE)
     h.turn("tìm phòng gần UIT")
     assert len(h.session.last_rooms) == 3
     h.turn("thôi tìm ở Quảng Ngãi")
     assert h.session.last_rooms == []
-    r = h.turn("so sánh top 1 với top 2")                                   # không còn phòng để so sánh -> coi như tìm mới (vẫn Quảng Ngãi)
-    assert r.rooms == [] and "chưa có dữ liệu" in r.text_reply and h.llm.count("TurnAnalysis") == 3
-
-
-def test_hard_constraint_check_rejects_backend_rooms_above_relaxed_budget():
-    h = _no_room_harness()
-    h.turn("tìm phòng ở Dĩ An dưới 1tr5")
-    h.rooms = THREE                                                          # backend trả phòng 2.4-3 triệu dù ngân sách chỉ 1.75 triệu
-    r = h.turn("👍 Đồng ý", ui_action="relax_budget")
-    assert r.rooms == [] and r.hitl_proposal is None and h.session.hitl_streak == 2
+    r = h.turn("so sánh top 1 với top 2")                                   # không còn phòng để so sánh -> sang clarification_node
+    assert r.rooms == [] and r.need_clarification and h.llm.count("TurnAnalysis") == 3
 
 
 # ---------------- skill / làm rõ / LLM chết ----------------
@@ -279,14 +232,49 @@ def test_everything_degrades_when_llm_is_unavailable():
     h = Harness(None, THREE)
     r = h.turn("tìm phòng giá rẻ gần UIT")
     assert r.need_clarification and "chia sẻ cụ thể" in r.text_reply and h.search_calls == []
-    assert any(e["type"] == "nlu_fallback" for e in r.trace_events)
     r2 = h.turn("hop dong thue tro can luu y gi?")
-    assert r2.text_reply                                                     # không sập; fallback keyword cũng không có skill khớp -> hỏi làm rõ/đi tiếp
+    assert r2.text_reply and r2.need_clarification
 
 
-def test_nlu_error_falls_back_to_keywords_for_hitl_buttons():
-    llm = FakeLLM().on("TurnAnalysis", nlu(location_text="Dĩ An", location_kind="admin", max_price=1_500_000), RuntimeError("timeout")).on("Advice", GOOD_ADVICE)
-    h = Harness(llm, rooms=[])
-    h.turn("tìm phòng ở Dĩ An dưới 1tr5")
-    r = h.turn("❌ Giữ nguyên tiêu chí của tôi")                             # nút cũ gửi emoji, không có ui_action, LLM lỗi
-    assert r.text_reply == KEEP_TEXT and any(e["type"] == "nlu_fallback" for e in r.trace_events)
+def test_multi_intent_soft_guardrail_saves_criteria_and_replies_naturally_without_buttons():
+    compound_turn = nlu("new_search", location_text="UIT", location_kind="place", max_price=3_500_000, amenities_add=["ml"]).model_copy(
+        update={"skill_slug": SKILL.slug}
+    )
+    next_turn = nlu("refine_search")
+    llm = FakeLLM().on("TurnAnalysis", compound_turn, next_turn).on("Advice", GOOD_ADVICE)
+    h = Harness(llm, THREE)
+
+    # Lượt 1: Người dùng nhập gộp vừa tìm phòng vừa hỏi cẩm nang hợp đồng
+    r1 = h.turn("tìm phòng gần UIT dưới 3.5 triệu có máy lạnh, tiện hỏi hợp đồng đặt cọc cần lưu ý gì?")
+    assert r1.rooms == [] and h.search_calls == [] and h.skill_calls == []
+    assert r1.need_clarification is True
+    assert r1.follow_up_questions == []   # không sinh nút bấm máy móc, trả lời bằng đoạn chat tự nhiên
+    assert "ghi nhận sẵn các tiêu chí tìm phòng" in r1.text_reply
+    assert h.session.preferences.location_text == "UIT" and h.session.preferences.max_price == 3_500_000
+
+    # Lượt 2: Người dùng nhắn tự nhiên "tìm phòng trước giúp mình nhé" -> dùng ngay tiêu chí đã lưu ở lượt 1
+    r2 = h.turn("tìm danh sách phòng trọ trước giúp mình nhé")
+    assert len(r2.rooms) == 3 and len(h.search_calls) == 1
+    assert h.search_calls[0]["max_price"] == 3_500_000 and h.search_calls[0]["amenities"] == ["aircon"]
+
+
+def test_multi_turn_skill_advisory_passes_compact_history_and_preserves_kv_cache_prefix():
+    t1 = nlu("skill_advice").model_copy(update={"skill_slug": SKILL.slug})
+    t2 = nlu("skill_advice").model_copy(update={"skill_slug": SKILL.slug})
+    long_reply_1 = "Khi ký hợp đồng thuê trọ, bạn cần kiểm tra kỹ điều khoản hoàn trả tiền đặt cọc và thời hạn báo trước ít nhất 30 ngày. " * 3
+    reply_2 = "Nếu chủ nhà ghi phạt cọc 100% như điều khoản bạn vừa hỏi, bạn nên đề nghị bổ sung ngoại lệ khi bên cho thuê vi phạm."
+    llm = FakeLLM().on("TurnAnalysis", t1, t2).on("text", long_reply_1, reply_2)
+    h = Harness(llm)
+
+    h.turn("đặt cọc thuê trọ cần lưu ý gì?")
+    h.turn("thế nếu chủ nhà ghi phạt 100% như câu trên thì mình sửa sao?")
+
+    text_calls = [m for n, m in llm.calls if n == "text"]
+    assert len(text_calls) == 2
+    first_msgs, second_msgs = text_calls[0], text_calls[1]
+    # System prompt ở vị trí 0 của cả 2 lượt giống hệt nhau -> kích hoạt Prefix KV-Cache
+    assert first_msgs[0] == second_msgs[0] and first_msgs[0][0] == "system"
+    # Lượt 2 có chứa lịch sử rút gọn của lượt 1 trước câu hỏi mới ở cuối
+    assert len(second_msgs) >= 4
+    assert "[Đã cung cấp nội dung tư vấn chuyên sâu từ cẩm nang]" in second_msgs[2][1]
+    assert "chủ nhà ghi phạt 100%" in second_msgs[-1][1]

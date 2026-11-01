@@ -17,7 +17,6 @@ from domain.budget import (
 )
 from domain.enums import (
     Amenity,
-    HitlAction,
     RoomType,
 )
 from domain.filters import (
@@ -28,8 +27,7 @@ from domain.schemas import (
     AgentResponse,
     DecisionInsight,
     GroundingReport,
-    HitlOption,
-    HitlProposal,
+    MarketContext,
     RoomItem,
     TradeOffAnalysis,
     UserPreferenceState,
@@ -43,8 +41,7 @@ __all__ = [
     "TradeOffAnalysis",
     "DecisionInsight",
     "UserPreferenceState",
-    "HitlOption",
-    "HitlProposal",
+    "MarketContext",
     "GroundingReport",
     "AgentResponse",
     "format_vnd_million",
@@ -52,7 +49,6 @@ __all__ = [
     # enums
     "Amenity",
     "RoomType",
-    "HitlAction",
     # budget
     "RELAX_FACTOR",
     "TIGHTEN_FACTOR",

@@ -4,17 +4,13 @@ Bao gồm 5 Cấp độ kiểm thử toàn diện máy trạng thái LangGraph:
 - Level 1: Dễ - Truy vấn đơn lượt cơ bản (Địa danh hành chính, POI Geocoding, Ngân sách)
 - Level 2: Trung bình - Intent Boosters & Phân biệt Bắt buộc (Mandatory) vs Ưu tiên (Priority)
 - Level 3: Khó - Hội thoại đa lượt (Multi-turn), Tích lũy Memory và Sửa đổi tiêu chí
-- Level 4: Rất khó - Human-in-the-Loop (HITL) Negotiation & Tư vấn Kỹ năng chuyên sâu (Advisory)
+- Level 4: Rất khó - Zero-Result Market Advisory & Tư vấn Kỹ năng chuyên sâu (Advisory)
 - Level 5: Biên & An toàn - Guardrail an ninh, Chặn Prompt Injection, Off-topic, và Clarification
 """
 
-import pytest
-
-from domain.enums import Amenity, HitlAction, RoomType
-from domain.schemas import RoomItem, UserPreferenceState
+from domain.enums import Amenity
 from graph.nodes.clarification import ClarifyReply
-from intelligence.advice import Advice
-from intelligence.intent_weights import compute_normalized_weights
+from intelligence.advice import Advice, ZeroResultAdvice
 from intelligence.nlu import PreferencePatch, Priorities, TurnAnalysis
 from tests.e2e_helpers import GOOD_ADVICE, FakeLLM, Harness, nlu, raw_room
 
@@ -227,29 +223,33 @@ def test_level3_multi_turn_budget_reduction_when_asking_cheaper():
 
 
 # ==============================================================================
-# LEVEL 4: RẤT KHÓ - Human-in-the-Loop Negotiation & Skill Advisory
+# LEVEL 4: RẤT KHÓ - Zero-Result Market Advisory & Skill Advisory
 # ==============================================================================
 
-def test_level4_hitl_budget_relaxation_on_low_results():
-    """L4.1: Ngân sách quá thấp (1.5tr) không tìm thấy phòng -> Kích hoạt HITL nới lỏng ngân sách."""
+def test_level4_zero_result_market_advisory_on_low_budget():
+    """L4.1: Ngân sách quá thấp (1.5tr) không tìm thấy phòng -> Cung cấp thông tin mặt bằng giá thực tế."""
     llm = FakeLLM()
     llm.on(TurnAnalysis, nlu("new_search", location_text="Dĩ An", location_kind="admin", max_price=1_500_000))
     llm.on(Advice, GOOD_ADVICE)
+    llm.on(ZeroResultAdvice, ZeroResultAdvice(
+        analysis="Tại Dĩ An với ngân sách 1.5 triệu hiện chưa có phòng phù hợp.",
+        market_assessment="Mặt bằng giá thấp nhất khoảng 2.2 triệu và trung bình khoảng 3.5 triệu.",
+        suggestions=[
+            "Cân nhắc mô hình Ký túc xá / Sleepbox để tiết kiệm chi phí.",
+            "Cân nhắc nới ngân sách lên khoảng 2.2 triệu.",
+        ],
+        closing_question="Bạn muốn điều chỉnh tiêu chí nào tiếp theo?",
+    ))
 
     # Backend trả về 0 phòng
     h = Harness(llm, rooms=[], market=lambda **kw: {"minimum_price_vnd": 2_200_000, "average_price_vnd": 3_500_000, "total_listings": 80})
     res = h.turn("Tìm phòng ở Dĩ An giá 1.5 triệu")
 
-    # Văn bản trả lời hiển thị thông tin mặt bằng giá thực tế để người dùng tự quyết định
-    assert "Thông tin mặt bằng giá thực tế" in res.text_reply
     assert "2.2 triệu" in res.text_reply
     assert "3.5 triệu" in res.text_reply
     assert "1.5 triệu" in res.text_reply
     assert "Ký túc xá / Sleepbox" in res.text_reply
-    # Không còn câu thúc giục bấm nút máy móc
     assert "dưới đây không" not in res.text_reply
-
-    assert res.hitl_proposal is None
     assert res.follow_up_questions == []
 
 

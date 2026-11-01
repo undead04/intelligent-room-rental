@@ -6,7 +6,6 @@ from skills.skills_discovery import (
     clear_cache,
     discover_housing_skills,
     get_skill,
-    match_skill_by_query,
     parse_frontmatter,
     skills_catalog_for_prompt,
 )
@@ -23,7 +22,6 @@ __all__ = [
     "discover_housing_skills",
     "get_skill",
     "get_skill_by_slug",
-    "match_skill_by_query",
     "parse_frontmatter",
     "skills_catalog_for_prompt",
 ]

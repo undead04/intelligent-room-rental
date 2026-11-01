@@ -9,13 +9,6 @@ def base_llm(*advices):
     return FakeLLM().on("TurnAnalysis", nlu(location_text="UIT", location_kind="place", max_price=3_500_000)).on("Advice", *advices)
 
 
-def test_nlu_disabled_never_calls_nlu_and_traces_fallback():
-    llm = base_llm(GOOD_ADVICE)
-    r = Harness(llm, THREE, nlu_enabled=False).turn("tìm phòng giá rẻ gần UIT")
-    assert llm.count("TurnAnalysis") == 0 and any(e["type"] == "nlu_fallback" for e in r.trace_events)
-    assert r.need_clarification                              # keyword fallback không trích được địa danh/giá -> hỏi làm rõ
-
-
 def test_unconstrained_generation_uses_free_text_agent_even_for_new_results():
     llm = base_llm(GOOD_ADVICE)
     agent = FakeAgent(agent_reply("Gợi ý cho bạn: phòng Top 1 khá ổn nhé, nhớ hỏi chủ nhà về giờ giấc."))

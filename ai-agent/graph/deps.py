@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Callable, Optional
 
+from core import MODEL_CALL_LIMIT, TOOL_CALL_LIMIT
 from domain.budget import MarketFetcher
 from safety.grounding import MAX_GROUNDING_RETRIES
 from safety.guardrails import GuardrailResult, check_guardrails
@@ -33,29 +34,21 @@ class Deps:
     guard: Callable[[str], GuardrailResult] = check_guardrails
     enable_critic: bool = False
     # --- công tắc cho ablation (mặc định = cấu hình đầy đủ) ---
-    nlu_enabled: bool = True                      # False: bỏ LLM NLU, chỉ dùng keyword fallback
-    constrained_generation: bool = True           # False: kết quả mới cũng do agent viết tự do (như bản v2 cũ)
+    constrained_generation: bool = True           # False: kết quả mới cũng do agent viết tự do
     verify_answers: bool = True                   # False: vẫn ĐO lỗi (issues) nhưng không retry/không thay thế câu trả lời
     max_answer_retries: int = MAX_GROUNDING_RETRIES
 
 
 def default_deps(*, enable_critic: bool = False, sessions: Any = None) -> Deps:
-    """Nối tới hệ thống thật. Graph gọi thẳng các HÀM LÕI trong tools.housing_tools (không qua lớp @tool/JSON).
-
-    sessions: mặc định SessionStore trong bộ nhớ; truyền PersistentSessionStore("sessions.db") để bền vững/nhiều worker.
-    """
-    from intelligence.payload_builder import DECISION_RULES_ADDENDUM
-    from safety.grounding import backend_market_fetcher
+    """Nối tới hệ thống thật. Graph gọi thẳng các HÀM LÕI trong tools.housing_tools (không qua lớp @tool/JSON)."""
     from core.llm import get_llm
-    import prompts
-    BASE_PROMPT = getattr(prompts, "BASE_PROMPT", "")
-    build_decision_prompt = getattr(prompts, "build_decision_prompt", lambda: "")
-    build_advice_prompt = getattr(prompts, "build_advice_prompt", lambda: "")
     from core.session_store import SessionStore
+    from prompts import BASE_PROMPT, build_advice_prompt, build_decision_prompt
+    from safety.grounding import backend_market_fetcher
     from skills.skills_discovery import discover_housing_skills
     from tools.housing_tools import admin_lookup, consult_skill, geocode_point, search_rooms_api
 
-    decision_prompt = f"{build_decision_prompt()}\n\n{DECISION_RULES_ADDENDUM}"
+    decision_prompt = build_decision_prompt()
     advice_prompt = build_advice_prompt()
 
     @lru_cache(maxsize=1)
@@ -64,8 +57,12 @@ def default_deps(*, enable_critic: bool = False, sessions: Any = None) -> Deps:
         from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
         from tools.registry import DETAIL_TOOLS
 
-        return create_agent(model=get_llm("main"), tools=DETAIL_TOOLS, system_prompt=decision_prompt,
-                            middleware=[ModelCallLimitMiddleware(run_limit=4), ToolCallLimitMiddleware(run_limit=3)])
+        return create_agent(
+            model=get_llm("main"),
+            tools=DETAIL_TOOLS,
+            system_prompt=decision_prompt,
+            middleware=[ModelCallLimitMiddleware(run_limit=MODEL_CALL_LIMIT), ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT)],
+        )
 
     return Deps(
         sessions=sessions if sessions is not None else SessionStore(),

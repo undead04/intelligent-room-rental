@@ -120,19 +120,7 @@ export function useAiChat() {
         content: m.text,
       }));
 
-    setMessages((prev) => {
-      // Nếu gửi từ một nút bấm (HITL hoặc gợi ý), đánh dấu hành động đã chọn vào tin nhắn bot gần nhất
-      const updated = prev.map((m, idx) => {
-        if (customText && idx === prev.length - 1 && m.sender === "ai") {
-          return {
-            ...m,
-            selectedHitlAction: customText,
-          };
-        }
-        return m;
-      });
-      return [...updated, userMessage, placeholderAiMessage];
-    });
+    setMessages((prev) => [...prev, userMessage, placeholderAiMessage]);
     setIsTyping(true);
     setConnectionError(null);
 
@@ -203,7 +191,7 @@ export function useAiChat() {
         } else {
           setSelectedRoomId(res.rooms[0].id);
         }
-      } else if (res.hitl_proposal || res.grounding_report?.blocked_by_guardrail || textToSend.toLowerCase().includes("giữ nguyên")) {
+      } else if ((res.rooms && res.rooms.length === 0) || res.grounding_report?.blocked_by_guardrail || textToSend.toLowerCase().includes("giữ nguyên")) {
         // Chỉ làm trống danh sách phòng khi tìm kiếm thực sự không có kết quả hoặc bị chặn
         setRooms([]);
         setSelectedRoomId(DEFAULT_ROOM_ID);
@@ -295,7 +283,6 @@ export function useAiChat() {
                   res.follow_up_questions && res.follow_up_questions.length > 0
                     ? res.follow_up_questions
                     : undefined,
-                hitlProposal: res.hitl_proposal || undefined,
                 groundingReport: res.grounding_report || undefined,
               }
             : m

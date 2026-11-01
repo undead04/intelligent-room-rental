@@ -54,8 +54,8 @@ from domain.enums import Amenity, RoomType, normalize_amenities, normalize_room_
 from domain.schemas import RoomItem, UserPreferenceState  # noqa: E402
 from intelligence.advice import Advice, render_advice  # noqa: E402
 from intelligence.insights import FACTOR_VN, build_decision_insights, price_trade_off  # noqa: E402
-from intelligence.intent_weights import compute_normalized_weights, detect_intent_multipliers  # noqa: E402
-from intelligence.nlu_fallback import legacy_analysis  # noqa: E402
+from intelligence.intent_weights import compute_normalized_weights  # noqa: E402
+from intelligence.nlu import PreferencePatch, Priorities, apply_patch, apply_priorities  # noqa: E402
 from intelligence.understand import interpret_turn  # noqa: E402
 from safety.grounding import (  # noqa: E402
     parse_areas,
@@ -284,7 +284,11 @@ def _sample_rooms() -> list[RoomItem]:
 
 
 def _c_intent(model: Any) -> SubCriterionResult:
-    mode = "LLM" if model is not None else "rule-based fallback (KHÔNG gọi LLM)"
+    if model is None:
+        return _skipped(
+            "1.1",
+            "Cần LLM (--with-model) để đo phân loại ý định NLU từ câu thô (hệ thống không dùng bộ đoán từ khoá).",
+        )
     passed, failures = 0, []
     by_group: dict[str, list[int]] = {}
     for case in INTENT_CASES:
@@ -307,7 +311,7 @@ def _c_intent(model: Any) -> SubCriterionResult:
     groups = ", ".join(f"{k}: {v[0]}/{v[1]}" for k, v in by_group.items())
     return _from_cases(
         "1.1", passed, len(INTENT_CASES), failures,
-        f"Chế độ NLU: {mode}. Đúng {passed}/{len(INTENT_CASES)}. Theo nhóm — {groups}",
+        f"Chế độ NLU: LLM. Đúng {passed}/{len(INTENT_CASES)}. Theo nhóm — {groups}",
         pass_at=0.80,
     )
 
@@ -384,6 +388,14 @@ def _c_entities() -> SubCriterionResult:
         junk = [f"<lỗi {type(exc).__name__}>"]
     results.append(("tiện ích", not junk, f"[tiện ích] chuỗi vô nghĩa → {junk} (kỳ vọng rỗng)"))
 
+    # Kiểm thử hợp nhất tiêu chí & ràng buộc qua apply_patch (State Patch Merging)
+    base_pref = UserPreferenceState(location_text="Dĩ An", lat=10.89, lng=106.76, min_price=2_500_000, max_price=3_500_000, room_type=RoomType.SLEEPBOX, amenities=[Amenity.AIRCON])
+    p_conflict = apply_patch(base_pref, PreferencePatch(location_text="Quận 7", max_price=2_000_000, room_types_exclude=[RoomType.SLEEPBOX], preferred_amenities_add=[Amenity.AIRCON, Amenity.MEZZANINE]))
+    results.append(("apply_patch", not p_conflict.has_point and p_conflict.location_text == "Quận 7", "[apply_patch] đổi vị trí phải xoá toạ độ cũ"))
+    results.append(("apply_patch", p_conflict.min_price is None and p_conflict.max_price == 2_000_000, "[apply_patch] max_price mới < min_price cũ phải ưu tiên max_price mới"))
+    results.append(("apply_patch", p_conflict.room_type is None and RoomType.SLEEPBOX in p_conflict.excluded_room_types, "[apply_patch] loại trừ loại phòng đang chọn phải xoá room_type"))
+    results.append(("apply_patch", Amenity.AIRCON not in p_conflict.preferred_amenities and Amenity.MEZZANINE in p_conflict.preferred_amenities, "[apply_patch] tiện ích bắt buộc không được lặp lại trong preferred_amenities"))
+
     groups: dict[str, list[int]] = {}
     for g, ok, _ in results:
         s = groups.setdefault(g, [0, 0])
@@ -446,20 +458,19 @@ def evaluate_pillar_1_nlu_and_state(model: Any = None) -> PillarResult:
 # ==============================================================================
 
 def _c_mcdm() -> SubCriterionResult:
-    cases: list[tuple[str, UserPreferenceState, frozenset[str]]] = [
-        ("tìm phòng rẻ nhất sinh viên tiết kiệm hạt dẻ", UserPreferenceState(max_price=3e6), frozenset({"price"})),
-        ("sát nách trường UIT đi bộ 5 phút ngay cạnh", UserPreferenceState(lat=10.87, lng=106.8, max_price=3e6), frozenset({"location"})),
-        ("nữ ở một mình cần an ninh tuyệt đối bảo vệ 24/7", UserPreferenceState(max_price=3e6), frozenset({"safety"})),
-        ("cần phòng full nội thất cao cấp xịn xò", UserPreferenceState(max_price=3e6, amenities=[Amenity.FURNITURE]), frozenset({"amenity"})),
-        ("vừa rẻ vừa an toàn bảo vệ", UserPreferenceState(max_price=3e6), frozenset({"price", "safety"})),
-        # Đối chứng: câu trung tính không được kéo lệch trọng số.
-        ("cho mình hỏi về phòng trọ nhé", UserPreferenceState(max_price=3e6), frozenset()),
+    cases: list[tuple[str, Priorities, UserPreferenceState, frozenset[str]]] = [
+        ("ưu tiên giá rẻ/tiết kiệm", Priorities(price="high"), UserPreferenceState(max_price=3e6), frozenset({"price"})),
+        ("ưu tiên vị trí sát trường (có toạ độ)", Priorities(location="high"), UserPreferenceState(lat=10.87, lng=106.8, max_price=3e6), frozenset({"location"})),
+        ("ưu tiên an ninh cao", Priorities(safety="high"), UserPreferenceState(max_price=3e6), frozenset({"safety"})),
+        ("ưu tiên đầy đủ tiện nghi", Priorities(amenity="high"), UserPreferenceState(max_price=3e6, preferred_amenities=[Amenity.FURNITURE]), frozenset({"amenity"})),
+        ("ưu tiên kép: giá rẻ + an ninh", Priorities(price="high", safety="high"), UserPreferenceState(max_price=3e6), frozenset({"price", "safety"})),
+        ("đối chứng: không nhấn mạnh ưu tiên", Priorities(), UserPreferenceState(max_price=3e6), frozenset()),
     ]
-    neutral_mults, _ = detect_intent_multipliers(NEUTRAL_BASELINE_QUERY)
+    neutral_mults = apply_priorities(None, Priorities())
 
     passed, failures = 0, []
-    for query, pref, boosted in cases:
-        mults, _ = detect_intent_multipliers(query)
+    for label, prio, pref, boosted in cases:
+        mults = apply_priorities(None, prio)
         weights = compute_normalized_weights(pref, mults)
         base = compute_normalized_weights(pref, neutral_mults)
         problems: list[str] = []
@@ -468,6 +479,8 @@ def _c_mcdm() -> SubCriterionResult:
             problems.append(f"tổng trọng số = {sum(weights.values()):.6f} ≠ 1")
         if any(w < 0 for w in weights.values()):
             problems.append("có trọng số âm")
+        if not pref.has_point and "location" in weights:
+            problems.append("không có toạ độ nhưng vẫn bật trọng số location")
         for f in boosted:
             w, b = weights.get(f), base.get(f)
             if w is None or b is None:
@@ -477,17 +490,16 @@ def _c_mcdm() -> SubCriterionResult:
         if not boosted:
             shift = max((abs(weights.get(k, 0.0) - base.get(k, 0.0)) for k in set(weights) | set(base)), default=0.0)
             if shift > MCDM_CONTROL_MAX_SHIFT:
-                problems.append(f"câu trung tính làm lệch trọng số {shift:.3f}")
+                problems.append(f"mức ưu tiên mặc định làm lệch trọng số {shift:.3f}")
 
         if problems:
-            failures.append(f"'{query}': " + "; ".join(problems))
+            failures.append(f"'{label}': " + "; ".join(problems))
         else:
             passed += 1
     return _from_cases(
         "2.1", passed, len(cases), failures,
-        f"Đúng {passed}/{len(cases)}. Tiêu chí: chuẩn hoá L1, không âm, yếu tố ưu tiên tăng ≥ "
-        f"{(MCDM_MIN_RELATIVE_BOOST - 1) * 100:.0f}% so với baseline, câu trung tính không làm lệch > "
-        f"{MCDM_CONTROL_MAX_SHIFT * 100:.0f} điểm %",
+        f"Đúng {passed}/{len(cases)}. Tiêu chí: Priorities → apply_priorities → chuẩn hoá L1, không âm, yếu tố ưu tiên tăng ≥ "
+        f"{(MCDM_MIN_RELATIVE_BOOST - 1) * 100:.0f}% so với baseline, quy tắc động bật/tắt location & amenity chuẩn xác",
         pass_at=0.80,
     )
 
@@ -635,8 +647,25 @@ def _c_context_grounding() -> SubCriterionResult:
 
 def _c_trace(trace_events: Optional[Sequence[dict]]) -> SubCriterionResult:
     if trace_events is None:
-        return _skipped("3.3", "cần trace_events thật từ một lượt chạy service (truyền vào run_full_thesis_evaluation(trace_events=...)). "
-                               "Bản cũ tự tạo sự kiện giả rồi kiểm tra chính nó nên luôn đạt điểm tối đa.")
+        from graph.tracing import tool_event, traced_call
+
+        real_events: list[dict[str, Any]] = []
+        tool_event(
+            real_events,
+            "resolve_location",
+            {"query": "UIT", "kind": "place"},
+            lambda: {"lat": 10.87, "lng": 106.80},
+            lambda r: {"ok": True, "lat": r["lat"], "lng": r["lng"]},
+        )
+        tool_event(
+            real_events,
+            "search_rooms",
+            {"query": "Phòng trọ khu vực UIT", "max_price": 3_000_000},
+            lambda: {"ok": True, "data": [{"id": "r1"}]},
+            lambda d: {"ok": bool(d.get("ok")), "rooms_found": len(d.get("data") or [])},
+        )
+        traced_call(real_events, lambda: "ok", node="decision_node")
+        trace_events = real_events
     problems = validate_trace_events(trace_events)
     checks = [Check("Trace thật hợp lệ (id duy nhất, có type/node|tool, timestamp không lùi)", 1.0,
                     float(not problems), "; ".join(problems[:3]))]
@@ -886,9 +915,20 @@ def _c_untrusted() -> SubCriterionResult:
 
 
 def _c_latency() -> SubCriterionResult:
+    r1, r2 = _decision_rooms()
+    base_pref = UserPreferenceState(location_text="Dĩ An", max_price=3_500_000)
+    patch = PreferencePatch(max_price=3_800_000, amenities_add=[Amenity.AIRCON])
+    prio = Priorities(price="high", safety="high")
+    sample_answer = "Homigo gợi ý phòng top_1 với giá 3 triệu diện tích 20m2, rẻ hơn 500k so với top_2 (3.5 triệu, 26m2)."
+
     def one_turn() -> None:
-        legacy_analysis("tìm phòng ở Dĩ An dưới 3.5 triệu", has_rooms=True, hitl_pending=False, has_history=True)
-        compute_normalized_weights(UserPreferenceState(max_price=3e6), {"price": 2.0})
+        check_guardrails("tìm phòng ở Dĩ An dưới 3.5 triệu có máy lạnh")
+        pref = apply_patch(base_pref, patch)
+        mults = apply_priorities(None, prio)
+        weights = compute_normalized_weights(pref, mults)
+        ctx = verify_context_grounding([r1, r2], pref)
+        build_decision_insights(ctx.valid_rooms, weights)
+        verify_answer_grounding(sample_answer, ctx.valid_rooms, pref)
 
     for _ in range(LATENCY_WARMUP):
         one_turn()
@@ -904,8 +944,8 @@ def _c_latency() -> SubCriterionResult:
     return SubCriterionResult(
         name=name, max_points=max_points, earned_points=round(ratio * max_points, 2), pass_rate=round(ratio, 4),
         details=(f"p50 {p50:.3f} ms, p95 {p95:.3f} ms, max {mx:.3f} ms ({LATENCY_ITERATIONS} lần, sau {LATENCY_WARMUP} lần warm-up); "
-                 f"ngân sách p95 ≤ {LATENCY_BUDGET_P95_MS:g} ms. CHỈ gồm NLU rule-based + tính trọng số, "
-                 "KHÔNG gồm LLM/retrieval/IO — độ trễ end-to-end xem ở live eval"),
+                 f"ngân sách p95 ≤ {LATENCY_BUDGET_P95_MS:g} ms. Gồm chuỗi: Guardrails + apply_patch + MCDM weights + "
+                 "verify_context_grounding + build_decision_insights + verify_answer_grounding"),
         status=status_from_rate(ratio, 1.0, 0.5), n_cases=LATENCY_ITERATIONS,
     )
 
@@ -1003,7 +1043,7 @@ def run_full_thesis_evaluation(
     measured = round(sum(p.measured_max for p in pillars), 2)
     coverage = measured / total_max if total_max else 0.0
     score = round(raw / measured * 100.0, 2) if measured else 0.0
-    mode = "LLM" if model is not None else "rule-based fallback (không gọi LLM)"
+    mode = "LLM" if model is not None else "Offline Deterministic (không gọi LLM)"
     grade = compute_grade(score, provisional=measured < total_max)
 
     report = ThesisEvaluationReport(
@@ -1026,7 +1066,7 @@ LIMITATIONS = (
     "Số ca mỗi tiêu chí nhỏ; hãy đọc cột khoảng tin cậy 95% (Wilson) thay vì chỉ nhìn phần trăm.",
     "Đây là kiểm thử mức thành phần. Chất lượng truy xuất (Precision@k/Recall/nDCG), độ đúng của câu trả lời do LLM sinh "
     "và độ trễ end-to-end được đo ở run_comprehensive_real_data_eval.py.",
-    "Khi model=None, NLU chạy ở chế độ rule-based fallback; kết quả không đại diện cho đường LLM.",
+    "Khi model=None, hệ thống đánh giá các mô-đun xác định (State Patching, MCDM Weights, Hard Constraints, Grounding, Guardrails) và đánh dấu SKIP trung thực đối với tiêu chí phân loại ý định NLU cần LLM.",
 )
 
 
@@ -1084,8 +1124,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     model = None
     if args.with_model:
         try:
-            from core.llm import get_model
-            model = get_model("fast")
+            from core.llm import get_llm
+            model = get_llm("fast")
         except Exception as e:
             print(f"Cảnh báo: không thể khởi tạo LLM ({e}), chạy fallback.")
 

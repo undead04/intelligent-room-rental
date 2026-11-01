@@ -45,7 +45,7 @@ class SessionData:
         self.preferences = UserPreferenceState()
         self.multipliers: dict[str, float] = dict(DEFAULT_MULTIPLIERS)
         self.proposed_budget: Optional[float] = None
-        self.hitl_streak: int = 0
+        self.zero_result_streak: int = 0
         self.history: list[tuple[str, str]] = []
         self.last_rooms: list[RoomItem] = []
         self.last_active: float = clock()
@@ -106,6 +106,9 @@ class SessionData:
                         cleaned = f"{header}\n[Đã cung cấp danh sách phòng kèm phân tích chi tiết]"
                     else:
                         cleaned = "[Đã gợi ý danh sách các phòng phù hợp với yêu cầu]"
+                elif "Tư vấn chuyên sâu" in text_msg or len(text_msg) > 350:
+                    snippet = text_msg[:220].rsplit(" ", 1)[0].strip() if len(text_msg) > 220 else text_msg.strip()
+                    cleaned = f"{snippet}...\n[Đã cung cấp nội dung tư vấn chuyên sâu từ cẩm nang]"
                 out.append(AIMessage(content=cleaned))
         return out
 
@@ -163,7 +166,7 @@ class SessionStore:
 def _dump(s: SessionData) -> str:
     return json.dumps({
         "preferences": s.preferences.model_dump(mode="json"), "multipliers": s.multipliers, "proposed_budget": s.proposed_budget,
-        "hitl_streak": s.hitl_streak, "history": s.history, "last_rooms": [r.model_dump(mode="json") for r in s.last_rooms],
+        "zero_result_streak": s.zero_result_streak, "history": s.history, "last_rooms": [r.model_dump(mode="json") for r in s.last_rooms],
         "preference_history": [p.model_dump(mode="json") for p in s.preference_history],
         "turn_snapshots": [p.model_dump(mode="json") for p in s.turn_snapshots], "initial_preference": s.initial_preference.model_dump(mode="json") if s.initial_preference else None,
     }, ensure_ascii=False)
@@ -175,7 +178,7 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s.preferences = UserPreferenceState.model_validate(d["preferences"])
     s.multipliers = {**DEFAULT_MULTIPLIERS, **(d.get("multipliers") or {})}
     s.proposed_budget = d.get("proposed_budget")
-    s.hitl_streak = int(d.get("hitl_streak") or 0)
+    s.zero_result_streak = int(d.get("zero_result_streak") or 0)
     s.history = [(str(r), str(t)) for r, t in d.get("history") or []]
     s.last_rooms = [RoomItem.model_validate(r) for r in d.get("last_rooms") or []]
     s.preference_history = [UserPreferenceState.model_validate(p) for p in d.get("preference_history") or []]

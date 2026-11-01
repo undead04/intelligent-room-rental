@@ -61,6 +61,8 @@ def render_advice(advice: Advice, rooms: Sequence[RoomItem], max_rooms: int = 5)
         cmp_line = " ".join(x for x in (price_trade_off(rooms[0], rooms[1]), _clean(advice.comparison)) if x)
         if cmp_line:
             lines.extend(["", f"⚖️ **So với Top 2:** {cmp_line}"])
+    elif _clean(advice.comparison):
+        lines.extend(["", f"⚖️ **Lưu ý & Gợi ý thêm:** {_clean(advice.comparison)}"])
     checklist = [c for c in (_clean(c, 200) for c in advice.checklist) if c][:3] or DEFAULT_CHECKLIST
     lines.extend(["", "📋 **Lưu ý khi đi xem phòng:**", *[f"- {c}" for c in checklist]])
     return "\n".join(lines)

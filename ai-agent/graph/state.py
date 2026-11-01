@@ -1,18 +1,17 @@
-"""Trạng thái luân chuyển qua các node (bước 1-4)."""
+"""Trạng thái luân chuyển qua các node."""
 
 from __future__ import annotations
 
 from typing import Any, Optional, TypedDict
 
+from domain.schemas import AgentResponse, DecisionInsight, RoomItem, UserPreferenceState
 from safety.guardrails import GuardrailResult
-from domain.schemas import AgentResponse, DecisionInsight, HitlProposal, RoomItem, UserPreferenceState
 
 
 class HousingAgentState(TypedDict, total=False):
     # đầu vào
     session_id: str
     user_message: str
-    ui_action: Optional[str]                 # HitlAction.value khi người dùng bấm nút (không dò emoji nữa)
 
     # hiểu lượt chat
     intent: str
@@ -27,7 +26,6 @@ class HousingAgentState(TypedDict, total=False):
     matched_skill: Optional[str]
     is_contract_query: bool                  # giữ tương thích; dùng matched_skill
     is_followup: bool
-    is_keep_criteria: bool
     focus_rank: Optional[int]
     vague_location_info: Optional[dict[str, Any]]
     follow_up_questions: Optional[list[str]]
@@ -40,10 +38,8 @@ class HousingAgentState(TypedDict, total=False):
     ambiguous_candidates: list[dict[str, Any]]
     retry_count: int
     context_grounded: bool
-    needs_user_consent: bool
     proposed_budget: Optional[float]
     proposed_budget_str: Optional[str]
-    hitl_proposal: Optional[HitlProposal]
     last_search_args: Optional[dict[str, Any]]
 
     # tư vấn + kiểm chứng

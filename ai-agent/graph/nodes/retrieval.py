@@ -4,20 +4,69 @@ import logging
 from typing import Any, Optional
 
 from domain.enums import amenity_label
+from domain.schemas import RoomItem, UserPreferenceState
 from graph.deps import Deps
-from graph.tracing import tool_event
+from graph.tracing import emit_trace, tool_event
+from intelligence.intent_weights import compute_normalized_weights
+from intelligence.nlu import sanitize_user_text
 from safety.grounding import verify_context_grounding
 from safety.guardrails import scan_untrusted_text
-from intelligence.intent_weights import compute_normalized_weights
 from tools.location_service import resolve_location
-from intelligence.nlu import sanitize_user_text
-from domain.schemas import RoomItem, UserPreferenceState
 from utils.text import norm_key
 
 logger = logging.getLogger(__name__)
 
 RESULT_LIMIT = 5
 OVERFETCH_LIMIT = 10        # có tiêu chí loại trừ -> lấy dư rồi lọc/cắt lại
+
+_HCM_KEYWORDS = (
+    "thu duc", "binh thanh", "go vap", "tan binh", "phu nhuan", "tan phu", "binh tan",
+    "ho chi minh", "tp hcm", "tphcm", "sai gon", "saigon", "uit", "nha be", "hoc mon", "cu chi", "binh chanh",
+    "quan 1", "quan 2", "quan 3", "quan 4", "quan 5", "quan 6", "quan 7", "quan 8", "quan 9", "quan 10", "quan 11", "quan 12",
+)
+_HN_KEYWORDS = (
+    "ha noi", "cau giay", "hai ba trung", "dong da", "ba dinh", "hoan kiem",
+    "thanh xuan", "ha dong", "tay ho", "nam tu liem", "bac tu liem", "long bien", "hoang mai",
+)
+_BD_KEYWORDS = ("binh duong", "di an", "thuan an", "thu dau mot", "ben cat", "tan uyen")
+_DN_KEYWORDS = ("da nang", "hai chau", "lien chieu", "son tra", "ngu hanh son", "cam le", "thanh khe")
+
+
+def _infer_session_region_hint(
+    pref: UserPreferenceState,
+    session: Any,
+    vague: dict[str, Any],
+) -> Optional[str]:
+    """Suy ra gợi ý tỉnh/thành (region_hint) cho địa điểm cụ thể từ ngữ cảnh lượt hiện tại hoặc lịch sử phiên."""
+    explicit_region = vague.get("region")
+    if explicit_region:
+        return str(explicit_region)
+    if pref.location_kind != "place":
+        return None
+    cur_loc = norm_key(pref.location_text or "")
+    if any(c in cur_loc for c in ("ho chi minh", "tp hcm", "tphcm", "sai gon", "ha noi", "binh duong", "da nang")):
+        return None
+
+    snapshots = list(getattr(session, "turn_snapshots", []) or [])
+    pref_hist = list(getattr(session, "preference_history", []) or [])
+    prev_prefs = list(reversed(snapshots)) + list(reversed(pref_hist[:-1] if len(pref_hist) > 1 else []))
+    for p in prev_prefs:
+        cid = getattr(p, "city_id", None)
+        if cid == 13:
+            return "Hồ Chí Minh"
+        loc_k = norm_key(getattr(p, "location_text", "") or "")
+        if not loc_k:
+            continue
+        if any(kw in loc_k for kw in _HCM_KEYWORDS):
+            return "Hồ Chí Minh"
+        if any(kw in loc_k for kw in _HN_KEYWORDS):
+            return "Hà Nội"
+        if any(kw in loc_k for kw in _BD_KEYWORDS):
+            return "Bình Dương"
+        if any(kw in loc_k for kw in _DN_KEYWORDS):
+            return "Đà Nẵng"
+    return None
+
 
 def synthesize_structured_query(pref: UserPreferenceState) -> str:
     """Tổng hợp câu truy vấn ngữ nghĩa chuẩn hoá từ trạng thái tích lũy UserPreferenceState."""
@@ -43,7 +92,6 @@ def synthesize_structured_query(pref: UserPreferenceState) -> str:
 def build_query(
     pref: UserPreferenceState,
     user_text: str = "",
-    ui_action: Optional[str] = None,
     semantic_query: Optional[str] = None,
 ) -> str:
     """Xây dựng câu truy vấn RAG theo kiến trúc Dual-Layer:
@@ -60,7 +108,7 @@ def build_query(
         or pref.preferred_amenities
         or pref.special_requirements
     )
-    if has_structured or ui_action:
+    if has_structured:
         return synthesize_structured_query(pref)
     raw = sanitize_user_text(user_text)[:300]
     return raw or "Phòng trọ"
@@ -79,10 +127,15 @@ def make_retrieval_node(deps: Deps):
 
         # 1) định vị
         if pref.location_text and not pref.has_point and not pref.has_admin:
+            region_hint = _infer_session_region_hint(pref, session, vague)
             args = {"query": pref.location_text, "kind": pref.location_kind}
-            res = tool_event(trace, "resolve_location", args,
-                             lambda: resolve_location(pref.location_text, pref.location_kind, deps.admin_lookup, deps.geocode, vague.get("region")),
-                             lambda r: {"kind": r.kind, "ids": r.ids, "lat": r.lat, "lng": r.lng, "candidates": len(r.candidates)})
+            res = tool_event(
+                trace,
+                "resolve_location",
+                args,
+                lambda: resolve_location(pref.location_text, pref.location_kind, deps.admin_lookup, deps.geocode, region_hint),
+                lambda r: {"kind": r.kind, "ids": r.ids, "lat": r.lat, "lng": r.lng, "candidates": len(r.candidates)},
+            )
             if res.kind == "admin":
                 pref.set_location(pref.location_text, kind="admin", **res.ids)
             elif res.kind == "point":
@@ -103,11 +156,14 @@ def make_retrieval_node(deps: Deps):
                 "query": build_query(
                     pref,
                     user_text=state.get("user_message", ""),
-                    ui_action=state.get("ui_action"),
                     semantic_query=state.get("semantic_query"),
                 ),
-                "lat": pref.lat, "lng": pref.lng, "min_price": pref.min_price, "max_price": pref.max_price,
-                "min_area": pref.min_area, "max_area": pref.max_area,
+                "lat": pref.lat,
+                "lng": pref.lng,
+                "min_price": pref.min_price,
+                "max_price": pref.max_price,
+                "min_area": pref.min_area,
+                "max_area": pref.max_area,
                 "amenities": [a.value for a in pref.amenities] or None,
                 "preferred_amenities": [a.value for a in pref.preferred_amenities] or None,
                 "max_distance_km": 8.0 if pref.has_point else None,
@@ -120,11 +176,18 @@ def make_retrieval_node(deps: Deps):
             if pref.room_type is not None:
                 search_args["room_type"] = pref.room_type.value
             try:
-                data = tool_event(trace, "search_rooms", search_args, lambda: deps.search_rooms(search_args),
-                                  lambda d: {"ok": bool(d.get("ok")), "rooms_found": len(d.get("data") or []), "error": d.get("error")})
+                data = tool_event(
+                    trace,
+                    "search_rooms",
+                    search_args,
+                    lambda: deps.search_rooms(search_args),
+                    lambda d: {"ok": bool(d.get("ok")), "rooms_found": len(d.get("data") or []), "error": d.get("error")},
+                )
                 if data.get("ok"):
-                    rooms = [RoomItem.from_backend_result(raw, rank=i, target_lat=pref.lat, target_lng=pref.lng)
-                             for i, raw in enumerate(data.get("data") or [], 1)]
+                    rooms = [
+                        RoomItem.from_backend_result(raw, rank=i, target_lat=pref.lat, target_lng=pref.lng)
+                        for i, raw in enumerate(data.get("data") or [], 1)
+                    ]
                 else:
                     search_error = str(data.get("error") or "Lỗi search_rooms")
             except Exception as e:
@@ -136,7 +199,7 @@ def make_retrieval_node(deps: Deps):
             flags = scan_untrusted_text(r.title)
             if flags:
                 logger.warning("Loại tin đăng nghi injection %s: %s", r.id, flags)
-                trace.append({"type": "suspicious_listing", "listing_id": r.id, "rules": flags})
+                emit_trace(trace, "suspicious_listing", node="retrieval_node", listing_id=r.id, rules=flags)
             else:
                 safe_rooms.append(r)
         rooms = safe_rooms
@@ -144,24 +207,54 @@ def make_retrieval_node(deps: Deps):
         session.preferences = pref
         if search_error:
             session.proposed_budget = None
-            return {"retrieved_rooms": [], "preferences": pref, "computed_weights": weights, "search_error": search_error, "context_grounded": False,
-                    "searched": False, "admin_not_found": False, "ambiguous_candidates": [], "trace_events": trace, "last_search_args": search_args}
+            return {
+                "retrieved_rooms": [],
+                "preferences": pref,
+                "computed_weights": weights,
+                "search_error": search_error,
+                "context_grounded": False,
+                "searched": False,
+                "admin_not_found": False,
+                "ambiguous_candidates": [],
+                "trace_events": trace,
+                "last_search_args": search_args,
+            }
 
-        # 4) kiểm ràng buộc cứng + đề xuất HITL
+        # 4) kiểm ràng buộc cứng + phân tích thị trường
         if status == "ok":
-            ctx = verify_context_grounding(rooms, pref, retry_count=retry_count, last_search_args=search_args,
-                                           area_name=pref.location_text, market_fetcher=deps.market_fetcher)
+            ctx = verify_context_grounding(
+                rooms,
+                pref,
+                retry_count=retry_count,
+                last_search_args=search_args,
+                area_name=pref.location_text,
+                market_fetcher=deps.market_fetcher,
+            )
             rooms = ctx.valid_rooms[:RESULT_LIMIT]
             session.proposed_budget = ctx.proposed_budget
-            session.hitl_streak = 0 if rooms else session.hitl_streak + 1
-            extra = {"context_grounded": ctx.is_grounded, "needs_user_consent": ctx.needs_user_consent,
-                     "proposed_budget": ctx.proposed_budget, "proposed_budget_str": ctx.proposed_budget_str, "hitl_proposal": ctx.hitl_proposal}
+            session.zero_result_streak = 0 if rooms else session.zero_result_streak + 1
+            extra = {
+                "context_grounded": ctx.is_grounded,
+                "proposed_budget": ctx.proposed_budget,
+                "proposed_budget_str": ctx.proposed_budget_str,
+                "market_context": ctx.market_context,
+            }
         else:
             session.proposed_budget = None
-            extra = {"context_grounded": True, "needs_user_consent": False, "hitl_proposal": None}
+            extra = {"context_grounded": True, "market_context": None}
 
-        return {"retrieved_rooms": rooms, "preferences": pref, "computed_weights": weights, "search_error": None,
-                "searched": True, "admin_not_found": status == "admin_not_found", "ambiguous_candidates": candidates,
-                "retry_count": retry_count, "trace_events": trace, "last_search_args": search_args, **extra}
+        return {
+            "retrieved_rooms": rooms,
+            "preferences": pref,
+            "computed_weights": weights,
+            "search_error": None,
+            "searched": True,
+            "admin_not_found": status == "admin_not_found",
+            "ambiguous_candidates": candidates,
+            "retry_count": retry_count,
+            "trace_events": trace,
+            "last_search_args": search_args,
+            **extra,
+        }
 
     return retrieval_node

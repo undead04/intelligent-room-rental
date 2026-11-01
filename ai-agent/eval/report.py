@@ -73,7 +73,6 @@ def ablation_md(res: dict[str, dict]) -> str:
         ("Lượt có phòng bị cờ lỗi ở lần viết đầu", lambda s: fmt_rate(s["first_pass_flagged_rate"])),
         ("Lỗi tới tay người dùng", lambda s: fmt_rate(s["reached_user_flagged_rate"])),
         ("Phải dùng câu trả lời mẫu", lambda s: fmt_rate(s["fallback_template_rate"])),
-        ("NLU rơi xuống keyword", lambda s: fmt_rate(s["nlu_fallback_rate"])),
         ("Số lời gọi LLM / lượt (TB)", lambda s: f"{s['llm_calls_per_turn']['mean']:.2f}"),
         ("Token ước lượng / lượt (TB)", lambda s: f"{s['est_tokens_per_turn']['mean']:.0f}"),
         ("Độ trễ p50 / p95 (s)", lambda s: f"{s['latency_s']['p50']:.2f} / {s['latency_s']['p95']:.2f}"),

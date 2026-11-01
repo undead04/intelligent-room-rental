@@ -1,7 +1,7 @@
-"""CLI: python -m eval.run guardrail grounding nlu [--llm] [--ablation] [--out eval_results]
+"""CLI: python -m eval.run guardrail grounding [--llm] [--ablation] [--out eval_results]
 
   guardrail, grounding     : chạy ngay, tất định, không cần LLM/backend
-  nlu                      : luôn chạy baseline keyword; thêm --llm để đo NLU bằng LLM thật (llm.get_llm("fast"))
+  nlu                      : đo NLU bằng LLM thật (llm.get_llm("fast")) khi truyền --llm
   e2e / ablation           : cần hệ thống thật (default_deps: backend + LLM); chạy kịch bản và so sánh các cấu hình
 """
 
@@ -19,13 +19,13 @@ if sys.platform.startswith("win"):
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m eval.run")
-    ap.add_argument("suites", nargs="*", default=["guardrail", "grounding", "nlu"], choices=["guardrail", "grounding", "nlu", "e2e", "ablation"])
-    ap.add_argument("--llm", action="store_true", help="NLU: đo thêm bằng LLM thật")
+    ap.add_argument("suites", nargs="*", default=["guardrail", "grounding"], choices=["guardrail", "grounding", "nlu", "e2e", "ablation"])
+    ap.add_argument("--llm", action="store_true", help="NLU: đo bằng LLM thật")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out", default="eval_results")
     ap.add_argument("--scenarios", default="", help="lọc kịch bản theo tên, phân tách bằng dấu phẩy")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.ERROR)          # guardrail/fallback ghi WARNING cho mỗi ca -> tắt khi đo
+    logging.basicConfig(level=logging.ERROR)
 
     from eval import report
 
@@ -37,15 +37,16 @@ def main(argv: list[str] | None = None) -> int:
         from eval.suites import grounding
         results["grounding"] = grounding.run(args.seed)
     if "nlu" in args.suites:
-        from eval.suites import nlu
-        results["nlu"] = {"keyword_fallback": nlu.run_keyword_baseline()}
         if args.llm:
             from core.llm import get_llm
+            from eval.suites import nlu
             model = get_llm("fast")
             if model is None:
                 print("Không có LLM (kiểm tra cấu hình) - bỏ qua NLU bằng LLM", file=sys.stderr)
             else:
-                results["nlu"]["llm"] = nlu.run_llm(model)
+                results["nlu"] = {"llm": nlu.run_llm(model)}
+        else:
+            print("Bộ đo NLU cần LLM thật (thêm --llm để chạy).", file=sys.stderr)
     if "e2e" in args.suites or "ablation" in args.suites:
         from eval.datasets.scenarios import SCENARIOS
         from eval.suites import e2e

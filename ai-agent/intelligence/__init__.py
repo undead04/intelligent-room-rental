@@ -1,4 +1,4 @@
-"""Module Trí tuệ (Intelligence): NLU, NLU Fallback, Dynamic MCDM Intent Weights, Decision Insights & Advice."""
+"""Module Trí tuệ (Intelligence): NLU, Dynamic MCDM Intent Weights, Decision Insights & Advice."""
 
 from intelligence.decision import (
     ADVICE_RULES,
@@ -17,7 +17,6 @@ from intelligence.intent_weights import (
     CRITERIA,
     DEFAULT_BASE_WEIGHTS,
     compute_normalized_weights,
-    detect_intent_multipliers,
 )
 from intelligence.nlu import (
     PreferencePatch,
@@ -26,16 +25,11 @@ from intelligence.nlu import (
     analyze_turn,
     apply_patch,
     apply_priorities,
+    build_nlu_system_prompt,
     build_system_prompt,
     mult_to_level,
     multipliers_to_levels,
     sanitize_user_text,
-)
-from intelligence.nlu_fallback import (
-    detect_hitl_action,
-    detect_room_followup,
-    detect_vague_location,
-    legacy_analysis,
 )
 from intelligence.payload_builder import (
     build_decision_context_message,
@@ -45,8 +39,6 @@ from intelligence.payload_builder import (
     format_retry_feedback,
 )
 from intelligence.understand import (
-    CUSTOM_TEXT,
-    KEEP_TEXT,
     interpret_turn,
     route_after_understand,
 )
@@ -60,23 +52,16 @@ __all__ = [
     "apply_priorities",
     "multipliers_to_levels",
     "mult_to_level",
+    "build_nlu_system_prompt",
     "build_system_prompt",
     "sanitize_user_text",
     "analyze_turn",
-    # NLU Fallback
-    "detect_hitl_action",
-    "detect_room_followup",
-    "detect_vague_location",
-    "legacy_analysis",
     # Understand
-    "CUSTOM_TEXT",
-    "KEEP_TEXT",
     "interpret_turn",
     "route_after_understand",
     # Dynamic MCDM
     "CRITERIA",
     "DEFAULT_BASE_WEIGHTS",
-    "detect_intent_multipliers",
     "compute_normalized_weights",
     # Payload builder
     "compact_room",

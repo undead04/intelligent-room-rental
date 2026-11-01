@@ -3,7 +3,7 @@ import random
 
 import pytest
 
-from intelligence.intent_weights import compute_normalized_weights, detect_intent_multipliers
+from intelligence.intent_weights import compute_normalized_weights
 from domain.schemas import UserPreferenceState
 
 CRITERIA = ("price", "location", "safety", "amenity", "semantic")
@@ -74,14 +74,6 @@ def test_all_zero_falls_back_to_equal_and_negative_is_clamped():
 def test_custom_base_weights():
     w = compute_normalized_weights(_pref(False, False), {k: 1.0 for k in CRITERIA}, base_weights={"price": 2.0, "safety": 1.0, "semantic": 1.0})
     assert w["price"] == 0.5
-
-
-def test_fallback_detector_still_works_and_no_longer_leaks_boost_numbers():
-    m, expl = detect_intent_multipliers("Tìm phòng giá rẻ gần UIT")
-    assert m["price"] == 2.0 and m["location"] == 2.0
-    assert expl and not any("boost" in e or "x)" in e for e in expl)
-    m2, _ = detect_intent_multipliers("tìm phòng", {"price": 2.0, "location": 1.0, "safety": 1.0, "amenity": 1.0, "semantic": 1.0})
-    assert m2["price"] == 2.0          # hành vi cũ (chỉ tăng, không giảm) - sẽ được thay ở bước nlu
 
 
 def test_equal_split_three_criteria_sums_to_one():

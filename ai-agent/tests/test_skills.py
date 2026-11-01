@@ -84,11 +84,27 @@ def test_catalog_for_prompt(skills_dir):
     assert "- rental-contract-advisor: Tư vấn hợp đồng" in c and "- broken: broken" in c
 
 
-def test_fallback_match(skills_dir):
-    m = sd.match_skill_by_query
-    assert m("chủ nhà không hoàn cọc thì sao").slug == "rental-contract-advisor"
-    assert m("hop dong thue tro can luu y gi").slug == "rental-contract-advisor"           # không dấu
-    assert m("hợp đồng điện nước thế nào").slug == "electric"                               # trigger dài hơn thắng
-    assert m("tìm phòng gần UIT") is None
-    assert m("") is None and m("   ") is None
-    assert m("hợpđồng") is None                                                             # không khớp chuỗi con
+def test_skill_content_and_references_cached_in_ram_and_refreshed_on_ref_mtime(skills_dir):
+    import os, time
+    import tools.housing_tools as ht
+
+    ref_dir = skills_dir / "electric" / "references"
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    ref_file = ref_dir / "gia_dien.md"
+    ref_file.write_text("Giá điện nhà nước 3.5k/kWh", encoding="utf-8")
+    os.utime(ref_file, ns=(time.time_ns() + 2 * 10**9, time.time_ns() + 2 * 10**9))
+
+    res1 = ht.consult_skill("electric")
+    assert res1["ok"] and res1["references"] == {"gia_dien.md": "Giá điện nhà nước 3.5k/kWh"}
+
+    # Sửa nội dung trên RAM của đối tượng đã cache để chứng minh lần gọi thứ 2 lấy từ RAM (0 Disk I/O)
+    sd.get_skill("electric").instructions = "NỘI DUNG TỪ RAM CACHE"
+    res2 = ht.consult_skill("electric")
+    assert res2["instructions"] == "NỘI DUNG TỪ RAM CACHE"
+
+    # Khi file trong references/ thay đổi mtime trên đĩa -> tự động nạp lại từ đĩa
+    ref_file.write_text("Giá điện mới cập nhật 4k/kWh", encoding="utf-8")
+    os.utime(ref_file, ns=(time.time_ns() + 5 * 10**9, time.time_ns() + 5 * 10**9))
+    res3 = ht.consult_skill("electric")
+    assert res3["references"]["gia_dien.md"] == "Giá điện mới cập nhật 4k/kWh"
+    assert "# Nội dung" in res3["instructions"] or "name: electric" in res3["instructions"]

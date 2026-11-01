@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from graph.deps import Deps
+from intelligence.insights import template_reply
 from safety.grounding import (
     critic_answer_validation,
-    critic_unsupported_claims,
     verify_answer_grounding,
 )
-from intelligence.insights import template_reply
 
 
 def make_verify_node(deps: Deps):
@@ -21,7 +19,7 @@ def make_verify_node(deps: Deps):
         evidence = state.get("tool_evidence") or []
         update: dict[str, Any] = {}
 
-        # Không có phòng: văn bản do CODE dựng (đề xuất ngân sách, thông báo) nên không có gì để "chống ảo giác"
+        # Không có phòng: văn bản đề xuất ngân sách/thông báo
         if not rooms:
             report = {
                 "is_grounded": True,
@@ -29,7 +27,6 @@ def make_verify_node(deps: Deps):
                 "checked": 0,
                 "verified": 0,
                 "context_grounded": state.get("context_grounded", False),
-                "needs_user_consent": state.get("needs_user_consent", False),
                 "proposed_budget": state.get("proposed_budget"),
                 "proposed_budget_str": state.get("proposed_budget_str"),
                 "answer_retries": 0,
@@ -85,7 +82,6 @@ def make_verify_node(deps: Deps):
                 "checked": chk.checked,
                 "verified": chk.verified,
                 "context_grounded": state.get("context_grounded", bool(rooms)),
-                "needs_user_consent": state.get("needs_user_consent", False),
                 "proposed_budget": state.get("proposed_budget"),
                 "proposed_budget_str": state.get("proposed_budget_str"),
                 "context_retries": state.get("retry_count", 0),

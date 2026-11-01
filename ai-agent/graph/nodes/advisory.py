@@ -40,8 +40,19 @@ def make_advisory_node(deps: Deps):
         skill = deps.skills().get(slug)
         label = getattr(skill, "name", slug) or slug
         system = build_advisory_prompt(slug, guide[:MAX_GUIDE_CHARS], references=refs, base_prompt=deps.base_prompt)
+        session = deps.sessions.get_or_create_session(state["session_id"]) if state.get("session_id") else None
+        hist = (
+            session.compact_history_as_messages(window=4)
+            if session is not None and hasattr(session, "compact_history_as_messages")
+            else (session.history_as_messages(window=4) if session is not None and hasattr(session, "history_as_messages") else [])
+        )
+        msgs: list[tuple[str, str]] = [("system", system)]
+        for m in hist:
+            role = "human" if getattr(m, "type", "") == "human" else "ai"
+            msgs.append((role, _msg_text(m)))
+        msgs.append(("human", f"<user_message>\n{query}\n</user_message>"))
         try:
-            reply = traced_call(trace, lambda: model.invoke([("system", system), ("human", f"<user_message>\n{query}\n</user_message>")]))
+            reply = traced_call(trace, lambda: model.invoke(msgs))
             text = _msg_text(reply).strip()
         except Exception:
             logger.warning("advisory_node: LLM lỗi", exc_info=True)

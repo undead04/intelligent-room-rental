@@ -6,7 +6,6 @@ Thay đổi so với bản cũ (xem MIGRATION.md):
   - UserPreferenceState.set_location(): đổi vị trí => xoá toạ độ/ID cũ ở MỘT chỗ.
   - RoomItem: thêm area_m2, match_percent; không còn tự bịa địa chỉ/số ảnh; pin map ổn định giữa các lần chạy;
     tag suy đoán từ ML tách riêng (inferred_tags).
-  - HitlOption.action: frontend gửi lại HitlAction thay vì dò emoji trong action_text.
   - GroundingReport có kiểu (extra="allow" nên dict cũ vẫn nhận được).
 """
 
@@ -19,12 +18,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from domain.enums import (  # noqa: F401  (re-export cho code cũ: from domain.schemas import CANONICAL_AMENITIES ...)
-    CANONICAL_AMENITIES,
-    CANONICAL_ROOM_TYPES,
-    ROOM_TYPE_ID_TO_NAME,
-    ROOM_TYPE_NAME_TO_ID,
     Amenity,
-    HitlAction,
     RoomType,
     normalize_amenities,
     normalize_room_type,
@@ -60,7 +54,11 @@ _CONCEPT_TAGS = {
     "free_hours": "Giờ tự do",
     "pet_allowed": "Nuôi thú cưng",
     "window_balcony": "Có ban công",
-    "balcony": "Có ban công",  # khoá cũ backend có thể còn trả
+    "kitchen": "Có bếp",
+    "furniture": "Có nội thất",
+    "fridge": "Có tủ lạnh",
+    "elevator": "Có thang máy",
+    "parking": "Có chỗ đỗ xe"
 }
 _CONCEPT_THRESHOLD = 0.75
 
@@ -83,7 +81,14 @@ def _room_type_from_listing(obj: Any) -> Optional[RoomType]:
 
 
 class RoomItem(BaseModel):
-    """Thông tin phòng trọ được trả về cho Frontend hiển thị trên Danh sách và Bản đồ."""
+    """Thông tin 1 phòng trọ chuẩn hoá trả về cho Frontend hiển thị trên Danh sách và Bản đồ.
+
+    Vai trò trong hệ thống Homigo AI Agent:
+    - Node Retrieval: Nhận kết quả từ `/listings/vector-search` và chuyển đổi qua `from_backend_result()`.
+    - Node Decision: Cung cấp thông tin giá, vị trí, tiện ích để LLM phân tích Trade-offs và viết checklist xem phòng.
+    - Node Verify: Đối soát giá tiền và mã phòng chống ảo giác dữ liệu (Self-RAG Grounding Check).
+    - Frontend (/tim-kiem-ai): Render danh sách thẻ bài đăng (Cột 2) và ghim toạ độ lên Mapbox/Leaflet (Cột 3).
+    """
 
     id: str = Field(..., description="ID định danh tin đăng")
     rank: int = Field(1, description="Thứ tự xếp hạng (1, 2, 3,...)")
@@ -216,7 +221,13 @@ class RoomItem(BaseModel):
 
 
 class TradeOffAnalysis(BaseModel):
-    """Phân tích đánh đổi giữa các lựa chọn phòng."""
+    """Phân tích so sánh đánh đổi đối kháng (Trade-off Matrix) giữa các phòng được gợi ý.
+
+    Vai trò trong hệ thống Homigo AI Agent:
+    - Do `decision_node` khởi tạo dựa trên dữ liệu so sánh giữa Top 1 với Top 2 hoặc Top 3.
+    - Giúp người thuê nhìn thấy rõ ràng: chọn phòng này thì được gì (advantage) và phải đánh đổi gì (disadvantage),
+      đảm bảo tính minh bạch và khách quan trong việc hỗ trợ ra quyết định.
+    """
 
     compared_with: str = Field(..., description="Tên hoặc thứ hạng phòng đem ra so sánh (Top 2 / Top 3)")
     advantage: str = Field(..., description="Ưu điểm vượt trội hơn (ví dụ: Rẻ hơn 400k, gần trường hơn 800m)")
@@ -224,7 +235,14 @@ class TradeOffAnalysis(BaseModel):
 
 
 class DecisionInsight(BaseModel):
-    """Bảng tổng hợp hỗ trợ ra quyết định dành cho người thuê."""
+    """Bảng dữ liệu cố vấn hỗ trợ ra quyết định toàn diện (Decision Support Package).
+
+    Vai trò trong hệ thống Homigo AI Agent:
+    - Được sinh ra từ `decision_node` bằng mô hình LLM chuyên trách tư vấn hoặc template phân tích an toàn.
+    - Chứa lý do thuyết phục tại sao chọn Top 1 (`top_1_reason`), các tiêu chí quan trọng nhất (`key_factors`),
+      bảng so sánh đánh đổi (`trade_offs`), và danh sách kiểm tra khi đi xem phòng thực tế (`verification_checklist`).
+    - Frontend hiển thị khối này nổi bật ở đầu khung chat hoặc khu vực phân tích thông minh.
+    """
 
     selected_top_1_id: str = Field(..., description="ID của căn phòng được xếp hạng Top 1")
     top_1_reason: str = Field(..., description="Giải thích lý do cốt lõi chọn Top 1 dựa trên rerank explain_match")
@@ -240,9 +258,13 @@ _LOCATION_KEYS = ("lat", "lng", "city_id", "district_id", "ward_id")
 
 
 class UserPreferenceState(BaseModel):
-    """Trạng thái nhu cầu người dùng tích lũy xuyên suốt nhiều lượt chat.
+    """Trạng thái nhu cầu người dùng tích lũy qua các lượt chat (Session Multi-turn Memory).
 
-    validate_assignment=True: `pref.amenities = ["máy lạnh", "xyz"]` -> tự thành [Amenity.AIRCON].
+    Vai trò trong hệ thống Homigo AI Agent:
+    - Bộ nhớ phiên (State Tracking): Được cập nhật ở `understand_node` từ kết quả bóc tách NLU qua từng lượt chat.
+    - Tự động chuẩn hoá: `validate_assignment=True` giúp các tiện ích (amenities), loại phòng (room_type),
+      và địa điểm (location_text) luôn được chuẩn hoá về enum canonical khi gán.
+    - Cung cấp tiêu chí cho `retrieval_node` để xây dựng bộ lọc và vector trọng số MCDM truy vấn backend.
     """
 
     model_config = ConfigDict(validate_assignment=True)
@@ -359,25 +381,17 @@ class UserPreferenceState(BaseModel):
         return "\n".join(parts) if parts else "Chưa có tiêu chí nào được thiết lập."
 
 
-class HitlOption(BaseModel):
-    """Lựa chọn tương tác trong Human-in-the-Loop kiểu Claude."""
+class MarketContext(BaseModel):
+    """Thông tin thị trường & khoảng chênh lệch ngân sách dùng cho tư vấn khi chưa có phòng khớp (Market Intelligence).
 
-    id: str = Field(..., description="Mã định danh lựa chọn")
-    action: Optional[HitlAction] = Field(None, description="Hành động có cấu trúc; frontend gửi lại giá trị này khi click")
-    type: str = Field(..., description="Loại lựa chọn")
-    title: str = Field(..., description="Tiêu đề hiển thị ngắn gọn, rõ ràng")
-    description: str = Field(..., description="Mô tả cụ thể tác động của lựa chọn")
-    badge: Optional[str] = Field(None, description="Nhãn nổi bật (Đề xuất tối ưu, Giữ ngân sách, Tiết kiệm...)")
-    badge_color: Optional[str] = Field("emerald", description="Màu nhãn (emerald, blue, amber, purple, orange, slate)")
-    action_text: str = Field("", description="Câu lệnh hiển thị/gửi lại (chỉ để tương thích ngược, ưu tiên dùng `action`)")
-    highlight: bool = Field(False, description="Đánh dấu lựa chọn được AI khuyến nghị nhất")
+    Vai trò trong hệ thống Homigo AI Agent:
+    - Được tính toán tại `verify_context_grounding` (khi kết quả tìm kiếm rỗng hoặc vi phạm ràng buộc cứng).
+    - Cung cấp số liệu giá sàn thực tế (`market_min_price`), giá trung bình (`market_avg_price`), và khoảng chênh lệch
+      giữa ngân sách người dùng với mặt bằng chung (`is_market_gap`).
+    - Được `decision_node` dùng để sinh lời khuyên cố vấn khách quan (`ZeroResultAdvice`), hướng dẫn người thuê
+      nới ngân sách hợp lý hoặc đổi sang khu vực lân cận phù hợp hơn.
+    """
 
-
-class HitlProposal(BaseModel):
-    """Khối đề xuất Human-in-the-Loop hoàn chỉnh dành cho giao diện chuyên nghiệp kiểu Claude."""
-
-    needed: bool = Field(True, description="True khi cần hỏi ý kiến người dùng")
-    title: Optional[str] = Field(None, description="Tiêu đề khối HITL")
     area_name: Optional[str] = Field(None, description="Tên khu vực đang tìm kiếm")
     user_budget: Optional[float] = Field(None, description="Ngân sách người dùng đã đặt")
     user_budget_str: Optional[str] = Field(None, description="Chuỗi hiển thị ngân sách người dùng")
@@ -389,35 +403,88 @@ class HitlProposal(BaseModel):
     proposed_budget_str: Optional[str] = Field(None, description="Chuỗi hiển thị ngân sách đề xuất")
     is_market_gap: bool = Field(False, description="True nếu ngân sách người dùng thấp xa so với giá sàn thực tế")
     message: Optional[str] = Field(None, description="Thông điệp phân tích thị trường giải thích lý do cần điều chỉnh")
-    options: list[HitlOption] = Field(default_factory=list, description="Danh sách các thẻ lựa chọn tương tác")
 
 
 class GroundingReport(BaseModel):
-    """Báo cáo kiểm định grounding. extra='allow' để các khoá cũ (hitl_streak, ...) vẫn được giữ."""
+    """Báo cáo chi tiết kiểm định RAG Grounding & Chống ảo giác (Self-RAG Verification Report).
+
+    Phản ánh đầy đủ các chỉ số của cơ chế Self-RAG Grounding & Self-Correction Loop trong bài toán Smart Housing:
+    - Context Grounding: Kiểm định tính xác thực của tập kết quả phòng tìm kiếm (Hard Constraints, Market Gap).
+    - Answer Grounding: Đối soát các thực thể (giá, mã phòng, thông số) trong câu trả lời tự nhiên với dữ liệu DB.
+    - Self-Correction Retries: Số lượt tự sửa sai và ghi chú lỗi (retry_notes, issues).
+    """
 
     model_config = ConfigDict(extra="allow")
 
-    is_grounded: Optional[bool] = None
-    groundedness_score: Optional[float] = None
-    context_grounded: Optional[bool] = None
-    needs_user_consent: Optional[bool] = None
-    proposed_budget: Optional[float] = None
-    proposed_budget_str: Optional[str] = None
-    context_retries: Optional[int] = None
-    answer_retries: Optional[int] = None
-    retry_notes: list[str] = Field(default_factory=list)
-    issues: list[str] = Field(default_factory=list)
-    fallback_template_used: Optional[bool] = None
-    checked: Optional[int] = None
-    verified: Optional[int] = None
-    enforced: Optional[bool] = None            # False: cấu hình ablation chỉ ĐO lỗi, không retry/thay thế
-    hitl_streak: Optional[int] = None
-    hitl_max_streak: Optional[int] = None
-    hitl_limit_reached: Optional[bool] = None
+    # --- Kiểm định tầng Câu trả lời (Answer Grounding) ---
+    is_grounded: Optional[bool] = Field(
+        None,
+        description="True nếu câu trả lời hoàn toàn xác thực (không bị ảo giác về giá, mã phòng, thông số) hoặc đã fallback an toàn",
+    )
+    groundedness_score: Optional[float] = Field(
+        None,
+        description="Điểm tỷ lệ xác thực từ 0.0 đến 1.0 (verified / checked). 1.0 nghĩa là 100% số liệu nêu ra đều khớp dữ liệu thật",
+    )
+    checked: Optional[int] = Field(
+        None,
+        description="Tổng số phát biểu / thực thể số liệu (số tiền, mã phòng, diện tích) được trích xuất từ câu trả lời để kiểm tra",
+    )
+    verified: Optional[int] = Field(
+        None,
+        description="Số lượng thực thể số liệu đã được xác minh thành công khớp với bằng chứng thực tế",
+    )
+
+    # --- Kiểm định tầng Context (Context Grounding & Đề xuất ngân sách) ---
+    context_grounded: Optional[bool] = Field(
+        None,
+        description="True nếu tập ngữ cảnh phòng tìm kiếm được thỏa mãn các ràng buộc cứng của người dùng",
+    )
+    proposed_budget: Optional[float] = Field(
+        None,
+        description="Mức ngân sách mới được hệ thống tính toán đề xuất dựa trên giá sàn thực tế của thị trường (VNĐ)",
+    )
+    proposed_budget_str: Optional[str] = Field(
+        None,
+        description="Chuỗi định dạng hiển thị trực quan của ngân sách đề xuất (ví dụ: '3.5 triệu/tháng')",
+    )
+
+    # --- Cơ chế tự sửa sai (Self-Correction Retry Loop) & Fallback ---
+    context_retries: Optional[int] = Field(
+        None,
+        description="Số lần đã thử lại ở tầng Retrieval khi không tìm thấy phòng thỏa mãn",
+    )
+    answer_retries: Optional[int] = Field(
+        None,
+        description="Số lần đã bắt LLM viết lại câu trả lời (Self-Correction) do phát hiện ảo giác dữ liệu",
+    )
+    retry_notes: list[str] = Field(
+        default_factory=list,
+        description="Nhật ký các ghi chú phản hồi lỗi chuyển lại cho Decision Node trong các lượt retry",
+    )
+    issues: list[str] = Field(
+        default_factory=list,
+        description="Danh sách các vi phạm ảo giác cụ thể được phát hiện (ví dụ: mã phòng lạ, giá sai lệch so với DB)",
+    )
+    fallback_template_used: Optional[bool] = Field(
+        None,
+        description="True nếu LLM đã vượt quá số lần retry cho phép và hệ thống buộc phải dùng văn bản mẫu (code template) để đảm bảo an toàn tuyệt đối",
+    )
+
+    # --- Cấu hình đo lường & Thí nghiệm (Ablation Study) ---
+    enforced: Optional[bool] = Field(
+        None,
+        description="Cờ thực thi: True = bắt buộc retry/fallback khi có lỗi; False = chế độ ablation chỉ đo đạc tỷ lệ lỗi mà không ngắt luồng",
+    )
 
 
 class AgentResponse(BaseModel):
-    """Toàn bộ phản hồi chuẩn hoá của AI Agent gửi về cho Client/UI."""
+    """Cấu trúc phản hồi chuẩn hoá hoàn chỉnh của AI Agent gửi về cho Client/UI qua REST API / SSE.
+
+    Vai trò trong hệ thống Homigo AI Agent:
+    - Đầu ra cuối cùng tại `formatter_node` sau khi toàn bộ luồng LangGraph hoàn tất kiểm định an toàn và grounding.
+    - Đóng gói trọn vẹn: câu trả lời văn bản (`text_reply`), danh sách phòng (`rooms`), thông tin cố vấn (`insights`),
+      trạng thái tiêu chí hiện tại (`current_preferences`), và báo cáo kiểm định chống ảo giác (`grounding_report`).
+    """
 
     session_id: Optional[str] = Field(None, description="Mã phiên làm việc để duy trì hội thoại đa lượt")
     text_reply: str = Field(..., description="Văn bản tư vấn bằng ngôn ngữ tự nhiên gửi người dùng")
@@ -428,9 +495,6 @@ class AgentResponse(BaseModel):
     follow_up_questions: list[str] = Field(default_factory=list, description="Gợi ý 1-2 câu hỏi làm rõ tiếp theo")
     grounding_report: Optional[GroundingReport] = Field(
         None, description="Báo cáo kiểm định RAG Grounding (Context & Answer Groundedness + số lần retry)"
-    )
-    hitl_proposal: Optional[HitlProposal] = Field(
-        None, description="Đề xuất Human-in-the-Loop cấu trúc chuyên nghiệp kiểu Claude"
     )
     trace_events: list[dict[str, Any]] = Field(
         default_factory=list,

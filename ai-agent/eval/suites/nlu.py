@@ -6,11 +6,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
+from domain.schemas import UserPreferenceState
 from eval.datasets.nlu import CASES
 from eval.metrics import rate
 from intelligence.nlu import PreferencePatch, Priorities, TurnAnalysis, analyze_turn
-from intelligence.nlu_fallback import legacy_analysis
-from domain.schemas import UserPreferenceState
 from utils.text import norm_key
 
 Analyzer = Callable[[dict], Optional[TurnAnalysis]]
@@ -30,7 +29,7 @@ def _pref(ctx: dict) -> UserPreferenceState:
 
 @contextlib.contextmanager
 def eval_skills() -> Iterator[dict]:
-    """Một skill hợp đồng cố định để hai bên (LLM/keyword) cùng điều kiện."""
+    """Một skill hợp đồng cố định để kiểm thử NLU."""
     from skills import skills_discovery as sd
 
     with tempfile.TemporaryDirectory() as d:
@@ -46,50 +45,67 @@ def eval_skills() -> Iterator[dict]:
             sd.clear_cache()
 
 
-def keyword_analyzer() -> Analyzer:
-    """Đường dự phòng không LLM (nlu_fallback)."""
-    def run(c: dict) -> TurnAnalysis:
-        ctx = c["ctx"]
-        return legacy_analysis(c["text"], has_rooms=ctx.get("n_rooms", 0) > 0, hitl_pending=ctx.get("hitl_pending", False),
-                               has_history=bool(ctx.get("n_rooms") or ctx.get("hitl_pending")))
-    return run
-
-
 def llm_analyzer(model: Any, skills: dict) -> Analyzer:
     def run(c: dict) -> Optional[TurnAnalysis]:
         ctx = c["ctx"]
         n = ctx.get("n_rooms", 0)
         brief = "; ".join(f"Top {i}: Phòng {i}" for i in range(1, n + 1))
-        return analyze_turn(model, c["text"], _pref(ctx), rooms_brief=brief, hitl_pending=ctx.get("hitl_pending", False), n_rooms=n, skills=skills)
+        return analyze_turn(model, c["text"], _pref(ctx), rooms_brief=brief, n_rooms=n, skills=skills)
     return run
 
 
 def oracle_analyzer() -> Analyzer:
-    """Trả đúng kỳ vọng: chỉ để kiểm chứng bộ đo (phải ra 100%)."""
+    """Trả đúng kỳ vọng: chỉ dùng để kiểm chứng bộ đo evaluate()."""
     def run(c: dict) -> TurnAnalysis:
         e = c["expect"]
         intent = e.get("intent", "new_search")
         intent = sorted(intent)[0] if isinstance(intent, (set, frozenset)) else intent
         patch = PreferencePatch(
-            location_text=e.get("location"), location_kind=e.get("location_kind"), location_is_vague=bool(e.get("vague")),
-            vague_category=e.get("vague_category"), location_region=e.get("vague_region"),
-            min_price=e.get("min_price"), max_price=e.get("max_price"), min_area=e.get("min_area"), max_area=e.get("max_area"),
-            room_type=e.get("room_type"), room_types_exclude=list(e.get("room_types_exclude", [])),
-            amenities_add=list(e.get("amenities_add", [])), amenities_remove=list(e.get("amenities_remove", [])), clear=list(e.get("clear", [])))
-        return TurnAnalysis(intent=intent, hitl_action=e.get("hitl_action"), skill_slug=e.get("skill"), referenced_room_rank=e.get("rank"),
-                            patch=patch, priorities=Priorities(**e.get("priorities", {})))
+            location_text=e.get("location"),
+            location_kind=e.get("location_kind"),
+            location_is_vague=bool(e.get("vague")),
+            vague_category=e.get("vague_category"),
+            location_region=e.get("vague_region"),
+            min_price=e.get("min_price"),
+            max_price=e.get("max_price"),
+            min_area=e.get("min_area"),
+            max_area=e.get("max_area"),
+            room_type=e.get("room_type"),
+            room_types_exclude=list(e.get("room_types_exclude", [])),
+            amenities_add=list(e.get("amenities_add", [])),
+            amenities_remove=list(e.get("amenities_remove", [])),
+            clear=list(e.get("clear", [])),
+        )
+        return TurnAnalysis(
+            intent=intent,
+            skill_slug=e.get("skill"),
+            referenced_room_rank=e.get("rank"),
+            patch=patch,
+            priorities=Priorities(**e.get("priorities", {})),
+        )
     return run
 
 
 def _flat(a: TurnAnalysis) -> dict[str, Any]:
     p = a.patch
     return {
-        "intent": a.intent, "max_price": p.max_price, "min_price": p.min_price, "min_area": p.min_area, "max_area": p.max_area,
-        "location": norm_key(p.location_text), "location_kind": p.location_kind, "vague": p.location_is_vague,
-        "vague_category": norm_key(p.vague_category), "vague_region": norm_key(p.location_region),
-        "room_type": p.room_type.value if p.room_type else None, "room_types_exclude": {r.value for r in p.room_types_exclude},
-        "amenities_add": {x.value for x in p.amenities_add}, "amenities_remove": {x.value for x in p.amenities_remove}, "clear": set(p.clear),
-        "hitl_action": a.hitl_action.value if a.hitl_action else None, "skill": a.skill_slug, "rank": a.referenced_room_rank,
+        "intent": a.intent,
+        "max_price": p.max_price,
+        "min_price": p.min_price,
+        "min_area": p.min_area,
+        "max_area": p.max_area,
+        "location": norm_key(p.location_text),
+        "location_kind": p.location_kind,
+        "vague": p.location_is_vague,
+        "vague_category": norm_key(p.vague_category),
+        "vague_region": norm_key(p.location_region),
+        "room_type": p.room_type.value if p.room_type else None,
+        "room_types_exclude": {r.value for r in p.room_types_exclude},
+        "amenities_add": {x.value for x in p.amenities_add},
+        "amenities_remove": {x.value for x in p.amenities_remove},
+        "clear": set(p.clear),
+        "skill": a.skill_slug,
+        "rank": a.referenced_room_rank,
         "priorities": {k: v for k, v in a.priorities.model_dump().items() if v is not None},
     }
 
@@ -125,15 +141,20 @@ def evaluate(analyzer: Analyzer, cases: Optional[list[dict]] = None) -> dict:
             per_field[f].append(ok)
             if not ok:
                 ok_all = False
-                failures.append({"text": c["text"], "field": f, "expected": exp if not isinstance(exp, set) else sorted(exp), "got": got.get(f) if not isinstance(got.get(f), set) else sorted(got[f])})
+                failures.append({
+                    "text": c["text"],
+                    "field": f,
+                    "expected": exp if not isinstance(exp, set) else sorted(exp),
+                    "got": got.get(f) if not isinstance(got.get(f), set) else sorted(got[f]),
+                })
         exact += ok_all
-    return {"n_cases": len(cases), "exact_match": rate(exact, len(cases)), "none_results": none_count,
-            "per_field": {f: rate(sum(v), len(v)) for f, v in sorted(per_field.items())}, "failures": failures}
-
-
-def run_keyword_baseline() -> dict:
-    with eval_skills():
-        return evaluate(keyword_analyzer())
+    return {
+        "n_cases": len(cases),
+        "exact_match": rate(exact, len(cases)),
+        "none_results": none_count,
+        "per_field": {f: rate(sum(v), len(v)) for f, v in sorted(per_field.items())},
+        "failures": failures,
+    }
 
 
 def run_llm(model: Any) -> dict:

@@ -5,8 +5,6 @@ import type {
   UserPreferenceState,
   AgentResponse,
   AgentTraceEvent,
-  HitlOption,
-  HitlProposal,
 } from "@/types/dto/agent";
 
 export type {
@@ -16,8 +14,6 @@ export type {
   UserPreferenceState,
   AgentResponse,
   AgentTraceEvent,
-  HitlOption,
-  HitlProposal,
 };
 
 export interface ChatMessage {
@@ -29,8 +25,6 @@ export interface ChatMessage {
   priorityCriteria?: string[];
   summaryCount?: number;
   followUpQuestions?: string[];
-  hitlProposal?: HitlProposal | null;
-  selectedHitlAction?: string;
   groundingReport?: Record<string, unknown> | null;
   traceEvents?: AgentTraceEvent[];
   isStreaming?: boolean;

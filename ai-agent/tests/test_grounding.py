@@ -1,10 +1,9 @@
 import pytest
 
-from domain.budget import MarketStats
-from domain.enums import Amenity, HitlAction, RoomType
+from domain.enums import RoomType
 from safety.grounding import (
     ClaimsReport, check_hard_constraints, critic_unsupported_claims, find_format_violations, parse_areas,
-    parse_vnd_amounts, verify_answer_grounding, verify_context_grounding, build_hitl_proposal,
+    parse_vnd_amounts, verify_answer_grounding, verify_context_grounding, build_market_context,
 )
 from domain.schemas import RoomItem, UserPreferenceState
 from tests.helpers import FakeModel
@@ -124,21 +123,21 @@ def test_price_filter_tolerance():
 
 def test_context_ok_returns_valid_rooms_and_top_score():
     res = verify_context_grounding([R(1, score=0.7), R(2, score=0.9)], UserPreferenceState(max_price=3_000_000))
-    assert res.is_grounded and not res.needs_user_consent and res.context_score == 0.9 and len(res.valid_rooms) == 2
+    assert res.is_grounded and res.context_score == 0.9 and len(res.valid_rooms) == 2
 
 
-def test_context_empty_triggers_hitl():
+def test_context_empty_triggers_market_context():
     res = verify_context_grounding([], UserPreferenceState(max_price=3_000_000, location_text="Dĩ An"))
-    assert not res.is_grounded and res.needs_user_consent and res.hitl_proposal
+    assert not res.is_grounded and res.market_context
     assert res.proposed_budget == 3_450_000 and res.proposed_budget_str == "3.45 triệu/tháng"
 
 
-def test_context_all_violating_also_triggers_hitl_with_dropped():
+def test_context_all_violating_also_triggers_market_context_with_dropped():
     res = verify_context_grounding([R(1, 9_000_000)], UserPreferenceState(max_price=3_000_000))
-    assert res.needs_user_consent and res.dropped and "vi phạm" in res.reason
+    assert not res.is_grounded and res.dropped and "vi phạm" in res.reason
 
 
-# ---------------- HITL proposal ----------------
+# ---------------- Market Context / Zero Result Proposal ----------------
 def _fetcher(min_price=2_000_000, total=100):
     calls = []
     def f(**kw):
@@ -148,66 +147,39 @@ def _fetcher(min_price=2_000_000, total=100):
     return f
 
 
-def _actions(p):
-    return [o.action for o in p.options]
-
-
-def test_hitl_market_gap_with_real_stats():
+def test_market_gap_with_real_stats():
     pref = UserPreferenceState(max_price=1_500_000, location_text="Quận 1", city_id=79, district_id=1)
-    p = build_hitl_proposal(pref, market_fetcher=_fetcher())
+    p = build_market_context(pref, market_fetcher=_fetcher())
     assert p.is_market_gap and p.proposed_budget == 2_000_000 and p.market_min_price_str == "2 triệu/tháng"
-    assert "Tại Quận 1" in p.message and p.options[0].highlight and p.options[0].action is HitlAction.RELAX_BUDGET
-    assert HitlAction.DORMITORY in _actions(p)
+    assert "Tại Quận 1" in p.message
 
 
-def test_hitl_never_invents_market_data_when_backend_has_none():
+def test_never_invents_market_data_when_backend_has_none():
     pref = UserPreferenceState(max_price=1_200_000, location_text="Quận 1", city_id=79)
     for fetcher in (lambda **kw: None, None):
-        p = build_hitl_proposal(pref, market_fetcher=fetcher)
+        p = build_market_context(pref, market_fetcher=fetcher)
         assert not p.is_market_gap and p.market_min_price is None and p.market_avg_price is None
         assert p.proposed_budget == 1_400_000 and "thấp nhất ghi nhận" not in (p.message or "")
 
 
-def test_hitl_no_city_means_no_market_call():
+def test_no_city_means_no_market_call():
     f = _fetcher()
-    p = build_hitl_proposal(UserPreferenceState(max_price=1_500_000, lat=10.8, lng=106.7), market_fetcher=f)   # tìm theo toạ độ, không rõ thành phố
+    p = build_market_context(UserPreferenceState(max_price=1_500_000, lat=10.8, lng=106.7), market_fetcher=f)   # tìm theo toạ độ, không rõ thành phố
     assert f.calls == [] and not p.is_market_gap
 
 
-def test_hitl_room_type_passed_to_fetcher():
+def test_room_type_passed_to_fetcher():
     f = _fetcher()
-    build_hitl_proposal(UserPreferenceState(max_price=3e6, city_id=79, room_type="studio"), market_fetcher=f)
+    build_market_context(UserPreferenceState(max_price=3e6, city_id=79, room_type="studio"), market_fetcher=f)
     assert f.calls[0]["room_type_id"] == 2
     f2 = _fetcher()
-    build_hitl_proposal(UserPreferenceState(max_price=3e6, city_id=79), {"room_type": "ROOM", "district_id": 5}, market_fetcher=f2)
+    build_market_context(UserPreferenceState(max_price=3e6, city_id=79), {"room_type": "ROOM", "district_id": 5}, market_fetcher=f2)
     assert f2.calls[0] == {"city_id": 79, "district_id": 5, "room_type_id": 1}
 
 
-def test_hitl_dormitory_hidden_when_excluded_or_budget_high():
-    p = build_hitl_proposal(UserPreferenceState(max_price=1_800_000, excluded_room_types=["ktx"]))
-    assert HitlAction.DORMITORY not in _actions(p)
-    assert HitlAction.DORMITORY not in _actions(build_hitl_proposal(UserPreferenceState(max_price=3_000_000)))
-    assert HitlAction.DORMITORY in _actions(build_hitl_proposal(UserPreferenceState(max_price=1_800_000)))
-
-
-def test_hitl_broaden_only_when_there_is_a_location():
-    assert HitlAction.BROADEN not in _actions(build_hitl_proposal(UserPreferenceState(max_price=3e6)))
-    assert HitlAction.BROADEN in _actions(build_hitl_proposal(UserPreferenceState(max_price=3e6, location_text="Dĩ An")))
-    p = build_hitl_proposal(UserPreferenceState(max_price=3e6, ward_id=7), {"ward_id": 7})
-    assert [o for o in p.options if o.action is HitlAction.BROADEN][0].title == "Mở rộng ra toàn Quận/Huyện"
-
-
-def test_hitl_reduce_amenities_uses_vietnamese_labels_and_always_has_keep_custom():
-    p = build_hitl_proposal(UserPreferenceState(max_price=3e6, amenities=["ml", "gác", "camera"]))
-    o = [x for x in p.options if x.action is HitlAction.REDUCE_AMENITIES][0]
-    assert "máy lạnh, gác lửng" in o.title and "aircon" not in o.title
-    assert _actions(p)[-2:] == [HitlAction.KEEP, HitlAction.CUSTOM]
-    assert all(x.action is not None and x.action_text for x in p.options)
-
-
-def test_hitl_without_budget_has_no_budget_option():
-    p = build_hitl_proposal(UserPreferenceState(location_text="Dĩ An"))
-    assert HitlAction.RELAX_BUDGET not in _actions(p) and p.proposed_budget is None
+def test_without_budget_has_no_budget_option():
+    p = build_market_context(UserPreferenceState(location_text="Dĩ An"))
+    assert p.proposed_budget is None and p.user_budget is None
 
 
 # ---------------- critic ----------------

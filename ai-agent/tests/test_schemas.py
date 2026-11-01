@@ -7,7 +7,7 @@ from domain.enums import Amenity, RoomType
 from domain.schemas import (
     AgentResponse,
     GroundingReport,
-    HitlOption,
+    MarketContext,
     RoomItem,
     UserPreferenceState,
     format_vnd_million,
@@ -160,19 +160,19 @@ def test_match_percent_in_dump():
     assert d["match_percent"] == 50
 
 
-# ---------------- HITL / Response ----------------
-def test_hitl_option_action_optional_and_action_text_default():
-    o = HitlOption(id="adjust_budget", type="budget", title="t", description="d", action="relax_budget")
-    assert o.action.value == "relax_budget" and o.action_text == ""
-    assert HitlOption(id="x", type="t", title="t", description="d").action is None
+# ---------------- MarketContext / Response ----------------
+def test_market_context_model():
+    ctx = MarketContext(area_name="Quận 1", market_min_price=4_000_000, market_min_price_str="4 triệu/tháng", is_market_gap=True)
+    assert ctx.area_name == "Quận 1"
+    assert ctx.is_market_gap is True
+    assert ctx.market_min_price == 4_000_000
 
 
-def test_agent_response_accepts_legacy_grounding_dict():
-    legacy = {"is_grounded": True, "context_grounded": False, "needs_user_consent": True,
-              "hitl_streak": 1, "hitl_max_streak": 2, "something_new": 7}
+def test_agent_response_accepts_extra_grounding_dict():
+    legacy = {"is_grounded": True, "context_grounded": False, "something_new": 7}
     resp = AgentResponse(text_reply="hi", grounding_report=legacy, current_preferences=UserPreferenceState(amenities=["ml"]))
     assert isinstance(resp.grounding_report, GroundingReport)
-    assert resp.grounding_report.hitl_streak == 1
+    assert getattr(resp.grounding_report, "something_new", None) == 7
     assert resp.model_dump(mode="json")["grounding_report"]["something_new"] == 7   # khoá lạ không mất
 
 

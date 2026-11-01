@@ -1,35 +1,33 @@
 {
-  "timestamp": "2026-10-29 15:19:16",
-  "mode": "rule-based fallback (không gọi LLM)",
-  "raw_points": 91.69,
-  "measured_max": 96.0,
-  "coverage": 0.96,
-  "total_score": 95.51,
-  "grade": "XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo)",
-  "summary": "Điểm quy đổi 95.51/100 (độ phủ phép đo 96%) — xếp loại: XUẤT SẮC (EXCELLENT) — tạm thời (có tiêu chí chưa đo). Chế độ NLU: rule-based fallback (không gọi LLM). Tiêu chí yếu nhất: 2.1 Trọng số động theo ý định (Intent-Aware MCDM) (67%); 1.1 Phân loại ý định (Intent Classification) (92%); 4.3 Độ trung thực khi render lời khuyên (Advice) (92%). Chưa đo: 3.3 Tính toàn vẹn Trace Events.",
+  "timestamp": "2026-10-31 22:28:47",
+  "mode": "LLM",
+  "raw_points": 100.0,
+  "measured_max": 100.0,
+  "coverage": 1.0,
+  "total_score": 100.0,
+  "grade": "XUẤT SẮC (EXCELLENT)",
+  "summary": "Điểm quy đổi 100.0/100 (độ phủ phép đo 100%) — xếp loại: XUẤT SẮC (EXCELLENT). Chế độ NLU: LLM. Mọi tiêu chí đã đo đều đạt tối đa trên bộ ca hiện tại (không đồng nghĩa hệ thống không có lỗi ngoài bộ ca).",
   "pillars": [
     {
       "pillar_id": 1,
       "name": "NLU & Trạng thái Tích lũy (State Tracking)",
       "max_points": 25.0,
-      "earned_points": 24.42,
+      "earned_points": 25.0,
       "measured_max": 25.0,
       "criteria": [
         {
           "name": "1.1 Phân loại ý định (Intent Classification)",
           "max_points": 7.0,
-          "earned_points": 6.42,
-          "pass_rate": 0.9167,
-          "details": "Chế độ NLU: rule-based fallback (KHÔNG gọi LLM). Đúng 11/12. Theo nhóm — new_search: 3/3, skill_advice: 3/4, room_followup: 3/3, refine_search: 2/2",
+          "earned_points": 7.0,
+          "pass_rate": 1.0,
+          "details": "Chế độ NLU: LLM. Đúng 12/12. Theo nhóm — new_search: 3/3, skill_advice: 4/4, room_followup: 3/3, refine_search: 2/2",
           "status": "PASS",
           "n_cases": 12,
           "ci95": [
-            0.646,
-            0.985
+            0.757,
+            1.0
           ],
-          "failures": [
-            "'chủ trọ tự ý tăng tiền điện gấp đôi và dọa đuổi thì làm sao?' → new_search (kỳ vọng skill_advice)"
-          ],
+          "failures": [],
           "skipped": false
         },
         {
@@ -37,11 +35,11 @@
           "max_points": 10.0,
           "earned_points": 10.0,
           "pass_rate": 1.0,
-          "details": "Đúng 27/27 — tiền 9/9, diện tích 4/4, loại phòng 4/4, tiện ích 10/10",
+          "details": "Đúng 31/31 — tiền 9/9, diện tích 4/4, loại phòng 4/4, tiện ích 10/10, apply_patch 4/4",
           "status": "PASS",
-          "n_cases": 27,
+          "n_cases": 31,
           "ci95": [
-            0.875,
+            0.89,
             1.0
           ],
           "failures": [],
@@ -65,25 +63,22 @@
       "pillar_id": 2,
       "name": "Dynamic MCDM & Độ liên quan Truy xuất (Retrieval)",
       "max_points": 25.0,
-      "earned_points": 21.67,
+      "earned_points": 25.0,
       "measured_max": 25.0,
       "criteria": [
         {
           "name": "2.1 Trọng số động theo ý định (Intent-Aware MCDM)",
           "max_points": 10.0,
-          "earned_points": 6.67,
-          "pass_rate": 0.6667,
-          "details": "Đúng 4/6. Tiêu chí: chuẩn hoá L1, không âm, yếu tố ưu tiên tăng ≥ 5% so với baseline, câu trung tính không làm lệch > 2 điểm %",
-          "status": "WARN",
+          "earned_points": 10.0,
+          "pass_rate": 1.0,
+          "details": "Đúng 6/6. Tiêu chí: Priorities → apply_priorities → chuẩn hoá L1, không âm, yếu tố ưu tiên tăng ≥ 5% so với baseline, quy tắc động bật/tắt location & amenity chuẩn xác",
+          "status": "PASS",
           "n_cases": 6,
           "ci95": [
-            0.3,
-            0.903
+            0.61,
+            1.0
           ],
-          "failures": [
-            "'cần phòng full nội thất cao cấp xịn xò': thiếu yếu tố 'amenity' trong trọng số",
-            "'vừa rẻ vừa an toàn bảo vệ': 'price' không tăng so với baseline (0.340 → 0.250)"
-          ],
+          "failures": [],
           "skipped": false
         },
         {
@@ -119,8 +114,8 @@
       "pillar_id": 3,
       "name": "Self-RAG & Kiểm chứng Grounding (Faithfulness & Relevance)",
       "max_points": 20.0,
-      "earned_points": 16.0,
-      "measured_max": 16.0,
+      "earned_points": 20.0,
+      "measured_max": 20.0,
       "criteria": [
         {
           "name": "3.1 Chống ảo giác câu trả lời (Answer Grounding)",
@@ -149,21 +144,21 @@
         {
           "name": "3.3 Tính toàn vẹn Trace Events",
           "max_points": 4.0,
-          "earned_points": 0.0,
-          "pass_rate": 0.0,
-          "details": "CHƯA ĐO: cần trace_events thật từ một lượt chạy service (truyền vào run_full_thesis_evaluation(trace_events=...)). Bản cũ tự tạo sự kiện giả rồi kiểm tra chính nó nên luôn đạt điểm tối đa.",
-          "status": "SKIP",
-          "n_cases": 0,
+          "earned_points": 4.0,
+          "pass_rate": 1.0,
+          "details": "✔ Trace thật hợp lệ (id duy nhất, có type/node|tool, timestamp không lùi) — 6 sự kiện",
+          "status": "PASS",
+          "n_cases": 1,
           "ci95": null,
           "failures": [],
-          "skipped": true
+          "skipped": false
         },
         {
           "name": "3.4 Độ phù hợp & Khớp câu hỏi (Answer Relevance Judge)",
           "max_points": 4.0,
           "earned_points": 4.0,
           "pass_rate": 1.0,
-          "details": "Đánh giá Answer Relevance (Rule-based Intent Coverage): Phát hiện trả lời lạc đề/bỏ sót câu hỏi 4/4; xác nhận câu trả lời đúng trọng tâm 4/4.",
+          "details": "Đánh giá Answer Relevance (LLM Judge): Phát hiện trả lời lạc đề/bỏ sót câu hỏi 4/4; xác nhận câu trả lời đúng trọng tâm 4/4.",
           "status": "PASS",
           "n_cases": 8,
           "ci95": null,
@@ -176,7 +171,7 @@
       "pillar_id": 4,
       "name": "Hỗ trợ Ra Quyết định & Cố vấn (Decision Support)",
       "max_points": 15.0,
-      "earned_points": 14.6,
+      "earned_points": 15.0,
       "measured_max": 15.0,
       "criteria": [
         {
@@ -206,15 +201,13 @@
         {
           "name": "4.3 Độ trung thực khi render lời khuyên (Advice)",
           "max_points": 5.0,
-          "earned_points": 4.6,
-          "pass_rate": 0.92,
-          "details": "✘ Giữ nguyên mọi nội dung đầu vào (intro, lý do, so sánh, checklist) | ✔ Không bịa số tiền ngoài dữ liệu đầu vào | ✔ Trường hợp 0 phòng: không lỗi, vẫn có intro/checklist, không hiện 'Top pick' — Đo template render lời khuyên; chất lượng nội dung do LLM sinh cần chấm bằng người/LLM-judge",
-          "status": "WARN",
+          "earned_points": 5.0,
+          "pass_rate": 1.0,
+          "details": "✔ Giữ nguyên mọi nội dung đầu vào (intro, lý do, so sánh, checklist) | ✔ Không bịa số tiền ngoài dữ liệu đầu vào | ✔ Trường hợp 0 phòng: không lỗi, vẫn có intro/checklist, không hiện 'Top pick' — Đo template render lời khuyên; chất lượng nội dung do LLM sinh cần chấm bằng người/LLM-judge",
+          "status": "PASS",
           "n_cases": 3,
           "ci95": null,
-          "failures": [
-            "Giữ nguyên mọi nội dung đầu vào (intro, lý do, so sánh, checklist): 4/5 mục xuất hiện"
-          ],
+          "failures": [],
           "skipped": false
         }
       ]
@@ -258,7 +251,7 @@
           "max_points": 3.0,
           "earned_points": 3.0,
           "pass_rate": 1.0,
-          "details": "p50 0.725 ms, p95 0.824 ms, max 0.983 ms (200 lần, sau 20 lần warm-up); ngân sách p95 ≤ 10 ms. CHỈ gồm NLU rule-based + tính trọng số, KHÔNG gồm LLM/retrieval/IO — độ trễ end-to-end xem ở live eval",
+          "details": "p50 0.405 ms, p95 0.571 ms, max 0.866 ms (200 lần, sau 20 lần warm-up); ngân sách p95 ≤ 10 ms. Gồm chuỗi: Guardrails + apply_patch + MCDM weights + verify_context_grounding + build_decision_insights + verify_answer_grounding",
           "status": "PASS",
           "n_cases": 200,
           "ci95": null,

@@ -18,8 +18,6 @@ export type {
   AgentResponse,
   AgentTraceEvent,
   DecisionInsight,
-  HitlOption,
-  HitlProposal,
   RoomItem,
   TradeOffAnalysis,
   UserPreferenceState,

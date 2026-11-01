@@ -1,13 +1,10 @@
 """Dynamic Skill Discovery: quét SKILL.md, lập chỉ mục, cung cấp danh mục cho LLM định tuyến.
 
-Khác bản cũ:
-  - `slug` (tên thư mục, lowercase) là KHOÁ DUY NHẤT dùng ở mọi nơi (graph, tool, API) -> hết lệch name/thư mục.
-  - Parse frontmatter bằng yaml.safe_load (nhận `triggers: [a, b]`, `description: >` nhiều dòng...).
-  - Cache tự làm mới theo mtime (không cần force_reload / importlib.reload).
-  - `skills_catalog_for_prompt()` để node NLU cho LLM chọn skill theo `description`.
-  - `match_skill_by_query` chỉ còn là FALLBACK (khớp theo ranh giới từ, bỏ dấu, trigger dài thắng).
-  - Không sinh trigger tiếng Anh mặc định từ tên thư mục; skill thiếu description/triggers bị cảnh báo.
-  - `follow_ups`: gợi ý cuối câu trả lời khai báo ngay trong SKILL.md (formatter không cần tên skill cứng).
+- `slug` (tên thư mục, lowercase) là KHOÁ DUY NHẤT dùng ở mọi nơi (graph, tool, API).
+- Parse frontmatter bằng yaml.safe_load.
+- Cache tự làm mới theo mtime.
+- `skills_catalog_for_prompt()` cung cấp danh mục để node NLU cho LLM chọn skill theo `description`.
+- `follow_ups`: gợi ý cuối câu trả lời khai báo ngay trong SKILL.md.
 """
 
 from __future__ import annotations
@@ -21,7 +18,6 @@ from typing import Optional
 import yaml
 
 from core.paths import PROJECT_ROOT, SKILLS_DIR
-from utils.text import contains_phrase, tokens
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +33,8 @@ class SkillMetadata:
     triggers: list[str] = field(default_factory=list)
     follow_ups: list[str] = field(default_factory=list)
     path: str = ""
+    instructions: str = ""
+    references: dict[str, str] = field(default_factory=dict)
 
     def public_dict(self) -> dict:
         """Chỉ các trường an toàn để trả ra API (KHÔNG có path trên máy chủ)."""
@@ -76,6 +74,7 @@ def _signature() -> tuple:
     for d in SKILL_DIRS:
         if d.exists():
             files.extend(sorted(d.glob("*/SKILL.md")))
+            files.extend(sorted(d.glob("*/references/*.md")))
     return tuple((str(f), f.stat().st_mtime_ns) for f in files)
 
 
@@ -86,7 +85,7 @@ def clear_cache() -> None:
 
 
 def discover_housing_skills(force_reload: bool = False) -> dict[str, SkillMetadata]:
-    """{slug: SkillMetadata}. Tự làm mới khi file SKILL.md thay đổi."""
+    """{slug: SkillMetadata}. Tự làm mới khi file SKILL.md hoặc references/*.md thay đổi."""
     global _cache, _cache_sig
     sig = _signature()
     with _lock:
@@ -102,7 +101,13 @@ def discover_housing_skills(force_reload: bool = False) -> dict[str, SkillMetada
                     logger.warning("Skill '%s' bị trùng, bỏ bản ở %s", slug, f)
                     continue
                 try:
-                    fm = parse_frontmatter(f.read_text(encoding="utf-8"))
+                    raw_text = f.read_text(encoding="utf-8")
+                    fm = parse_frontmatter(raw_text)
+                    refs: dict[str, str] = {}
+                    ref_dir = f.parent / "references"
+                    if ref_dir.is_dir():
+                        for r in sorted(ref_dir.glob("*.md")):
+                            refs[r.name] = r.read_text(encoding="utf-8")
                 except OSError as e:
                     logger.warning("Không đọc được %s: %s", f, e)
                     continue
@@ -113,11 +118,11 @@ def discover_housing_skills(force_reload: bool = False) -> dict[str, SkillMetada
                     triggers=_as_list(fm.get("triggers")),
                     follow_ups=_as_list(fm.get("follow_ups")),
                     path=str(f),
+                    instructions=raw_text,
+                    references=refs,
                 )
                 if not meta.description:
                     logger.warning("Skill '%s' thiếu description: LLM sẽ không định tuyến được", slug)
-                if not meta.triggers:
-                    logger.info("Skill '%s' không có triggers: chỉ được chọn qua LLM, không qua fallback", slug)
                 found[slug] = meta
         _cache, _cache_sig = found, sig
         return _cache
@@ -130,20 +135,3 @@ def get_skill(slug: Optional[str]) -> Optional[SkillMetadata]:
 def skills_catalog_for_prompt(skills: Optional[dict[str, SkillMetadata]] = None) -> str:
     skills = discover_housing_skills() if skills is None else skills
     return "\n".join(f"- {s.slug}: {s.description or s.name}" for s in skills.values())
-
-
-def match_skill_by_query(user_text: str) -> Optional[SkillMetadata]:
-    """[FALLBACK khi LLM lỗi] Khớp trigger theo ranh giới từ, bỏ dấu; trigger dài nhất thắng.
-
-    Hạn chế đã biết: trigger đơn từ như 'cọc' vẫn khớp trong 'tìm phòng cọc thấp'. Đó là lý do đường chính là LLM.
-    """
-    if not (user_text or "").strip():
-        return None
-    best: Optional[SkillMetadata] = None
-    best_key = (0, 0)
-    for sk in discover_housing_skills().values():
-        for t in sk.triggers:
-            key = (len(tokens(t)), len(t))
-            if key[0] and key > best_key and contains_phrase(user_text, t):
-                best, best_key = sk, key
-    return best

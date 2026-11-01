@@ -83,35 +83,6 @@ export interface AgentTraceEvent {
   error?: string;
 }
 
-export interface HitlOption {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  badge?: string;
-  badge_color?: "emerald" | "blue" | "amber" | "purple" | "orange" | "slate" | string;
-  action_text: string;
-  highlight?: boolean;
-}
-
-export interface HitlProposal {
-  needed: boolean;
-  title?: string;
-  area_name?: string;
-  user_budget?: number;
-  user_budget_str?: string;
-  market_min_price?: number;
-  market_min_price_str?: string;
-  market_floor_price_str?: string;
-  market_avg_price?: number;
-  market_avg_price_str?: string;
-  proposed_budget?: number;
-  proposed_budget_str?: string;
-  is_market_gap?: boolean;
-  message?: string;
-  options: HitlOption[];
-}
-
 export interface AgentResponse {
   session_id?: string;
   text_reply: string;
@@ -121,7 +92,6 @@ export interface AgentResponse {
   need_clarification?: boolean;
   follow_up_questions?: string[];
   grounding_report?: Record<string, unknown> | null;
-  hitl_proposal?: HitlProposal | null;
   trace_events?: AgentTraceEvent[];
 }
 

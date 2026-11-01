@@ -31,12 +31,12 @@ ai-agent/
 
 ```mermaid
 flowchart TD
-    START([User Message / UI Action]) --> N1["1. guardrail_node\n(Kiểm tra an toàn)"]
+    START([User Message]) --> N1["1. guardrail_node\n(Kiểm tra an toàn)"]
     
     N1 -->|Phát hiện vi phạm / Off-topic| N8["8. formatter_node\n(Trả câu trả lời an toàn)"]
     N1 -->|Hợp lệ| N2["2. understand_node\n(NLU + Memory + Intent MCDM)"]
     
-    N2 -->|Bấm giữ nguyên tiêu chí| N8
+    N2 -->|Phản hồi trực tiếp (Giữ nguyên tiêu chí)| N8
     N2 -->|Khớp từ khóa Kỹ năng| N4["4. advisory_node\n(Kỹ năng: Hợp đồng, cọc...)"]
     N2 -->|Thiếu cả khu vực lẫn ngân sách| N3["3. clarification_node\n(Hỏi gợi mở thêm thông tin)"]
     N2 -->|Hỏi tiếp về phòng cũ| N6["6. decision_node\n(ReAct Agent chi tiết)"]
@@ -63,7 +63,7 @@ flowchart TD
 ### 📍 Giai đoạn 1: Nền tảng State & Hợp đồng dữ liệu
 1. **[`domain/schemas.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/domain/schemas.py)**:
    - `UserPreferenceState`: Nhu cầu tích lũy xuyên suốt phiên chat (`location_text`, `lat`, `lng`, `min_price`, `max_price`, `amenities`...).
-   - `AgentResponse`: Chuẩn dữ liệu trả về cho Frontend (`text_reply`, `rooms`, `insights`, `needs_clarification`, `proposed_budget`...).
+   - `AgentResponse`: Chuẩn dữ liệu trả về cho Frontend (`text_reply`, `rooms`, `insights`, `need_clarification`, `follow_up_questions`...).
    - `DecisionInsight`: Cấu trúc chứa `top_1_reason`, `trade_off_analysis`, `verification_checklist`.
 2. **[`graph/state.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph/state.py)**:
    - `HousingAgentState`: TypedDict chứa mọi biến chạy xuyên suốt từ Node 1 đến Node 8.
@@ -91,7 +91,7 @@ flowchart TD
 2. **[`graph/nodes/retrieval.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph/nodes/retrieval.py)**:
    - Tự động gọi Geocoding chuyển địa danh thành toạ độ `lat, lng`.
    - Gửi request sang Backend `/api/v1/listings/vector-search` với vector trọng số động `computed_weights`.
-   - Cơ chế tự nới bộ lọc nếu không tìm thấy phòng (Corrective RAG).
+   - Tra cứu thống kê giá thị trường (giá sàn, giá trung bình) khi 0 kết quả để cung cấp dữ liệu thực tế cho `decision_node` tư vấn.
 3. **[`graph/nodes/decision.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph/nodes/decision.py)**:
    - Đọc kết quả từ Backend.
    - Gọi LLM sinh nhận định khách quan (`generate_advice`) dựa trên Prompt tại [`prompts/decision_prompt.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/prompts/decision_prompt.py).
@@ -133,18 +133,16 @@ Dưới đây là các nhu cầu bạn thường sẽ can thiệp nhất:
 
 ---
 
-### 🎯 3. Muốn chỉnh các Ngưỡng Đề Xuất Nới Bộ Lọc (Conversational Negotiation)
-Khi người dùng tìm phòng với ngân sách quá thấp hoặc khu vực không có phòng, hệ thống tự động phân tích thị trường và gợi ý nới lỏng ngân sách/khu vực lân cận qua đối thoại tự nhiên.
-* **File:** [`intelligence/understand.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/intelligence/understand.py)
-* **Chỗ sửa:** Dictionary `HITL_TUNING`:
-  ```python
-  HITL_TUNING = {
-      "relax_budget_factor": 1.15,   # Nới ngân sách lên 15%
-      "relax_price_mult": 1.5,       # Hệ số nhân giá khi nới
-      "dormitory_price_mult": 1.8,   # Hệ số nhân khi chuyển sang KTX/Sleepbox
-      "default_budget": 3_000_000.0, # Mức ngân sách mặc định nếu người dùng chưa nêu
-  }
-  ```
+### 🎯 3. Muốn tinh chỉnh Lời Khuyên Khi Không Tìm Thấy Phòng (Zero Result Advisory)
+Khi kết quả tìm kiếm không có phòng nào khớp với yêu cầu (do ngân sách quá thấp so với mặt bằng hoặc bộ lọc tiện ích quá ngặt nghèo), hệ thống không tự ý nới ngân sách mà chuyển sang vai trò Cố vấn đối thoại tự nhiên:
+* **Files:** [`intelligence/advice.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/intelligence/advice.py) & [`graph/nodes/decision.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph/nodes/decision.py)
+* **Chỗ sửa:**
+  - Schema `ZeroResultAdvice`: Quy định 4 trường thông tin mà LLM cần sinh ra:
+    1. `analysis`: Phân tích khách quan vì sao chưa tìm thấy phòng.
+    2. `market_assessment`: Nhận định mặt bằng giá thực tế (dựa trên giá sàn và giá trung bình từ database).
+    3. `suggestions`: 2-3 gợi ý giải pháp (mở rộng sang khu vực lân cận giáp ranh, cân nhắc mô hình phòng khác...).
+    4. `closing_question`: Câu hỏi mở thân thiện để người dùng tự do nhắn lại quyết định tiếp theo.
+  - Hàm `_format_nearby_bullets` tại [`graph/replies.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/ai-agent/graph/replies.py): Tinh chỉnh danh sách khu vực lân cận và khoảng giá gợi ý.
 
 ---
 

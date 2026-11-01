@@ -59,3 +59,35 @@ Phát hiện theo loại lỗi:
 | price_wrong/tr | 100.0% (60/60; CI 94–100%) | 100.0% (60/60; CI 94–100%) |
 | price_wrong/triệu | 100.0% (60/60; CI 94–100%) | 100.0% (60/60; CI 94–100%) |
 | unsupported_deposit | 100.0% (60/60; CI 94–100%) | 100.0% (60/60; CI 94–100%) |
+
+### NLU (35 ca vàng)
+
+| Trường | llm |
+|---|---|
+| Khớp hoàn toàn cả ca | 80.0% (28/35; CI 64–90%) |
+| amenities_add | 100.0% (2/2; CI 34–100%) |
+| amenities_remove | 100.0% (1/1; CI 21–100%) |
+| clear | 0.0% (0/1; CI 0–79%) |
+| intent | 85.0% (17/20; CI 64–95%) |
+| location | 100.0% (10/10; CI 72–100%) |
+| location_kind | 100.0% (8/8; CI 68–100%) |
+| max_price | 71.4% (5/7; CI 36–92%) |
+| min_area | 100.0% (1/1; CI 21–100%) |
+| min_price | 0.0% (0/1; CI 0–79%) |
+| priorities | 100.0% (3/3; CI 44–100%) |
+| rank | 100.0% (2/2; CI 34–100%) |
+| room_type | 100.0% (2/2; CI 34–100%) |
+| room_types_exclude | 100.0% (1/1; CI 21–100%) |
+| skill | 100.0% (3/3; CI 44–100%) |
+| vague | 100.0% (3/3; CI 44–100%) |
+| vague_category | 100.0% (1/1; CI 21–100%) |
+| vague_region | 100.0% (1/1; CI 21–100%) |
+
+Ví dụ sai (llm):
+- “tìm phòng gần UIT dưới 3tr5 có máy lạnh” → intent: kỳ vọng new_search, nhận refine_search
+- “phòng trọ ở Dĩ An dưới 2 triệu rưỡi” → max_price: kỳ vọng 2500000, nhận 2000000.0
+- “ko lấy ktx nha, tìm studio gần ĐH Bách Khoa” → intent: kỳ vọng new_search, nhận refine_search
+- “giá bao nhiêu cũng được” → clear: kỳ vọng ['price'], nhận []
+- “phòng từ 2 đến 3 triệu” → min_price: kỳ vọng 2000000, nhận None
+- “tìm phòng 3tr rưỡi” → max_price: kỳ vọng 3500000, nhận 3100000.0
+- “tìm phòng cọc thấp gần UIT” → intent: kỳ vọng new_search, nhận refine_search

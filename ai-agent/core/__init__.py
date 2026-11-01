@@ -1,10 +1,7 @@
 """Cung cấp các module cốt lõi: config, paths, llm, session_store."""
 
 from core.config import (
-    APP_TITLE,
-    CAPABILITY_TEXT,
     MODEL_CALL_LIMIT,
-    PROJECT_NAME,
     RECURSION_LIMIT,
     TOOL_CALL_LIMIT,
     Settings,
@@ -35,9 +32,6 @@ from core.session_store import (
 __all__ = [
     "Settings",
     "load_settings",
-    "PROJECT_NAME",
-    "APP_TITLE",
-    "CAPABILITY_TEXT",
     "MODEL_CALL_LIMIT",
     "TOOL_CALL_LIMIT",
     "RECURSION_LIMIT",

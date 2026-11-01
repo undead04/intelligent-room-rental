@@ -119,8 +119,8 @@ class Harness:
             setattr(self.deps, k, v)
         self.graph = build_housing_graph(self.deps)
 
-    def turn(self, text: str, session_id: Optional[str] = "s1", ui_action: Optional[str] = None):
-        return run_turn(self.graph, text, session_id=session_id, ui_action=ui_action)
+    def turn(self, text: str, session_id: Optional[str] = "s1"):
+        return run_turn(self.graph, text, session_id=session_id)
 
     @property
     def session(self):

@@ -7,6 +7,7 @@ import logging
 import time
 from typing import Any, Iterator, Optional
 
+from core import RECURSION_LIMIT
 from domain.schemas import AgentResponse
 
 logger = logging.getLogger(__name__)
@@ -90,14 +91,12 @@ def stream_graph_events(
     user_message: str,
     effective_session_id: str,
     graph: Any = None,
-    ui_action: Optional[str] = None,
     fallback_runner: Any = None,
 ) -> Iterator[str]:
     """Generator phát SSE thời gian thực qua LangGraph State Machine."""
-    state = {
+    state: dict[str, Any] = {
         "user_message": user_message,
         "session_id": effective_session_id,
-        "ui_action": ui_action,
         "trace_events": [],
     }
     emitted_event_count = 0
@@ -108,7 +107,11 @@ def stream_graph_events(
         graph = HOUSING_GRAPH
 
     try:
-        for chunk in graph.stream(state, stream_mode="updates"):
+        for chunk in graph.stream(
+            state,
+            stream_mode="updates",
+            config={"recursion_limit": RECURSION_LIMIT},
+        ):
             if not isinstance(chunk, dict):
                 continue
             for _node_name, node_update in chunk.items():
@@ -139,7 +142,6 @@ def stream_graph_events(
             final_resp = fallback_runner(
                 user_message=user_message,
                 session_id=effective_session_id,
-                ui_action=ui_action,
             )
 
         if final_resp is not None:
@@ -157,7 +159,6 @@ def stream_graph_events(
                 "current_preferences": final_resp.current_preferences.model_dump() if final_resp.current_preferences else None,
                 "need_clarification": final_resp.need_clarification,
                 "follow_up_questions": final_resp.follow_up_questions,
-                "hitl_proposal": final_resp.hitl_proposal.model_dump() if final_resp.hitl_proposal else None,
                 "grounding_report": final_resp.grounding_report.model_dump() if hasattr(final_resp.grounding_report, "model_dump") else final_resp.grounding_report,
                 "trace_events": final_resp.trace_events,
             }

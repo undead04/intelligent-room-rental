@@ -1,5 +1,4 @@
-"""Bộ NLU vàng (viết tay, tiếng Việt đời thường). Mỗi ca chỉ nêu các trường cần kiểm (expect); trường không nêu thì bỏ qua.
-Chỉ là tập KHỞI ĐẦU ~40 ca: nên thêm câu thật từ log để số đo đáng tin."""
+"""Bộ NLU vàng (viết tay, tiếng Việt đời thường). Mỗi ca chỉ nêu các trường cần kiểm (expect); trường không nêu thì bỏ qua."""
 
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ def case(text: str, ctx: dict | None = None, **expect: Any) -> dict:
 
 
 RC = {"n_rooms": 3}                    # đã có 3 phòng được đề xuất
-HITL = {"hitl_pending": True, "n_rooms": 0}
 
 CASES: list[dict] = [
     # --- trích xuất tiêu chí
@@ -43,12 +41,6 @@ CASES: list[dict] = [
     case("phòng số 2 có gác không", RC, intent="room_followup", rank=2),
     case("so sánh top 1 và top 3", RC, intent="room_followup"),
     case("cho mình sdt chủ nhà phòng đầu tiên", RC, intent="room_followup", rank=1),
-    # --- HITL
-    case("giữ nguyên tiêu chí nhé", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="keep"),
-    case("ok nới ngân sách đi", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="relax_budget"),
-    case("mở rộng ra mấy quận bên cạnh", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="broaden"),
-    case("thôi tìm ký túc xá đi", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="dormitory"),
-    case("bỏ bớt yêu cầu tiện ích đi", HITL, intent={"hitl_choice", "refine_search"}, hitl_action="reduce_amenities"),
     # --- skill (có bẫy: nhắc từ khoá nhưng là tìm phòng)
     case("chủ nhà giữ cọc không trả thì sao", intent="skill_advice", skill="rental-contract-advisor"),
     case("hợp đồng thuê trọ cần lưu ý gì", intent="skill_advice", skill="rental-contract-advisor"),

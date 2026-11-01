@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from graph.deps import Deps
-from graph.replies import MAX_HITL_STREAK
 from domain.schemas import AgentResponse, UserPreferenceState
+from graph.deps import Deps
 
 
 def make_formatter_node(deps: Deps):
@@ -17,7 +16,6 @@ def make_formatter_node(deps: Deps):
         sid = state["session_id"]
         report = state.get("grounding_report")
         session = deps.sessions.get_or_create_session(sid)
-        streak = session.hitl_streak
 
         guard = state.get("guardrail_result")
         blocked = guard is not None and not guard.allowed
@@ -32,29 +30,31 @@ def make_formatter_node(deps: Deps):
             follow_up = list(getattr(skill, "follow_ups", [])) if skill else []
         elif state.get("search_error"):
             follow_up = ["🔄 Thử tìm lại", "✏️ Tùy chỉnh tiêu chí"]
-            report = {"is_grounded": True, "context_grounded": False, "needs_user_consent": False, "hitl_streak": streak}
-        elif state.get("admin_not_found") or state.get("is_keep_criteria"):
+            report = {"is_grounded": True, "context_grounded": False}
+        elif state.get("admin_not_found"):
             follow_up, rooms, insights = ["🔍 Thử tìm khu vực khác", "✏️ Tùy chỉnh tiêu chí"], [], None
-            report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False, "needs_user_consent": False, "hitl_streak": 0}
+            report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False}
         elif cands:
             follow_up, rooms, insights = [str(c.get("name")) for c in cands[:4] if c.get("name")], [], None
             need_clarify = True
-            report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False, "needs_user_consent": False, "hitl_streak": 0}
+            report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False}
         elif need_clarify:
             follow_up = list(state.get("follow_up_questions") or [])
         elif rooms:
             follow_up = [f"Bạn có muốn xem chi tiết phòng Top 1 ({rooms[0].title[:30]}...) không?"] if rooms else []
-        elif streak > MAX_HITL_STREAK:
-            follow_up = []
-            report = {"is_grounded": True, "context_grounded": False, "needs_user_consent": False, "hitl_streak": streak, "hitl_limit_reached": True}
         else:
             follow_up = []
             report = dict(report or {})
-            report.update({"needs_user_consent": False, "hitl_streak": streak, "hitl_max_streak": MAX_HITL_STREAK})
 
         response = AgentResponse(
-            session_id=sid, text_reply=final_text, rooms=rooms, insights=insights, current_preferences=pref, need_clarification=need_clarify,
-            follow_up_questions=follow_up, grounding_report=report, hitl_proposal=None,
+            session_id=sid,
+            text_reply=final_text,
+            rooms=rooms,
+            insights=insights,
+            current_preferences=pref,
+            need_clarification=need_clarify,
+            follow_up_questions=follow_up,
+            grounding_report=report,
             trace_events=list(state.get("trace_events") or []),
         )
         if not blocked:     # tin nhắn bị chặn (injection...) KHÔNG được vào lịch sử, tránh đầu độc các lượt sau

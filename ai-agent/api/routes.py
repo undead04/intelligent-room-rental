@@ -13,13 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from api.sse import stream_graph_events, stream_text_chunks
-from graph import build_housing_graph, default_deps, run_turn
+from api.sse import stream_graph_events
 from core.paths import DEFAULT_DB_PATH
-from core.session_store import PersistentSessionStore, SessionStore
+from core.session_store import PersistentSessionStore
 from domain.schemas import AgentResponse, DecisionInsight, RoomItem
+from graph import build_housing_graph, default_deps, run_turn
 from intelligence.insights import build_decision_insights
-from tools.http import get_client, set_client
+from tools.http import set_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +45,6 @@ class ChatRequest(BaseModel):
     use_graph: Optional[bool] = Field(
         default=True,
         description="Sử dụng LangGraph State Machine (housing_graph)",
-    )
-    ui_action: Optional[str] = Field(
-        default=None,
-        description="Hành động khi bấm nút Human-in-the-Loop (relax_budget, broaden...)",
     )
 
 
@@ -98,7 +94,6 @@ class HousingAgentService:
         user_message: str,
         conversation_history: Optional[list[dict[str, Any]]] = None,
         session_id: Optional[str] = None,
-        ui_action: Optional[str] = None,
         **kwargs: Any,
     ) -> AgentResponse:
         """Thực thi qua LangGraph State Machine 8 nodes."""
@@ -107,7 +102,6 @@ class HousingAgentService:
             HOUSING_GRAPH,
             user_message,
             session_id=effective_session_id,
-            ui_action=ui_action or kwargs.get("ui_action"),
         )
 
     def run(
@@ -115,7 +109,6 @@ class HousingAgentService:
         user_message: str,
         conversation_history: Optional[list[dict[str, Any]]] = None,
         session_id: Optional[str] = None,
-        ui_action: Optional[str] = None,
         **kwargs: Any,
     ) -> AgentResponse:
         """Alias thống nhất về run_graph."""
@@ -123,7 +116,6 @@ class HousingAgentService:
             user_message=user_message,
             conversation_history=conversation_history,
             session_id=session_id,
-            ui_action=ui_action,
             **kwargs,
         )
 
@@ -132,7 +124,6 @@ class HousingAgentService:
         user_message: str,
         conversation_history: Optional[list[dict[str, Any]]] = None,
         session_id: Optional[str] = None,
-        ui_action: Optional[str] = None,
         **kwargs: Any,
     ) -> Iterator[str]:
         """Generator phát SSE thời gian thực qua LangGraph State Machine."""
@@ -141,7 +132,6 @@ class HousingAgentService:
             user_message=user_message,
             effective_session_id=effective_session_id,
             graph=HOUSING_GRAPH,
-            ui_action=ui_action or kwargs.get("ui_action"),
             fallback_runner=self.run_graph,
         )
 
@@ -204,7 +194,6 @@ def chat_endpoint(request: ChatRequest) -> AgentResponse:
             user_message=request.message,
             conversation_history=request.conversation_history,
             session_id=request.session_id,
-            ui_action=request.ui_action,
         )
     except Exception as e:
         logger.exception(f"Lỗi khi xử lý hội thoại AI: {e}")
@@ -219,7 +208,6 @@ def chat_stream_endpoint(request: ChatRequest) -> StreamingResponse:
             user_message=request.message,
             conversation_history=request.conversation_history,
             session_id=request.session_id,
-            ui_action=request.ui_action,
         ),
         media_type="text/event-stream",
         headers={

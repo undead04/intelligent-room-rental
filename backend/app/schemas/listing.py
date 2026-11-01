@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.schemas.user import UserResponse
 from app.schemas.location import CityResponse, DistrictResponse, WardResponse
-from app.schemas.room_type import RoomType, RoomTypeResponse, RoomTypeReference, ROOM_TYPE_CODE_TO_ID
+from app.schemas.room_type import RoomTypeResponse, ROOM_TYPE_CODE_TO_ID
 
 
 class AmenityCode(str, Enum):

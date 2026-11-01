@@ -8,7 +8,6 @@ from domain.enums import (
     ROOM_TYPE_ID_TO_NAME,
     ROOM_TYPE_NAME_TO_ID,
     Amenity,
-    HitlAction,
     RoomType,
     amenity_glossary,
     amenity_label,
@@ -122,8 +121,3 @@ def test_amenity_glossary_lists_every_code():
     g = amenity_glossary()
     for code in CANONICAL_AMENITIES:
         assert f"- {code}:" in g
-
-
-def test_hitl_actions():
-    assert {a.value for a in HitlAction} == {"relax_budget", "broaden", "dormitory", "reduce_amenities", "keep", "custom"}
-    assert HitlAction("keep") is HitlAction.KEEP

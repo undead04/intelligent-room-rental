@@ -6,6 +6,9 @@ __pycache__/
 *.so
 .Python
 
+#ai-agent
+ai-agent/HUONG_DAN_KIEN_TRUC_VA_TINH_CHINH_AI_AGENT.md
+
 # Environments
 .venv/
 venv/

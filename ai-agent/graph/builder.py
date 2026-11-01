@@ -4,6 +4,8 @@ from typing import Any, Optional
 
 from langgraph.graph import END, START, StateGraph
 
+from core import RECURSION_LIMIT
+from domain.schemas import AgentResponse
 from graph.deps import Deps
 from graph.nodes.advisory import make_advisory_node
 from graph.nodes.clarification import make_clarification_node
@@ -15,7 +17,6 @@ from graph.nodes.understand import make_understand_node
 from graph.nodes.verify import make_verify_node
 from graph.routing import route_after_guardrail, route_after_understand, route_after_verify
 from graph.state import HousingAgentState
-from domain.schemas import AgentResponse
 
 
 def build_housing_graph(deps: Deps, checkpointer: Any = None):
@@ -44,9 +45,15 @@ def build_housing_graph(deps: Deps, checkpointer: Any = None):
     return g.compile(checkpointer=checkpointer)
 
 
-def run_turn(graph: Any, user_message: str, session_id: Optional[str] = None, ui_action: Optional[str] = None, config: Optional[dict] = None) -> AgentResponse:
+def run_turn(
+    graph: Any,
+    user_message: str,
+    session_id: Optional[str] = None,
+    config: Optional[dict] = None,
+) -> AgentResponse:
     """Một lượt hội thoại -> AgentResponse (session_id mới được sinh và trả về nếu client không gửi)."""
-    state = {"user_message": user_message, "ui_action": ui_action, "trace_events": []}
+    state: dict[str, Any] = {"user_message": user_message, "trace_events": []}
     if session_id:
         state["session_id"] = session_id
-    return graph.invoke(state, config=config)["final_response"]
+    run_config = {"recursion_limit": RECURSION_LIMIT, **(config or {})}
+    return graph.invoke(state, config=run_config)["final_response"]

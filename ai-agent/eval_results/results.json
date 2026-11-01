@@ -472,5 +472,185 @@
         }
       }
     }
+  },
+  "nlu": {
+    "llm": {
+      "n_cases": 35,
+      "exact_match": {
+        "k": 28,
+        "n": 35,
+        "rate": 0.8,
+        "ci_lo": 0.6410806339053748,
+        "ci_hi": 0.899576805540992
+      },
+      "none_results": 0,
+      "per_field": {
+        "amenities_add": {
+          "k": 2,
+          "n": 2,
+          "rate": 1.0,
+          "ci_lo": 0.34237195288961925,
+          "ci_hi": 1.0
+        },
+        "amenities_remove": {
+          "k": 1,
+          "n": 1,
+          "rate": 1.0,
+          "ci_lo": 0.20654329147389294,
+          "ci_hi": 1.0
+        },
+        "clear": {
+          "k": 0,
+          "n": 1,
+          "rate": 0.0,
+          "ci_lo": 0.0,
+          "ci_hi": 0.7934567085261071
+        },
+        "intent": {
+          "k": 17,
+          "n": 20,
+          "rate": 0.85,
+          "ci_lo": 0.6395767041130426,
+          "ci_hi": 0.9476322080405041
+        },
+        "location": {
+          "k": 10,
+          "n": 10,
+          "rate": 1.0,
+          "ci_lo": 0.7224598312333834,
+          "ci_hi": 1.0
+        },
+        "location_kind": {
+          "k": 8,
+          "n": 8,
+          "rate": 1.0,
+          "ci_lo": 0.6755843804891231,
+          "ci_hi": 1.0
+        },
+        "max_price": {
+          "k": 5,
+          "n": 7,
+          "rate": 0.7142857142857143,
+          "ci_lo": 0.35892909014821267,
+          "ci_hi": 0.9177828342909844
+        },
+        "min_area": {
+          "k": 1,
+          "n": 1,
+          "rate": 1.0,
+          "ci_lo": 0.20654329147389294,
+          "ci_hi": 1.0
+        },
+        "min_price": {
+          "k": 0,
+          "n": 1,
+          "rate": 0.0,
+          "ci_lo": 0.0,
+          "ci_hi": 0.7934567085261071
+        },
+        "priorities": {
+          "k": 3,
+          "n": 3,
+          "rate": 1.0,
+          "ci_lo": 0.43849391955098227,
+          "ci_hi": 1.0
+        },
+        "rank": {
+          "k": 2,
+          "n": 2,
+          "rate": 1.0,
+          "ci_lo": 0.34237195288961925,
+          "ci_hi": 1.0
+        },
+        "room_type": {
+          "k": 2,
+          "n": 2,
+          "rate": 1.0,
+          "ci_lo": 0.34237195288961925,
+          "ci_hi": 1.0
+        },
+        "room_types_exclude": {
+          "k": 1,
+          "n": 1,
+          "rate": 1.0,
+          "ci_lo": 0.20654329147389294,
+          "ci_hi": 1.0
+        },
+        "skill": {
+          "k": 3,
+          "n": 3,
+          "rate": 1.0,
+          "ci_lo": 0.43849391955098227,
+          "ci_hi": 1.0
+        },
+        "vague": {
+          "k": 3,
+          "n": 3,
+          "rate": 1.0,
+          "ci_lo": 0.43849391955098227,
+          "ci_hi": 1.0
+        },
+        "vague_category": {
+          "k": 1,
+          "n": 1,
+          "rate": 1.0,
+          "ci_lo": 0.20654329147389294,
+          "ci_hi": 1.0
+        },
+        "vague_region": {
+          "k": 1,
+          "n": 1,
+          "rate": 1.0,
+          "ci_lo": 0.20654329147389294,
+          "ci_hi": 1.0
+        }
+      },
+      "failures": [
+        {
+          "text": "tìm phòng gần UIT dưới 3tr5 có máy lạnh",
+          "field": "intent",
+          "expected": "new_search",
+          "got": "refine_search"
+        },
+        {
+          "text": "phòng trọ ở Dĩ An dưới 2 triệu rưỡi",
+          "field": "max_price",
+          "expected": 2500000,
+          "got": 2000000.0
+        },
+        {
+          "text": "ko lấy ktx nha, tìm studio gần ĐH Bách Khoa",
+          "field": "intent",
+          "expected": "new_search",
+          "got": "refine_search"
+        },
+        {
+          "text": "giá bao nhiêu cũng được",
+          "field": "clear",
+          "expected": [
+            "price"
+          ],
+          "got": []
+        },
+        {
+          "text": "phòng từ 2 đến 3 triệu",
+          "field": "min_price",
+          "expected": 2000000,
+          "got": null
+        },
+        {
+          "text": "tìm phòng 3tr rưỡi",
+          "field": "max_price",
+          "expected": 3500000,
+          "got": 3100000.0
+        },
+        {
+          "text": "tìm phòng cọc thấp gần UIT",
+          "field": "intent",
+          "expected": "new_search",
+          "got": "refine_search"
+        }
+      ]
+    }
   }
 }

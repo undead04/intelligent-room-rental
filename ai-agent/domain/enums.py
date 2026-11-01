@@ -1,14 +1,6 @@
-"""Nguồn sự thật DUY NHẤT cho: mã tiện ích, loại phòng, hành động HITL.
+"""Nguồn sự thật DUY NHẤT cho: mã tiện ích và loại phòng.
 
-Thay thế các bảng đang lặp ở nhiều file:
-  - schemas.CANONICAL_AMENITIES / ROOM_TYPE_*            (giữ lại bên dưới dưới dạng suy ra từ enum)
-  - graph.AMENITY_LABELS_VI / ROOM_TYPE_LABELS_VI
-  - tools.AMENITY_ALIAS_MAP
-  - grounding: dict {"ROOM": 1, ...} viết tay hai lần
-  - prompts: danh sách mã tiện ích (dùng amenity_glossary() để sinh)
-
-Các enum kế thừa `str` nên code cũ (`", ".join(pref.amenities)`, `dict.get(a, a)`,
-json.dumps) vẫn chạy trong lúc bạn chuyển dần.
+Các enum kế thừa `str` nên tương thích trực tiếp với chuỗi và JSON serialization.
 """
 
 from __future__ import annotations
@@ -182,19 +174,7 @@ def room_type_glossary() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Hành động Human-in-the-Loop (frontend gửi về đúng giá trị này, không dò emoji)
-# ---------------------------------------------------------------------------
-class HitlAction(_StrEnum):
-    RELAX_BUDGET = "relax_budget"
-    BROADEN = "broaden"
-    DORMITORY = "dormitory"
-    REDUCE_AMENITIES = "reduce_amenities"
-    KEEP = "keep"
-    CUSTOM = "custom"
-
-
-# ---------------------------------------------------------------------------
-# Hằng số tương thích ngược (code cũ import các tên này từ schemas)
+# Hằng số tương thích ngược
 # ---------------------------------------------------------------------------
 CANONICAL_AMENITIES: set[str] = {a.value for a in Amenity}
 CANONICAL_ROOM_TYPES: set[str] = {r.value for r in RoomType}

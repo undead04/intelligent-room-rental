@@ -192,12 +192,11 @@ def test_search_rooms_api_admin_ids_when_no_coordinates_and_limit_floor(be):
     assert "lat" not in body and "amenities" not in body and "weights" not in body
 
 
-def test_search_rooms_empty_results_carry_human_in_the_loop_hints(be):
+def test_search_rooms_empty_results_carry_context_suggestions(be):
     r = ht.search_rooms_api({"query": "q", "max_price": 3_000_000, "ward_id": 7, "amenities": ["ml"], "min_area": 25})
-    assert r["need_human_in_the_loop"] and r["data"] == []
+    assert r["data"] == []
     sug = " | ".join(r["context_suggestions"])
     assert "3.45 triệu/tháng" in sug and "toàn Quận/Huyện" in sug and "aircon" in sug and "25m²" in sug
-    assert "Human-in-the-Loop" in r["message"]
 
 
 def test_search_rooms_api_backend_error_and_tool_wrapper(be):
@@ -295,5 +294,5 @@ def test_default_deps_wires_core_functions_and_accepts_a_persistent_store(tmp_pa
     store = PersistentSessionStore(str(tmp_path / "s.db"))
     d = default_deps(sessions=store)
     assert d.search_rooms is ht.search_rooms_api and d.geocode is ht.geocode_point and d.admin_lookup is ht.admin_lookup and d.consult_skill is ht.consult_skill
-    assert d.sessions is store and d.decision_system_prompt.startswith("RULES") and "Quy tắc bổ sung" in d.decision_system_prompt and callable(d.market_fetcher)
+    assert d.sessions is store and d.decision_system_prompt == "RULES" and callable(d.market_fetcher)
     assert d.advice_system_prompt == "ADVICE"

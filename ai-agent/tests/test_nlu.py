@@ -1,6 +1,6 @@
 import pytest
 
-from domain.enums import Amenity, HitlAction, RoomType
+from domain.enums import Amenity, RoomType
 from intelligence.nlu import (
     LEVEL_TO_MULT, PreferencePatch, Priorities, TurnAnalysis, analyze_turn, apply_patch, apply_priorities,
     build_system_prompt, mult_to_level, multipliers_to_levels, sanitize_user_text,
@@ -184,21 +184,46 @@ def test_skill_slug_validated():
     assert a.skill_slug is None
 
 
-def test_hitl_choice_requires_pending_and_action():
-    _, a = _analyze(TurnAnalysis(intent="hitl_choice", hitl_action=HitlAction.KEEP), hitl_pending=False)
-    assert a.intent == "refine_search" and a.hitl_action is None
-    _, a = _analyze(TurnAnalysis(intent="hitl_choice", hitl_action=HitlAction.KEEP), hitl_pending=True)
-    assert a.intent == "hitl_choice" and a.hitl_action is HitlAction.KEEP
-    _, a = _analyze(TurnAnalysis(intent="hitl_choice"), hitl_pending=True)
-    assert a.intent == "refine_search"
-    _, a = _analyze(TurnAnalysis(intent="new_search", hitl_action=HitlAction.KEEP), hitl_pending=True)
-    assert a.hitl_action is None
-
-
 def test_followup_rank_bounds_and_no_rooms():
     _, a = _analyze(TurnAnalysis(intent="room_followup", referenced_room_rank=2), n_rooms=3)
     assert a.intent == "room_followup" and a.referenced_room_rank == 2
     _, a = _analyze(TurnAnalysis(intent="room_followup", referenced_room_rank=9), n_rooms=3)
     assert a.intent == "room_followup" and a.referenced_room_rank is None
     _, a = _analyze(TurnAnalysis(intent="room_followup", referenced_room_rank=1), n_rooms=0)
-    assert a.intent == "new_search" and a.referenced_room_rank is None
+    assert a.intent == "room_followup" and a.referenced_room_rank is None
+
+
+def test_multi_intent_detection_preserves_compound_fields():
+    # 1. Tìm phòng (có patch) + Hỏi kỹ năng (skill_slug hợp lệ)
+    _, a1 = _analyze(TurnAnalysis(
+        intent="new_search",
+        skill_slug="rental-contract-advisor",
+        patch=PreferencePatch(location_text="UIT", max_price=3_500_000),
+    ))
+    assert a1.is_multi_intent is True
+    assert a1.skill_slug == "rental-contract-advisor"
+    assert a1.patch.location_text == "UIT" and a1.patch.max_price == 3_500_000
+
+    # 2. Hỏi chi tiết phòng cũ + Đổi tiêu chí tìm mới
+    _, a2 = _analyze(
+        TurnAnalysis(
+            intent="new_search",
+            referenced_room_rank=1,
+            patch=PreferencePatch(location_text="Quận 7", max_price=4_000_000),
+        ),
+        n_rooms=3,
+    )
+    assert a2.is_multi_intent is True
+    assert a2.referenced_room_rank == 1 and a2.patch.location_text == "Quận 7"
+
+    # 3. Hỏi chi tiết phòng cũ + Hỏi kỹ năng
+    _, a3 = _analyze(
+        TurnAnalysis(
+            intent="room_followup",
+            referenced_room_rank=2,
+            skill_slug="rental-contract-advisor",
+        ),
+        n_rooms=3,
+    )
+    assert a3.is_multi_intent is True
+    assert a3.referenced_room_rank == 2 and a3.skill_slug == "rental-contract-advisor"

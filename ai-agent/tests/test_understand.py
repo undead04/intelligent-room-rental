@@ -1,12 +1,10 @@
-import copy
-
 import pytest
 
-from domain.enums import Amenity, HitlAction, RoomType
+from domain.enums import Amenity, RoomType
 from intelligence.nlu import PreferencePatch, Priorities, TurnAnalysis
 from domain.schemas import UserPreferenceState
 from tests.helpers import SKILLS, FakeModel, make_session, room
-from intelligence.understand import CUSTOM_TEXT, KEEP_TEXT, interpret_turn, route_after_understand
+from intelligence.understand import interpret_turn, route_after_understand
 
 
 def run(analysis, session=None, text="câu bất kỳ", **kw):
@@ -22,7 +20,7 @@ def test_new_search_applies_patch_priorities_and_weights():
     assert plan.preferences.location_text == "UIT" and plan.preferences.max_price == 3_500_000
     assert plan.preferences.preferred_amenities == [Amenity.AIRCON]
     assert plan.multipliers["price"] == 2.0 and plan.weight_explanations == ["ưu tiên giá rẻ"]
-    assert not plan.needs_clarification and plan.commit and not plan.used_fallback
+    assert not plan.needs_clarification and plan.commit
     assert "amenity" in plan.computed_weights and "location" not in plan.computed_weights    # chưa có toạ độ
     assert abs(sum(plan.computed_weights.values()) - 1.0) < 1e-9
 
@@ -43,7 +41,7 @@ def test_priority_persists_across_turns_and_reset():
     plan, _ = run(TurnAnalysis(intent="new_search", reset_priorities=True, patch=PreferencePatch(location_text="Q7")), s)
     assert plan.multipliers["price"] == 1.0                                      # nhu cầu mới -> đặt lại
     plan, _ = run(TurnAnalysis(intent="refine_search", priorities=Priorities(price="lower")), s)
-    assert plan.multipliers["price"] == 0.5                                      # hạ được (bản cũ không làm được)
+    assert plan.multipliers["price"] == 0.5                                      # hạ được
 
 
 def test_vague_location_needs_clarification_and_not_written():
@@ -67,70 +65,6 @@ def test_room_type_exclusion_flows_into_preferences():
     assert plan.preferences.room_type is None and plan.preferences.excluded_room_types == [RoomType.SLEEPBOX]
 
 
-# ---------------- HITL ----------------
-def _hitl(act, session=None, patch=None, **kw):
-    s = session or make_session(pref=UserPreferenceState(max_price=3_000_000, amenities=["ml"], location_text="Q1", ward_id=7, district_id=1, city_id=79),
-                                hitl_streak=1, proposed_budget=3_450_000)
-    return run(TurnAnalysis(intent="hitl_choice", hitl_action=act, patch=patch or PreferencePatch()), s, **kw)
-
-
-def test_hitl_keep():
-    plan, _ = _hitl(HitlAction.KEEP)
-    assert plan.is_keep and plan.direct_reply and plan.final_text == KEEP_TEXT and not plan.commit
-    assert route_after_understand({"is_keep_criteria": True, "direct_reply": True}) == "formatter_node"
-
-
-def test_hitl_custom_click_vs_text():
-    plan, _ = _hitl(HitlAction.CUSTOM, ui_action="custom")           # bấm nút -> trả lời sẵn, không qua LLM clarification
-    assert plan.direct_reply and plan.needs_clarification and plan.final_text == CUSTOM_TEXT
-    plan, _ = _hitl(HitlAction.CUSTOM, patch=PreferencePatch(max_price=5e6))   # gõ tiêu chí mới -> tìm lại
-    assert not plan.direct_reply and plan.preferences.max_price == 5e6 and plan.commit
-
-
-def test_hitl_relax_budget_uses_proposed_then_default_then_patch():
-    plan, _ = _hitl(HitlAction.RELAX_BUDGET)
-    assert plan.preferences.max_price == 3_450_000 and plan.multipliers["price"] == 1.5 and plan.weight_explanations
-    s = make_session(pref=UserPreferenceState(max_price=4_000_000), hitl_streak=1)
-    plan, _ = _hitl(HitlAction.RELAX_BUDGET, session=s)
-    assert plan.preferences.max_price == 4_600_000                   # +15% khi không có mức đề xuất
-    s = make_session(hitl_streak=1)
-    plan, _ = _hitl(HitlAction.RELAX_BUDGET, session=s)
-    assert plan.preferences.max_price == 3_450_000                   # mặc định 3tr * 1.15
-    plan, _ = _hitl(HitlAction.RELAX_BUDGET, patch=PreferencePatch(max_price=3_800_000))
-    assert plan.preferences.max_price == 3_800_000                   # người dùng tự nêu số thì thắng
-
-
-def test_hitl_dormitory_overrides_exclusion():
-    s = make_session(pref=UserPreferenceState(excluded_room_types=["ktx"]), hitl_streak=1)
-    plan, _ = _hitl(HitlAction.DORMITORY, session=s)
-    assert plan.preferences.room_type is RoomType.SLEEPBOX and plan.preferences.excluded_room_types == []
-    assert plan.multipliers["price"] == 1.8
-
-
-def test_hitl_reduce_amenities_and_broaden_ladder():
-    plan, _ = _hitl(HitlAction.REDUCE_AMENITIES)
-    assert plan.preferences.amenities == [] and "amenity" not in plan.computed_weights
-    s = make_session(pref=UserPreferenceState(location_text="Q1", ward_id=7, district_id=1, city_id=79), hitl_streak=1)
-    p1, _ = _hitl(HitlAction.BROADEN, session=s)
-    assert p1.preferences.ward_id is None and p1.preferences.district_id == 1
-    s.preferences = p1.preferences
-    p2, _ = _hitl(HitlAction.BROADEN, session=s)
-    assert p2.preferences.district_id is None and p2.preferences.city_id == 79
-    s.preferences = p2.preferences
-    p3, _ = _hitl(HitlAction.BROADEN, session=s)
-    assert p3.preferences.city_id is None and p3.preferences.location_text is None     # cuối cùng xoá hẳn vị trí
-    assert not p3.needs_clarification                                                  # đang trong HITL -> không hỏi lại
-
-
-def test_ui_action_bypasses_model_and_accepts_strings():
-    m = FakeModel(RuntimeError("không được gọi"))
-    s = make_session(hitl_streak=1, proposed_budget=3_000_000)
-    plan = interpret_turn("👍 whatever", s, m, ui_action="relax_budget", skills=SKILLS)
-    assert plan.preferences.max_price == 3_000_000 and m.structured.calls == []
-    plan = interpret_turn("x", s, m, ui_action="không_tồn_tại", skills=SKILLS)           # rác -> bỏ qua, chạy đường LLM (lỗi -> fallback)
-    assert plan.used_fallback
-
-
 # ---------------- các intent khác ----------------
 def test_followup_returns_flag_rank_and_route():
     s = make_session(rooms=[room(1), room(2)])
@@ -139,9 +73,10 @@ def test_followup_returns_flag_rank_and_route():
     assert route_after_understand({"is_followup": True}) == "decision_node"
 
 
-def test_followup_without_rooms_becomes_search():
+def test_followup_without_rooms_routes_to_clarification():
     plan, _ = run(TurnAnalysis(intent="room_followup", referenced_room_rank=1))
-    assert not plan.is_followup and plan.intent == "new_search"
+    assert not plan.is_followup and plan.intent == "room_followup" and plan.needs_clarification
+    assert route_after_understand({"needs_clarification": plan.needs_clarification}) == "clarification_node"
 
 
 def test_skill_advice_routes_to_advisory():
@@ -171,12 +106,28 @@ def test_route_priority_and_default():
     assert route_after_understand({"direct_reply": True, "needs_clarification": True}) == "formatter_node"
 
 
-# ---------------- fallback khi LLM lỗi ----------------
-def test_llm_failure_uses_fallback_and_flags_it():
-    s = make_session(pref=UserPreferenceState(max_price=3e6), hitl_streak=1, proposed_budget=3_450_000)
-    plan = interpret_turn("❌ Giữ nguyên tiêu chí của tôi", s, FakeModel(RuntimeError("down")), skills=SKILLS)
-    assert plan.used_fallback and plan.is_keep
-    plan = interpret_turn("tìm phòng giá rẻ", make_session(), None, skills=SKILLS)           # không có model
-    assert plan.used_fallback and plan.multipliers["price"] == 2.0 and plan.needs_clarification
-    plan = interpret_turn("gần khu công nghiệp ở Bình Dương", make_session(), None, skills=SKILLS)
-    assert plan.vague_location_info == {"category": "khu công nghiệp", "region": "binh duong"} and plan.needs_clarification
+# ---------------- khi LLM lỗi hoặc không có model ----------------
+def test_llm_failure_or_none_model_routes_to_clarification():
+    s = make_session(pref=UserPreferenceState(max_price=3e6))
+    plan = interpret_turn("tìm phòng giá rẻ", s, FakeModel(RuntimeError("down")), skills=SKILLS)
+    assert plan.needs_clarification and not plan.commit
+    plan2 = interpret_turn("tìm phòng giá rẻ", make_session(), None, skills=SKILLS)
+    assert plan2.needs_clarification and not plan2.commit
+
+
+def test_multi_intent_saves_patch_and_returns_natural_chat_without_buttons():
+    a = TurnAnalysis(
+        intent="new_search",
+        skill_slug="rental-contract-advisor",
+        patch=PreferencePatch(location_text="UIT", max_price=3_500_000, amenities_add=["aircon"]),
+        priorities=Priorities(price="high"),
+    )
+    plan, _ = run(a)
+    assert plan.commit is True
+    assert plan.preferences.location_text == "UIT" and plan.preferences.max_price == 3_500_000
+    assert plan.preferences.amenities == [Amenity.AIRCON]
+    assert plan.multipliers["price"] == 2.0
+    assert plan.direct_reply is True and plan.needs_clarification is True
+    assert "ghi nhận sẵn các tiêu chí tìm phòng" in plan.final_text
+    assert "tư vấn về tư vấn hợp đồng thuê trọ, tiền cọc trước" in plan.final_text
+    assert route_after_understand({"direct_reply": plan.direct_reply, "needs_clarification": plan.needs_clarification}) == "formatter_node"
