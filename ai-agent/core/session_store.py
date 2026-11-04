@@ -54,6 +54,7 @@ class SessionData:
         self.preference_history: list[UserPreferenceState] = []
         self.initial_preference: Optional[UserPreferenceState] = None
         self.turn_snapshots: list[UserPreferenceState] = []
+        self.focused_room_rank: Optional[int] = None
 
     def record_preference_snapshot(self, pref: UserPreferenceState) -> None:
         """Lưu snapshot vào preference_history (tối đa 5 snapshots khác nhau gần nhất)."""
@@ -112,6 +113,36 @@ class SessionData:
                 out.append(AIMessage(content=cleaned))
         return out
 
+    def compact_history_tuples(self, window: int = 4) -> list[tuple[str, str]]:
+        """Trả về danh sách tuple (role, text) đã được nén gọn cho tầng NLU và Prompt:
+        - Giữ nguyên tin nhắn của user.
+        - Với tin nhắn của assistant: rút gọn danh sách phòng hoặc cẩm nang dài dòng thành câu ngắn gọn."""
+        import re
+
+        slice_hist = self.history[-window:] if window > 0 else self.history
+        out: list[tuple[str, str]] = []
+        for role, text_msg in slice_hist:
+            if role == "user":
+                out.append((role, text_msg))
+            else:
+                cleaned = text_msg
+                split_match = re.search(r"(?:\n|^)(?:###\s*1\.|1\.\s+\*\*|\d+\.\s+\*\*)", text_msg)
+                if split_match or "Homigo đã tìm được" in text_msg or "Homigo đã nhận được" in text_msg:
+                    if split_match:
+                        header = text_msg[:split_match.start()].strip()
+                    else:
+                        header = text_msg.split("Homigo đã")[0].strip()
+
+                    if len(header) > 30:
+                        cleaned = f"{header} [Đã gợi ý danh sách phòng]"
+                    else:
+                        cleaned = "Homigo đã gợi ý danh sách các phòng phù hợp với yêu cầu."
+                elif "Tư vấn chuyên sâu" in text_msg or len(text_msg) > 250:
+                    snippet = text_msg[:180].rsplit(" ", 1)[0].strip() if len(text_msg) > 180 else text_msg.strip()
+                    cleaned = f"{snippet}... [Đã cung cấp nội dung tư vấn cẩm nang]"
+                out.append((role, cleaned))
+        return out
+
 
 class SessionStore:
     def __init__(self, clock: Callable[[], float] = time.time, ttl: float = SESSION_TTL_SECONDS, max_sessions: int = MAX_SESSIONS):
@@ -154,6 +185,7 @@ class SessionStore:
                 session.history = session.history[-MAX_SESSION_MESSAGES:]
             if searched:
                 session.last_rooms = list(rooms)
+                session.focused_room_rank = None
             session.last_active = self._clock()
 
     def __len__(self) -> int:
@@ -166,9 +198,10 @@ class SessionStore:
 def _dump(s: SessionData) -> str:
     return json.dumps({
         "preferences": s.preferences.model_dump(mode="json"), "multipliers": s.multipliers, "proposed_budget": s.proposed_budget,
-        "zero_result_streak": s.zero_result_streak, "history": s.history, "last_rooms": [r.model_dump(mode="json") for r in s.last_rooms],
+        "zero_result_streak": s.zero_result_streak, "history": s.history, "last_rooms": [r.model_dump(mode="json") if hasattr(r, "model_dump") else r for r in s.last_rooms],
         "preference_history": [p.model_dump(mode="json") for p in s.preference_history],
         "turn_snapshots": [p.model_dump(mode="json") for p in s.turn_snapshots], "initial_preference": s.initial_preference.model_dump(mode="json") if s.initial_preference else None,
+        "focused_room_rank": s.focused_room_rank,
     }, ensure_ascii=False)
 
 
@@ -180,10 +213,20 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s.proposed_budget = d.get("proposed_budget")
     s.zero_result_streak = int(d.get("zero_result_streak") or 0)
     s.history = [(str(r), str(t)) for r, t in d.get("history") or []]
-    s.last_rooms = [RoomItem.model_validate(r) for r in d.get("last_rooms") or []]
+    loaded_rooms = []
+    for r in d.get("last_rooms") or []:
+        try:
+            if isinstance(r, dict) and "id" in r and "title" in r:
+                loaded_rooms.append(RoomItem.model_validate(r))
+            elif isinstance(r, dict) and "listing" in r:
+                loaded_rooms.append(RoomItem.from_backend_result(r, rank=len(loaded_rooms) + 1))
+        except Exception:
+            pass
+    s.last_rooms = loaded_rooms
     s.preference_history = [UserPreferenceState.model_validate(p) for p in d.get("preference_history") or []]
     s.turn_snapshots = [UserPreferenceState.model_validate(p) for p in d.get("turn_snapshots") or []]
     s.initial_preference = UserPreferenceState.model_validate(d["initial_preference"]) if d.get("initial_preference") else None
+    s.focused_room_rank = d.get("focused_room_rank")
     s.version, s.last_active = version, last_active
     return s
 

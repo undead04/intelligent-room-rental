@@ -1,13 +1,4 @@
-"""Phân giải địa danh bằng CODE (không gọi LLM): hành chính -> (city_id, district_id, ward_id); địa điểm cụ thể -> (lat, lng).
-
-NLU đã cho biết địa danh là 'admin' hay 'place' (PreferencePatch.location_kind) nên không cần LLM phân loại mỗi lượt nữa.
-Khác bản cũ:
-  - Khớp TÊN CHÍNH XÁC sau chuẩn hoá (bỏ dấu, bỏ tiền tố 'Phường/Quận/TP.', alias tphcm/hn/q1...), không lấy `data[0]` mù:
-    "Chợ Thủ Đức" không còn bị server-side `search` kéo về quận Thủ Đức.
-  - Trùng tên (nhiều 'Phường 1') -> trả `ambiguous` + danh sách ứng viên để HỎI người dùng, không đoán.
-  - Thiếu dữ liệu hành chính -> `admin_not_found` (thông báo "chưa có dữ liệu"), không lẫn với "không geocode được".
-
-Hàm thuần: `admin_lookup` và `geocode` được truyền vào (production nối tới HTTP/tool ở graph/deps.py).
+"""Phân giải địa danh bằng CODE (không gọi LLM): hành chính -> (city_id, district_id, ward_id); địa điểm cụ thể -> (lat, lng).y).
 """
 
 from __future__ import annotations
@@ -16,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Optional
 
-from utils.text import contains_phrase, norm_key, tokens
+from utils.text import norm_key
 
 Kind = Literal["admin", "point", "admin_not_found", "unresolved_point", "ambiguous"]
 
@@ -51,6 +42,50 @@ _ALIAS_DISPLAY = {   # alias -> tên chính thức CÓ DẤU, dùng làm từ kh
     "can tho": "Cần Thơ", "hai phong": "Hải Phòng", "dong nai": "Đồng Nai",
     "thu duc": "Thủ Đức",
 }
+
+CITY_ID_TO_REGION: dict[int, str] = {
+    13: "Hồ Chí Minh",
+    79: "Hồ Chí Minh",
+    1: "Hà Nội",
+    48: "Đà Nẵng",
+    74: "Bình Dương",
+}
+
+REGION_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "Hồ Chí Minh": (
+        "thu duc", "binh thanh", "go vap", "tan binh", "phu nhuan", "tan phu", "binh tan",
+        "ho chi minh", "tp hcm", "tphcm", "sai gon", "saigon", "uit", "nha be", "hoc mon", "cu chi", "binh chanh",
+        "quan 1", "quan 2", "quan 3", "quan 4", "quan 5", "quan 6", "quan 7", "quan 8", "quan 9", "quan 10", "quan 11", "quan 12",
+    ),
+    "Hà Nội": (
+        "ha noi", "cau giay", "hai ba trung", "dong da", "ba dinh", "hoan kiem",
+        "thanh xuan", "ha dong", "tay ho", "nam tu liem", "bac tu liem", "long bien", "hoang mai",
+    ),
+    "Bình Dương": ("binh duong", "di an", "thuan an", "thu dau mot", "ben cat", "tan uyen"),
+    "Đà Nẵng": ("da nang", "hai chau", "lien chieu", "son tra", "ngu hanh son", "cam le", "thanh khe"),
+}
+
+
+def infer_region_from_location_text(location_text: Optional[str]) -> Optional[str]:
+    """Nhận diện tên tỉnh/thành tương ứng từ tên địa danh hoặc quận/huyện tự do."""
+    if not location_text:
+        return None
+    loc_k = norm_key(location_text)
+    for region, keywords in REGION_KEYWORDS.items():
+        if any(kw in loc_k for kw in keywords):
+            return region
+    return None
+
+
+def infer_region_from_preference(pref: Any) -> Optional[str]:
+    """Suy ra tỉnh/thành từ một trạng thái UserPreferenceState (theo city_id hoặc location_text)."""
+    if pref is None:
+        return None
+    cid = getattr(pref, "city_id", None)
+    if cid in CITY_ID_TO_REGION:
+        return CITY_ID_TO_REGION[cid]
+    return infer_region_from_location_text(getattr(pref, "location_text", None))
+
 
 _PAREN_RE = re.compile(r"\s*\([^)]*\)")
 
@@ -113,10 +148,6 @@ def search_term(name: Optional[str]) -> str:
 def exact_matches(rows: list[dict[str, Any]], name: str) -> list[dict[str, Any]]:
     key = admin_key(name)
     return [r for r in rows if key and admin_key(r.get("name")) == key]
-
-
-_exact = exact_matches   # tương thích tên cũ
-
 
 @dataclass
 class LocationResolution:

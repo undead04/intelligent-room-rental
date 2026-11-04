@@ -191,13 +191,17 @@ export function useAiChat() {
         } else {
           setSelectedRoomId(res.rooms[0].id);
         }
-      } else if ((res.rooms && res.rooms.length === 0) || res.grounding_report?.blocked_by_guardrail || textToSend.toLowerCase().includes("giữ nguyên")) {
-        // Chỉ làm trống danh sách phòng khi tìm kiếm thực sự không có kết quả hoặc bị chặn
+      } else if (
+        res.grounding_report?.blocked_by_guardrail ||
+        /^(?:tìm mới|tim moi|reset|bỏ hết|bo het|xóa hết|xoa het)/i.test(textToSend) ||
+        (res.searched === true && res.rooms && res.rooms.length === 0)
+      ) {
+        // Chỉ làm trống danh sách phòng khi tìm kiếm thực sự ra 0 kết quả, bị chặn, hoặc người dùng yêu cầu reset
         setRooms([]);
         setSelectedRoomId(DEFAULT_ROOM_ID);
         setInsights(null);
       }
-      // Khi là lượt hỏi Kỹ năng chuyên sâu (Advisory) hoặc Hỏi làm rõ, giữ nguyên danh sách phòng và bản đồ hiện có
+      // Khi là lượt hỏi Kỹ năng chuyên sâu (Advisory), Hỏi làm rõ, hoặc Followup (searched !== true): giữ nguyên danh sách phòng và bản đồ hiện có
 
       if (res.insights) {
         setInsights(res.insights);

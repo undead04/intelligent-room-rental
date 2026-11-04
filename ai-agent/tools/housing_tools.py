@@ -1,13 +1,4 @@
 """Tool nhà ở cho agent (LangChain) + các HÀM LÕI để graph gọi thẳng (không qua JSON/tool).
-Thay đổi so với bản cũ:
-  - KHÔNG gọi LLM trong tool để phân loại hành chính/chuẩn hoá tên/trích ngân sách (graph đã làm bằng NLU); chỉ còn một lần mở rộng
-    địa danh bằng LLM khi /geocode trả 404 (đường dự phòng thật sự).
-  - Phân loại hành chính bằng khớp tên CHÍNH XÁC với dữ liệu hành chính (location_service), không phải đoán bằng LLM/từ khoá.
-  - Bỏ ngữ cảnh ẩn (contextvars) và khối ghi đè query/limit/weights/tiện ích trong search_rooms (đã gây mất trọng số MCDM ở nhánh agent).
-    `set_turn_query_context`/`clear_turn_query_context` còn lại như no-op (DeprecationWarning) để mã cũ không sập.
-  - Tiện ích chuẩn hoá bằng domain.enums; một httpx.Client dùng chung; không import safety.grounding as grounding (hết vòng phụ thuộc).
-  - `get_market_price_stats` không còn mặc định TP.HCM: thiếu city_id thì báo lỗi.
-  - `list_housing_skills` không trả đường dẫn máy chủ.
 """
 
 from __future__ import annotations
@@ -15,51 +6,20 @@ from __future__ import annotations
 import json
 import logging
 import re
-import warnings
 from typing import Any, Optional
 
 from langchain_core.tools import tool
 
-from domain.budget import relax_budget
 from domain.enums import normalize_amenities
-from tools.location_service import admin_key, exact_matches, resolve_admin
 from domain.schemas import format_vnd_million
 from skills.skills_discovery import discover_housing_skills, get_skill
 from tools import http
-from tools.http import API_BASE, request
+from tools.http import request
 
 logger = logging.getLogger(__name__)
 
 MAX_LIMIT = 20
 _LISTING_ID = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
-_ADMIN_MSG = ("'{q}' là đơn vị hành chính (Tỉnh/Thành phố, Quận/Huyện, Phường/Xã), không trả về toạ độ (lat, lon) theo thiết kế. "
-              "Hãy dùng tool get_location_hierarchy để tra cứu ID hành chính (city_id, district_id, ward_id).")
-_NO_DATA = ("Hiện tại cơ sở dữ liệu Homigo chưa có dữ liệu {what}. Không dùng geocode_location và không gọi search_rooms. "
-            "Hãy thông báo tự nhiên cho người dùng và gợi ý các khu vực đang được hỗ trợ.")
-
-# --- tương thích mã cũ -------------------------------------------------------
-_unwrap_response = http.unwrap_response
-
-
-class _Borrowed:
-    """`with _client() as c:` kiểu cũ vẫn chạy nhưng KHÔNG đóng client dùng chung."""
-    def __enter__(self):
-        return http.get_client()
-
-    def __exit__(self, *exc):
-        return False
-
-
-def _client() -> _Borrowed:
-    return _Borrowed()
-
-
-def set_turn_query_context(*a: Any, **k: Any) -> None:
-    warnings.warn("set_turn_query_context không còn tác dụng (đã bỏ ngữ cảnh ẩn)", DeprecationWarning, stacklevel=2)
-
-
-def clear_turn_query_context() -> None:
-    return None
 
 
 def dump(obj: Any) -> str:
@@ -81,15 +41,6 @@ def admin_lookup(level: str, name: str, city_id: Optional[int] = None, district_
         params["district_id"] = district_id
     res = request("GET", _PATHS[level], params=params)
     return res["data"] if res.get("ok") and isinstance(res.get("data"), list) else []
-
-
-def _ranked(level: str, name: str, **scope: Any) -> tuple[list[dict[str, Any]], str]:
-    """(hàng, 'exact'|'partial'|'none'): khớp chính xác đứng riêng; không có thì trả mọi kết quả server (agent tự chọn)."""
-    from tools.location_service import search_term
-
-    rows = admin_lookup(level, search_term(name), **{k: v for k, v in scope.items() if v is not None})
-    exact = exact_matches(rows, name)
-    return (exact, "exact") if exact else (rows, "partial" if rows else "none")
 
 
 # =============================================================================
@@ -142,79 +93,7 @@ def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, 
     return None
 
 
-@tool
-def geocode_location(query: str, hint: Optional[str] = None) -> str:
-    """Chuyển đổi tên ĐỊA ĐIỂM CỤ THỂ (trường đại học, ký túc xá, toà nhà, chợ, bệnh viện, tên đường, địa chỉ cụ thể) thành toạ độ (lat, lng).
-    LƯU Ý QUAN TRỌNG: TUYỆT ĐỐI KHÔNG dùng tool này cho tên Tỉnh/Thành phố, Quận/Huyện, Phường/Xã (ví dụ: 'Quảng Ngãi', 'TP. Thủ Đức', 'Quận 1', 'Phường Linh Trung'). Với đơn vị hành chính, bắt buộc phải dùng `get_location_hierarchy`.
 
-    Args:
-        query: Tên địa điểm cụ thể cần tìm (ví dụ: 'Trường Đại học Công nghệ Thông tin', 'Ký túc xá khu B', 'Đường D2 Bình Thạnh').
-        hint: Gợi ý tỉnh/thành phố để thu hẹp tìm kiếm nếu có trong ngữ cảnh.
-
-    Returns:
-        JSON string chứa {lat, lon, formatted_address} hoặc thông báo lỗi nếu không tìm thấy / là đơn vị hành chính.
-    """
-    q = (query or "").strip()
-    if not q:
-        return dump({"ok": False, "error": "Thiếu tên địa điểm."})
-    if resolve_admin(q, admin_lookup, hint).kind in ("admin", "ambiguous"):       # khớp tên chính xác với DB hành chính, không đoán bằng LLM
-        return dump({"ok": False, "is_administrative": True, "error": _ADMIN_MSG.format(q=query)})
-    point = geocode_point(q, hint)
-    if point is None:
-        return dump({"ok": False, "error": f"Không tìm thấy toạ độ cho '{query}'. Hãy thử nhập cụ thể hơn hoặc hỏi lại người dùng."})
-    return dump({"ok": True, "data": {"lat": point["lat"], "lon": point["lng"]}})
-
-
-@tool
-def get_location_hierarchy(
-    city_name: Optional[str] = None,
-    district_name: Optional[str] = None,
-    ward_name: Optional[str] = None,
-    city_id: Optional[int] = None,
-    district_id: Optional[int] = None,
-) -> str:
-    """Tra cứu ID của Tỉnh/Thành phố (city_id), Quận/Huyện (district_id), Phường/Xã (ward_id) từ cơ sở dữ liệu.
-    BẮT BUỘC dùng khi người dùng tìm kiếm theo khu vực hành chính (Tỉnh/Thành phố, Quận/Huyện, Phường/Xã - ví dụ: 'tìm phòng ở Quảng Ngãi', 'tìm phòng ở Linh Xuân', 'tìm phòng ở Quận 1', 'TP. Thủ Đức'). Không trả về lat/lon.
-
-    Args:
-        city_name: Tên tỉnh/thành phố để tìm kiếm (ví dụ 'Hồ Chí Minh', 'Đà Nẵng', 'Quảng Ngãi').
-        district_name: Tên quận/huyện/thành phố trực thuộc để tìm kiếm (ví dụ 'Thủ Đức', 'Bình Thạnh', 'Quận 1').
-        ward_name: Tên phường/xã để tìm kiếm (ví dụ 'Linh Trung', 'Linh Xuân').
-        city_id: ID thành phố (nếu đã biết, dùng để lọc quận chính xác).
-        district_id: ID quận/huyện (nếu đã biết, dùng để lọc phường chính xác).
-
-    Returns:
-        JSON danh sách địa danh khớp kèm ID (city_id, district_id, ward_id); `match` = 'exact' (khớp tên chính xác) hoặc 'partial'.
-    """
-    cid, did = city_id, district_id
-    if city_name and cid is None and (district_name or ward_name):
-        rows, kind = _ranked("city", city_name)
-        cid = rows[0].get("id") if kind == "exact" and len(rows) == 1 else None
-    if district_name and did is None and ward_name:
-        rows, kind = _ranked("district", district_name, city_id=cid)
-        if kind == "exact" and len(rows) == 1:
-            did, cid = rows[0].get("id"), cid or rows[0].get("city_id")
-
-    if ward_name or (district_id is not None and not district_name and not city_name):
-        rows, kind = _ranked("ward", ward_name or "", district_id=did)
-        if not rows and ward_name:
-            return dump({"ok": True, "data": [], "message": _NO_DATA.format(what=f"tại Phường/Xã '{ward_name}'")})
-        return dump({"ok": True, "data": rows, "match": kind, "level": "ward"})
-
-    if district_name or (city_id is not None and not city_name):
-        rows, kind = _ranked("district", district_name or "", city_id=cid)
-        if not rows and district_name:
-            return dump({"ok": True, "data": [], "message": _NO_DATA.format(what=f"tại Quận/Huyện '{district_name}'")})
-        return dump({"ok": True, "data": rows, "match": kind, "level": "district"})
-
-    rows, kind = _ranked("city", city_name or "")
-    if rows or not city_name:
-        return dump({"ok": True, "data": rows, "match": kind, "level": "city"})
-    drows, dkind = _ranked("district", city_name)         # 'TP. Thủ Đức'/'Dĩ An' nhập nhầm vào city_name nhưng nằm ở bảng quận/huyện
-    if drows:
-        return dump({"ok": True, "data": drows, "match": dkind, "level": "district",
-                     "note": f"'{city_name}' được lưu ở cấp Quận/Huyện/Thành phố trực thuộc (district_id). Hãy dùng district_id (và city_id) này khi gọi search_rooms."})
-    return dump({"ok": True, "data": [], "message": _NO_DATA.format(what=f"phòng trọ tại Tỉnh/Thành phố '{city_name}'")})
 
 
 # =============================================================================
@@ -256,7 +135,7 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
 def _empty_result_hints(args: dict[str, Any], amenities: list[str]) -> dict[str, Any]:
     suggestions: list[str] = []
     if args.get("max_price"):
-        suggestions.append(f"nới ngân sách lên khoảng {format_vnd_million(relax_budget(float(args['max_price'])))}")
+        suggestions.append("cân nhắc điều chỉnh hoặc nới nhẹ ngân sách")
     if args.get("ward_id") is not None:
         suggestions.append("mở rộng tìm kiếm ra toàn Quận/Huyện thay vì chỉ 1 Phường")
     elif args.get("district_id") is not None or (args.get("lat") is not None and args.get("lng") is not None):
@@ -295,9 +174,9 @@ def search_rooms(
 
     Args:
         query: Câu mô tả nhu cầu bằng ngôn ngữ tự nhiên (ví dụ: 'phòng trọ có gác lửng, yên tĩnh, cho nuôi mèo, giờ giấc tự do').
-        lat: Vĩ độ của điểm mốc (lấy từ geocode_location nếu người dùng tìm quanh một địa điểm).
+        lat: Vĩ độ của điểm mốc (nếu người dùng tìm quanh một địa điểm).
         lng: Kinh độ của điểm mốc.
-        city_id: ID thành phố (lấy từ get_location_hierarchy).
+        city_id: ID thành phố.
         district_id: ID quận/huyện.
         ward_id: ID phường/xã.
         room_type: Mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE).
@@ -305,7 +184,7 @@ def search_rooms(
         max_price: Giá tối đa bằng VNĐ (ví dụ: 3500000).
         min_area: Diện tích tối thiểu (m²).
         max_area: Diện tích tối đa (m²).
-        amenities: Danh sách tiện ích yêu cầu theo format AmenityCode (ví dụ: ['aircon', 'mezzanine', 'pet_allowed']).
+        amenities: Danh sách tiện ích yêu cầu theo format Amenity (ví dụ: ['aircon', 'mezzanine', 'pet_allowed']).
         weights: Trọng số động tùy chỉnh (e.g. {'price': 0.35, 'location': 0.35, ...}).
         limit: Số lượng phòng tối đa cần lấy (mặc định 5).
 
@@ -317,34 +196,97 @@ def search_rooms(
                                       weights=weights, limit=limit)))
 
 
-def fetch_listing_detail(listing_id: str) -> Optional[dict[str, Any]]:
-    """Hàm lõi: Lấy dữ liệu chi tiết của phòng từ backend theo ID. Trả None nếu thất bại."""
+def fetch_listing_detail(listing_id: str) -> dict[str, Any]:
+    """Hàm lõi gọi Backend API: Lấy chi tiết phòng theo ID, trả về response dict đầy đủ (ok, data, status, error)."""
     clean = str(listing_id or "").strip()
-    if not _LISTING_ID.match(clean):
-        return None
+    if not _LISTING_ID.match(clean):                        # whitelist: chống Path Traversal sang endpoint khác của backend
+        return {"ok": False, "error": f"Mã tin đăng '{listing_id}' không hợp lệ."}
     res = request("GET", f"/listings/{clean}")
-    if res.get("ok") and isinstance(res.get("data"), dict):
-        return res["data"]
-    return None
+    if res.get("status") == 404:
+        return {"ok": False, "error": f"Không tìm thấy tin đăng với mã '{clean}'."}
+    return res
 
 
 def compact_listing_detail(raw_data: dict[str, Any]) -> dict[str, Any]:
-    """Rút gọn dữ liệu chi tiết phòng trọ: loại bỏ ảnh CDN và các trường cồng kềnh,
-    giữ lại các trường trọng yếu phục vụ giải đáp Q&A (thú cưng, người ở, chi phí, mô tả...).
+    """Rút gọn và chuẩn hoá dữ liệu chi tiết phòng trọ từ Backend (ListingDetailResponse):
+    - Chuẩn hoá key: address_raw -> address, price_vnd -> price/price_million
+    - Bóc tách tiện ích & thú cưng từ concept_scores sang tiếng Việt
+    - Bóc tách tên người liên hệ từ poster
+    - Loại bỏ ảnh CDN và metadata crawl cồng kềnh
     Giảm ~75% token bloat cho LLM context."""
     if not isinstance(raw_data, dict):
         return {}
-    keep_keys = (
-        "id", "title", "price", "price_million", "deposit", "deposit_million",
-        "area_m2", "address", "ward_name", "district_name", "city_name",
-        "room_type", "room_type_name", "description", "amenities",
-        "stay_max_people", "pet_allowed", "security_score", "surrounding_amenities",
-        "electricity_cost", "water_cost", "service_cost", "parking_fee",
-        "contact_phone", "contact_name", "notes"
-    )
-    compact = {k: raw_data[k] for k in keep_keys if k in raw_data and raw_data[k] is not None}
-    if "description" in compact and isinstance(compact["description"], str) and len(compact["description"]) > 1500:
-        compact["description"] = compact["description"][:1500] + "... (đã rút gọn)"
+
+    compact: dict[str, Any] = {}
+
+    # 1. Nhận diện
+    for k in ("id", "title"):
+        if raw_data.get(k):
+            compact[k] = raw_data[k]
+
+    # 2. Giá phòng (hỗ trợ cả price_vnd từ backend và price/price_million nếu có)
+    price_vnd = raw_data.get("price_vnd") or raw_data.get("price")
+    if isinstance(price_vnd, (int, float)) and price_vnd > 0:
+        compact["price"] = format_vnd_million(price_vnd)
+        compact["price_million"] = round(price_vnd / 1_000_000, 2)
+    elif raw_data.get("price_string"):
+        compact["price"] = raw_data["price_string"]
+
+    # 3. Tiền cọc (hỗ trợ deposit VND từ backend và deposit_million)
+    deposit_vnd = raw_data.get("deposit")
+    if isinstance(deposit_vnd, (int, float)) and deposit_vnd > 0:
+        compact["deposit"] = deposit_vnd
+        compact["deposit_million"] = round(deposit_vnd / 1_000_000, 2)
+
+    # 4. Diện tích & loại phòng (hỗ trợ object room_type từ backend)
+    if raw_data.get("area_m2"):
+        compact["area_m2"] = raw_data["area_m2"]
+
+    room_type = raw_data.get("room_type")
+    if isinstance(room_type, dict) and room_type.get("name"):
+        compact["room_type_name"] = room_type["name"]
+
+    # 5. Địa chỉ (Backend lưu address_raw hoặc lồng trong ward/district/city)
+    address = raw_data.get("address_raw")
+    if not address:
+        ward = raw_data.get("ward") if isinstance(raw_data.get("ward"), dict) else {}
+        district = raw_data.get("district") if isinstance(raw_data.get("district"), dict) else {}
+        city = raw_data.get("city") if isinstance(raw_data.get("city"), dict) else {}
+        parts = [
+            ward.get("name"),
+            district.get("name"),
+            city.get("name")
+        ]
+        address = ", ".join(filter(None, parts))
+    if address:
+        compact["address"] = address
+
+    # 6. Tiện ích & Quy định (Backend lưu điểm ML trong concept_scores)
+    concept_scores = raw_data.get("concept_scores") or {}
+    amenities = []
+    if isinstance(concept_scores, dict):
+        from domain.schemas import _CONCEPT_TAGS
+        for k, label in _CONCEPT_TAGS.items():
+            score = concept_scores.get(k)
+            if isinstance(score, (int, float)) and score >= 0.5 and label not in amenities:
+                amenities.append(label)
+
+        if "pet_allowed" in concept_scores and raw_data.get("pet_allowed") is None:
+            compact["pet_allowed"] = bool(concept_scores["pet_allowed"] >= 0.5)
+
+    if amenities:
+        compact["amenities"] = amenities
+
+    # 8. Người liên hệ (Backend lồng trong poster)
+    poster = raw_data.get("poster")
+    if isinstance(poster, dict) and poster.get("name"):
+        compact["contact_name"] = poster["name"]
+    
+    # 9. Mô tả phòng (cắt bớt nếu quá 1500 ký tự)
+    desc = raw_data.get("description")
+    if isinstance(desc, str) and desc:
+        compact["description"] = desc[:1500] + "... (đã rút gọn)" if len(desc) > 1500 else desc
+
     return compact
 
 
@@ -358,12 +300,7 @@ def get_listing_detail(listing_id: str) -> str:
     Returns:
         JSON chi tiết tin đăng (mô tả, thông tin liên hệ, tiền cọc, điểm an ninh, chi phí).
     """
-    clean = str(listing_id or "").strip()
-    if not _LISTING_ID.match(clean):                        # whitelist: chống Path Traversal sang endpoint khác của backend
-        return dump({"ok": False, "error": f"Mã tin đăng '{listing_id}' không hợp lệ."})
-    res = request("GET", f"/listings/{clean}")
-    if res.get("status") == 404:
-        return dump({"ok": False, "error": f"Không tìm thấy tin đăng với mã '{clean}'."})
+    res = fetch_listing_detail(listing_id)
     if res.get("ok") and isinstance(res.get("data"), dict):
         compacted = compact_listing_detail(res["data"])
         return dump({"ok": True, "data": compacted})
@@ -417,25 +354,6 @@ def fetch_nearby_locations(
     res = request("GET", "/locations/nearby", params=params)
     data = res.get("data") if res.get("ok") else None
     return data if isinstance(data, list) else []
-
-
-@tool
-def get_market_price_stats(city_id: Optional[int] = None, district_id: Optional[int] = None, room_type_id: Optional[int] = None) -> str:
-    """Tra cứu thống kê giá phòng trọ và giá sàn thị trường thực tế từ cơ sở dữ liệu Backend.
-
-    Args:
-        city_id: ID Tỉnh/Thành phố (BẮT BUỘC; lấy từ get_location_hierarchy). Không có thì không tra cứu.
-        district_id: ID Quận/Huyện nếu muốn tra cứu chi tiết theo quận.
-        room_type_id: ID loại phòng (1: ROOM, 2: STUDIO, 3: APARTMENT, 4: SLEEPBOX, 5: WHOLE_HOUSE).
-
-    Returns:
-        JSON string chứa price_stats_general (total_listings, average_price_vnd, minimum_price_vnd, maximum_price_vnd)
-        và danh sách price_stats_by_area.
-    """
-    if city_id is None:
-        return dump({"ok": False, "error": "Thiếu city_id: hãy tra bằng get_location_hierarchy trước.", "data": None})
-    params = {"city_id": city_id, **({"district_id": district_id} if district_id is not None else {}), **({"room_type_id": room_type_id} if room_type_id is not None else {})}
-    return dump(request("GET", "/listings/price-stats", params=params))
 
 
 # =============================================================================

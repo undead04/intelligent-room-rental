@@ -60,15 +60,15 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
     if agent is None:
         return "", []
 
-    focus_rank = state.get("focus_rank") or 1
+    focus_rank = state.get("focus_rank") or getattr(session, "focused_room_rank", None) or 1
     target_room = rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None)
     compact_detail: dict[str, Any] = {}
     room_detail_str = ""
 
     if target_room:
-        raw_detail = fetch_listing_detail(target_room.id)
-        if raw_detail:
-            compact_detail = compact_listing_detail(raw_detail)
+        res = fetch_listing_detail(target_room.id)
+        if res.get("ok") and isinstance(res.get("data"), dict):
+            compact_detail = compact_listing_detail(res.get("data"))
             room_detail_str = dump({"ok": True, "data": compact_detail})
 
     context_msg = build_decision_context_message(
@@ -108,18 +108,21 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
     model = deps.get_llm("main")
     if model is not None and target_room and compact_detail:
         try:
+            dep_val = compact_detail.get("deposit_million")
+            dep_str = f"{dep_val} triệu" if dep_val else "Thoả thuận"
+            price_val = compact_detail.get("price_million", target_room.price)
+            price_str = f"{price_val} triệu/tháng" if isinstance(price_val, (int, float)) else str(price_val)
             qa_prompt = (
                 f"Người dùng đang hỏi về phòng Top {focus_rank}: {compact_detail.get('title', '')}\n"
                 f"- Địa chỉ: {compact_detail.get('address', '')}\n"
-                f"- Giá phòng: {compact_detail.get('price_million', target_room.price)} triệu/tháng | Tiền cọc: {compact_detail.get('deposit_million', 'Thoả thuận')} triệu\n"
+                f"- Giá phòng: {price_str} | Tiền cọc: {dep_str}\n"
                 f"- Diện tích: {compact_detail.get('area_m2', target_room.area_m2)} m²\n"
-                f"- Tiện ích: {compact_detail.get('amenities', [])}\n"
+                f"- Tiện ích đã xác thực: {compact_detail.get('amenities', [])}\n"
                 f"- Cho phép nuôi thú cưng: {'Có' if compact_detail.get('pet_allowed') else 'Không / Chưa nêu'}\n"
-                f"- Số người ở tối đa: {compact_detail.get('stay_max_people', 'Chưa nêu')}\n"
-                f"- Chi phí khác: Điện {compact_detail.get('electricity_cost', 'Chưa rõ')}, Nước {compact_detail.get('water_cost', 'Chưa rõ')}, Dịch vụ {compact_detail.get('service_cost', 'Chưa rõ')}\n"
-                f"- Mô tả từ chủ nhà: {compact_detail.get('description', '')}\n\n"
+                f"- Người đăng / Liên hệ: {compact_detail.get('contact_name', 'Chủ trọ')}\n"
+                f"- Mô tả chi tiết từ chủ nhà (chứa thông tin điện, nước, phụ phí nếu có): {compact_detail.get('description', '')}\n\n"
                 f"Câu hỏi của người dùng: \"{state.get('user_message', '')}\"\n\n"
-                "Yêu cầu: Trả lời trực tiếp, rõ ràng, trung thực và thân thiện. Nếu thông tin không có trong bài đăng, nêu rõ và khuyên liên hệ chủ trọ để xác nhận. Không dump lại danh sách các phòng khác."
+                "Yêu cầu: Trả lời trực tiếp, rõ ràng, trung thực và thân thiện. Ưu tiên trích xuất chi phí điện, nước, gửi xe và nội quy từ phần mô tả của chủ nhà. Nếu thông tin không có trong bài đăng, nêu rõ và khuyên liên hệ chủ trọ để xác nhận. Không dump lại danh sách các phòng khác."
             )
             ans = model.invoke([HumanMessage(content=qa_prompt)])
             ans_text = _text(ans).strip()
@@ -180,7 +183,7 @@ def make_decision_node(deps: Deps):
             return {"insights": None, "final_text": text, "tool_evidence": [], "trace_events": trace}
 
         pref = state.get("preferences") or UserPreferenceState()
-        insights = build_decision_insights(rooms, state.get("computed_weights"), state.get("weight_explanations"))
+        insights = build_decision_insights(rooms, state.get("weight_explanations"))
         text, evidence = "", []
         try:
             if state.get("is_followup") or (not deps.constrained_generation and deps.decision_agent):
@@ -204,7 +207,7 @@ def make_decision_node(deps: Deps):
         except Exception:
             logger.warning("decision_node: lỗi khi tạo câu tư vấn", exc_info=True)
 
-        focus_rank = state.get("focus_rank") or 1
+        focus_rank = state.get("focus_rank") or getattr(session, "focused_room_rank", None) or 1
         target_room = rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None)
         if not text:
             if state.get("is_followup") and deps.decision_agent is not None:

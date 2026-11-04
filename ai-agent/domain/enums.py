@@ -132,7 +132,7 @@ class RoomType(_StrEnum):
 
 
 _ROOM_TYPE_META: dict[RoomType, tuple[int, str, tuple[str, ...]]] = {
-    RoomType.ROOM: (1, "phòng trọ", ("phòng trọ",)),
+    RoomType.ROOM: (1, "phòng trọ", ("phòng đơn", "phòng trọ truyền thống")),
     RoomType.STUDIO: (2, "căn hộ studio", ("studio", "căn hộ mini")),
     RoomType.APARTMENT: (3, "căn hộ chung cư", ("căn hộ", "chung cư", "chung cư dịch vụ")),
     RoomType.SLEEPBOX: (4, "ký túc xá sleepbox", ("ký túc xá", "ktx", "sleepbox", "giường tầng", "ở ghép")),
@@ -173,12 +173,4 @@ def room_type_glossary() -> str:
     return "\n".join(f"- {rt.value}: {label}" for rt, (_, label, _) in _ROOM_TYPE_META.items())
 
 
-# ---------------------------------------------------------------------------
-# Hằng số tương thích ngược
-# ---------------------------------------------------------------------------
-CANONICAL_AMENITIES: set[str] = {a.value for a in Amenity}
-CANONICAL_ROOM_TYPES: set[str] = {r.value for r in RoomType}
-ROOM_TYPE_NAME_TO_ID: dict[str, int] = {r.value: r.type_id for r in RoomType}
-ROOM_TYPE_ID_TO_NAME: dict[int, str] = {r.type_id: r.value for r in RoomType}
-AMENITY_LABELS_VI: dict[str, str] = {a.value: meta[0] for a, meta in _AMENITY_META.items()}
-ROOM_TYPE_LABELS_VI: dict[str, str] = {r.value: r.label_vi for r in RoomType}
+

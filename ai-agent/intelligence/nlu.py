@@ -27,9 +27,8 @@ from prompts.nlu_prompt import (
     INTENT_GUIDE,
     NLU_RULES,
     build_nlu_system_prompt,
-    build_system_prompt,
 )
-from utils.text import norm_key
+from utils.text import norm_key, strip_accents
 
 logger = logging.getLogger(__name__)
 
@@ -299,17 +298,25 @@ def _build_context(
     pref: UserPreferenceState,
     rooms_brief: str,
     multipliers: Optional[dict],
+    recent_dialog_turns: Optional[list[tuple[str, str]]] = None,
     recent_user_turns: Optional[list[str]] = None,
 ) -> str:
-    history_str = (
-        "\n".join(f"  - Lượt trước {i+1}: {msg}" for i, msg in enumerate(recent_user_turns[-3:]))
-        if recent_user_turns
-        else "chưa có"
-    )
+    if recent_dialog_turns:
+        history_lines = []
+        for role, msg in recent_dialog_turns[-4:]:
+            label = "Người dùng" if role == "user" else "Trợ lý Homigo"
+            history_lines.append(f"  - {label}: {msg}")
+        history_str = "\n".join(history_lines)
+    elif recent_user_turns:
+        history_str = (
+            "\n".join(f"  - Lượt trước {i+1}: {msg}" for i, msg in enumerate(recent_user_turns[-3:]))
+        )
+    else:
+        history_str = "chưa có"
     return (
         f"Tiêu chí hiện tại:\n{pref.to_context_string()}\n"
         f"Mức ưu tiên hiện tại: {multipliers_to_levels(multipliers)}\n"
-        f"Lịch sử các câu nói trước của người dùng (dùng khi người dùng nói 'như lúc nãy', 'như lúc đầu'):\n{history_str}\n"
+        f"Lịch sử đối thoại gần nhất (dùng để hiểu đại từ 'nó', câu trả lời cho Trợ lý, hoặc khi người dùng nói 'như lúc nãy'):\n{history_str}\n"
         f"Phòng vừa đề xuất ở lượt trước: {rooms_brief or 'chưa có'}"
     )
 
@@ -320,16 +327,48 @@ def _build_context(
 def _postprocess(
     a: TurnAnalysis,
     *,
+    user_text: str = "",
     n_rooms: int = 0,
     valid_slugs: Optional[set[str]] = None,
 ) -> TurnAnalysis:
     """Kiểm định tính hợp lệ của dữ liệu cấu trúc (Schema & State Invariants):
     1. Chuẩn hoá nếu LLM đặt mã Amenity chuẩn vào `special_requirements_add` thì nâng lên `amenities_add`.
-    2. Kiểm định `skill_slug` thuộc danh mục kỹ năng hiện có và `referenced_room_rank` trong khoảng `1..n_rooms`.
-    3. Phát hiện đa mệnh lệnh (`is_multi_intent`) khi người dùng gộp nhiều tác vụ khác nhánh trong cùng một lượt.
-    4. Xoá `semantic_query` đối với các intent không thực hiện tìm kiếm.
+    2. Bảo vệ tiêu chí tích lũy: Chặn LLM tự ý điền `clear: ['location']` nếu người dùng không có từ khóa hủy bỏ.
+    3. Kiểm định `skill_slug` thuộc danh mục kỹ năng hiện có và `referenced_room_rank` trong khoảng `1..n_rooms`.
+    4. Phát hiện đa mệnh lệnh (`is_multi_intent`) khi người dùng gộp nhiều tác vụ khác nhánh trong cùng một lượt.
+    5. Xoá `semantic_query` đối với các intent không thực hiện tìm kiếm.
     """
     valid = valid_slugs or set()
+
+    # Bảo vệ tiêu chí tích luỹ chống Hallucination của LLM trong patch.clear:
+    # LLM (đặc biệt là model local) hay tự ý điền clear: ['location', 'price', ...] dù người dùng chỉ nói "thêm máy lạnh".
+    # CHỈ chấp nhận clear từng nhóm khi văn bản người dùng thực sự có từ khóa mang nghĩa xoá bỏ/hủy/phủ định.
+    if a.patch.clear and user_text:
+        clean_msg = strip_accents(user_text).lower()
+        has_general_reset = bool(re.search(r"\b(?:reset|bo het|xoa het|huy het|tim lai tu dau|nhu moi)\b", clean_msg))
+        is_new_location_search = bool(a.patch.location_text and (a.intent == "new_search" or a.reset_priorities))
+        if not has_general_reset:
+            validated_clear = []
+            for group in a.patch.clear:
+                if group == "location":
+                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:vi tri|khu vuc|dia diem|o do|uit|quan|truong)\b", clean_msg) or re.search(r"\b(?:dau cung duoc|khap noi|bat ky dau|toan thanh pho)\b", clean_msg):
+                        validated_clear.append(group)
+                elif group == "price":
+                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:gia|ngan sach|tien)\b", clean_msg) or re.search(r"\b(?:gia nao cung duoc|bao nhieu cung duoc)\b", clean_msg):
+                        validated_clear.append(group)
+                elif group == "area":
+                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:dien tich|m2|rong)\b", clean_msg):
+                        validated_clear.append(group)
+                elif group == "room_type":
+                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:loai phong|phong tro|ktx|can ho)\b", clean_msg):
+                        validated_clear.append(group)
+                elif group == "amenities":
+                    if is_new_location_search or re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:tien ich|do dac|noi that)\b", clean_msg) or bool(a.patch.amenities_remove):
+                        validated_clear.append(group)
+                elif group == "special_requirements":
+                    if is_new_location_search or re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:yeu cau|dac diem)\b", clean_msg) or bool(a.patch.special_requirements_remove):
+                        validated_clear.append(group)
+            a.patch.clear = validated_clear
 
     # Bất biến ngân sách: nếu LLM điền min_price == max_price (do người dùng nói "khoảng 3 triệu"),
     # chỉ giữ trần ngân sách max_price, đặt min_price = None để không lọc cứng price == X.
@@ -434,6 +473,7 @@ def analyze_turn(
     multipliers: Optional[dict[str, float]] = None,
     n_rooms: int = 0,
     skills: Optional[dict[str, Any]] = None,
+    recent_dialog_turns: Optional[list[tuple[str, str]]] = None,
     recent_user_turns: Optional[list[str]] = None,
 ) -> Optional[TurnAnalysis]:
     """Gọi LLM 1 lần để phân tích lượt hội thoại. Trả None khi không có model hoặc lỗi kết nối."""
@@ -448,7 +488,7 @@ def analyze_turn(
 
     messages = [
         ("system", build_nlu_system_prompt(skills_catalog_for_prompt(skills))),
-        ("human", f"{_build_context(pref, rooms_brief, multipliers, recent_user_turns=recent_user_turns)}\n\n<user_message>\n{text}\n</user_message>"),
+        ("human", f"{_build_context(pref, rooms_brief, multipliers, recent_dialog_turns=recent_dialog_turns, recent_user_turns=recent_user_turns)}\n\n<user_message>\n{text}\n</user_message>"),
     ]
     kwargs: dict[str, Any] = {}
     method = os.environ.get("NLU_STRUCTURED_METHOD")
@@ -474,7 +514,7 @@ def analyze_turn(
             return None
     if analysis is None:
         return None
-    return _postprocess(analysis, n_rooms=n_rooms, valid_slugs=set(skills))
+    return _postprocess(analysis, user_text=text, n_rooms=n_rooms, valid_slugs=set(skills))
 
 
 __all__ = [
@@ -493,7 +533,6 @@ __all__ = [
     "INTENT_GUIDE",
     "NLU_RULES",
     "build_nlu_system_prompt",
-    "build_system_prompt",
     "sanitize_user_text",
     "analyze_turn",
 ]

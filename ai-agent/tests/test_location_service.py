@@ -1,6 +1,14 @@
 import pytest
 
-from tools.location_service import admin_key, level_hint, resolve_admin, resolve_location, search_term
+from tools.location_service import (
+    admin_key,
+    infer_region_from_location_text,
+    infer_region_from_preference,
+    level_hint,
+    resolve_admin,
+    resolve_location,
+    search_term,
+)
 from utils.text import norm_key
 
 CITIES = [{"id": 79, "name": "Thành phố Hồ Chí Minh"}, {"id": 1, "name": "Thành phố Hà Nội"}, {"id": 74, "name": "Tỉnh Bình Dương"}]
@@ -150,3 +158,25 @@ def test_historical_district_aliases():
     assert r2.kind == "admin" and r2.district_id == 119
     r3 = resolve_admin("Q2", lookup)
     assert r3.kind == "admin" and r3.district_id == 119
+
+
+def test_infer_region_from_text_and_preference():
+    assert infer_region_from_location_text("Đại học UIT Thủ Đức") == "Hồ Chí Minh"
+    assert infer_region_from_location_text("Quận Cầu Giấy") == "Hà Nội"
+    assert infer_region_from_location_text("Thành phố Dĩ An") == "Bình Dương"
+    assert infer_region_from_location_text("quận Hải Châu") == "Đà Nẵng"
+    assert infer_region_from_location_text("Nơi nào đó lạ hoắc") is None
+    assert infer_region_from_location_text(None) is None
+
+    class MockPref:
+        def __init__(self, city_id=None, location_text=None):
+            self.city_id = city_id
+            self.location_text = location_text
+
+    assert infer_region_from_preference(MockPref(city_id=79)) == "Hồ Chí Minh"
+    assert infer_region_from_preference(MockPref(city_id=13)) == "Hồ Chí Minh"
+    assert infer_region_from_preference(MockPref(city_id=1)) == "Hà Nội"
+    assert infer_region_from_preference(MockPref(city_id=48)) == "Đà Nẵng"
+    assert infer_region_from_preference(MockPref(location_text="Bình Thạnh")) == "Hồ Chí Minh"
+    assert infer_region_from_preference(None) is None
+

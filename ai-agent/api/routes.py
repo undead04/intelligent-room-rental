@@ -84,10 +84,9 @@ class HousingAgentService:
     def _build_decision_insights(
         self,
         rooms: list[RoomItem],
-        weights: Optional[dict[str, float]] = None,
         weight_explanations: Optional[list[str]] = None,
     ) -> Optional[DecisionInsight]:
-        return build_decision_insights(rooms, weights, weight_explanations)
+        return build_decision_insights(rooms, weight_explanations)
 
     def run_graph(
         self,
@@ -132,7 +131,6 @@ class HousingAgentService:
             user_message=user_message,
             effective_session_id=effective_session_id,
             graph=HOUSING_GRAPH,
-            fallback_runner=self.run_graph,
         )
 
 

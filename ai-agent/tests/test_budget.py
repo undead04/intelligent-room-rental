@@ -1,19 +1,13 @@
 import pytest
 
 from domain.budget import (
-    GAP_RATIO, MIN_SAMPLE, MarketStats, TTLCache, fetch_market_stats, propose_budget, relax_budget, round_up_step,
-    tighten_budget,
+    GAP_RATIO, MIN_SAMPLE, MarketStats, TTLCache, fetch_market_stats, propose_budget, round_up_step,
 )
 from domain.enums import RoomType
 
 
-def test_rounding_and_relax():
+def test_rounding():
     assert round_up_step(3_450_001) == 3_500_000 and round_up_step(3_450_000) == 3_450_000
-    assert relax_budget(3_000_000) == 3_450_000
-    assert relax_budget(3_500_000) == 4_050_000
-    assert relax_budget(1_000_000) == 1_150_000
-    assert tighten_budget(4_000_000) == 3_400_000
-    assert tighten_budget(3_000_000) == 2_550_000
 
 
 def test_market_stats_from_backend():
@@ -33,7 +27,7 @@ def test_no_budget_no_proposal(user_max):
 def test_no_market_data_never_claims_gap_and_invents_nothing():
     bp = propose_budget(1_200_000, None, area_name="Q1")             # bản cũ bịa giá sàn 2tr/3.2tr ở đây
     assert not bp.is_market_gap and not bp.has_market_data and bp.market is None
-    assert bp.proposed_budget == relax_budget(1_200_000)
+    assert bp.proposed_budget == 1_200_000
 
 
 def test_market_gap_uses_market_floor():
@@ -48,7 +42,7 @@ def test_market_gap_uses_market_floor():
 def test_unreliable_sample_blocks_gap_claim():
     m = MarketStats(min_price=2_000_000, total_listings=3)            # giá sàn từ 3 tin đăng dị thường
     bp = propose_budget(1_000_000, m)
-    assert not bp.is_market_gap and bp.proposed_budget == relax_budget(1_000_000)
+    assert not bp.is_market_gap and bp.proposed_budget == 1_000_000
 
 
 def test_dormitory_suggestion_rules():

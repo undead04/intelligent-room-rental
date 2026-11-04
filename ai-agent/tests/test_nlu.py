@@ -3,7 +3,7 @@ import pytest
 from domain.enums import Amenity, RoomType
 from intelligence.nlu import (
     LEVEL_TO_MULT, PreferencePatch, Priorities, TurnAnalysis, analyze_turn, apply_patch, apply_priorities,
-    build_system_prompt, mult_to_level, multipliers_to_levels, sanitize_user_text,
+    build_nlu_system_prompt as build_system_prompt, mult_to_level, multipliers_to_levels, sanitize_user_text,
 )
 from domain.schemas import UserPreferenceState
 from tests.helpers import SKILLS, FakeModel

@@ -49,7 +49,6 @@ def price_trade_off(a: RoomItem, b: RoomItem) -> str:
 
 def build_decision_insights(
     rooms: Sequence[RoomItem],
-    weights: Optional[dict[str, float]] = None,
     weight_explanations: Optional[Sequence[str]] = None,
 ) -> Optional[DecisionInsight]:
     if not rooms:

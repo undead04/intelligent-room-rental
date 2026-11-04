@@ -11,7 +11,7 @@ from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import sanitize_user_text
 from safety.grounding import verify_context_grounding
 from safety.guardrails import scan_untrusted_text
-from tools.location_service import resolve_location
+from tools.location_service import infer_region_from_preference, resolve_location
 from utils.text import norm_key
 
 logger = logging.getLogger(__name__)
@@ -19,17 +19,7 @@ logger = logging.getLogger(__name__)
 RESULT_LIMIT = 5
 OVERFETCH_LIMIT = 10        # có tiêu chí loại trừ -> lấy dư rồi lọc/cắt lại
 
-_HCM_KEYWORDS = (
-    "thu duc", "binh thanh", "go vap", "tan binh", "phu nhuan", "tan phu", "binh tan",
-    "ho chi minh", "tp hcm", "tphcm", "sai gon", "saigon", "uit", "nha be", "hoc mon", "cu chi", "binh chanh",
-    "quan 1", "quan 2", "quan 3", "quan 4", "quan 5", "quan 6", "quan 7", "quan 8", "quan 9", "quan 10", "quan 11", "quan 12",
-)
-_HN_KEYWORDS = (
-    "ha noi", "cau giay", "hai ba trung", "dong da", "ba dinh", "hoan kiem",
-    "thanh xuan", "ha dong", "tay ho", "nam tu liem", "bac tu liem", "long bien", "hoang mai",
-)
-_BD_KEYWORDS = ("binh duong", "di an", "thuan an", "thu dau mot", "ben cat", "tan uyen")
-_DN_KEYWORDS = ("da nang", "hai chau", "lien chieu", "son tra", "ngu hanh son", "cam le", "thanh khe")
+_MAJOR_CITY_KEYS = ("ho chi minh", "tp hcm", "tphcm", "sai gon", "ha noi", "binh duong", "da nang")
 
 
 def _infer_session_region_hint(
@@ -44,27 +34,16 @@ def _infer_session_region_hint(
     if pref.location_kind != "place":
         return None
     cur_loc = norm_key(pref.location_text or "")
-    if any(c in cur_loc for c in ("ho chi minh", "tp hcm", "tphcm", "sai gon", "ha noi", "binh duong", "da nang")):
+    if any(c in cur_loc for c in _MAJOR_CITY_KEYS):
         return None
 
     snapshots = list(getattr(session, "turn_snapshots", []) or [])
     pref_hist = list(getattr(session, "preference_history", []) or [])
     prev_prefs = list(reversed(snapshots)) + list(reversed(pref_hist[:-1] if len(pref_hist) > 1 else []))
     for p in prev_prefs:
-        cid = getattr(p, "city_id", None)
-        if cid == 13:
-            return "Hồ Chí Minh"
-        loc_k = norm_key(getattr(p, "location_text", "") or "")
-        if not loc_k:
-            continue
-        if any(kw in loc_k for kw in _HCM_KEYWORDS):
-            return "Hồ Chí Minh"
-        if any(kw in loc_k for kw in _HN_KEYWORDS):
-            return "Hà Nội"
-        if any(kw in loc_k for kw in _BD_KEYWORDS):
-            return "Bình Dương"
-        if any(kw in loc_k for kw in _DN_KEYWORDS):
-            return "Đà Nẵng"
+        hint = infer_region_from_preference(p)
+        if hint:
+            return hint
     return None
 
 
@@ -225,7 +204,6 @@ def make_retrieval_node(deps: Deps):
             ctx = verify_context_grounding(
                 rooms,
                 pref,
-                retry_count=retry_count,
                 last_search_args=search_args,
                 area_name=pref.location_text,
                 market_fetcher=deps.market_fetcher,

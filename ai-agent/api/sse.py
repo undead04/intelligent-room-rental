@@ -21,7 +21,7 @@ def _describe_node_update(node_name: str, update: dict[str, Any]) -> tuple[str, 
             return "Kiểm tra an toàn (Guardrails)", f"Chặn vi phạm: {getattr(gr, 'reason', '')}", "error"
         return "Kiểm tra an toàn (Guardrails)", "Truy vấn hợp lệ và an toàn.", "ok"
 
-    if node_name in ("understand_node", "preference_intent_node"):
+    if node_name == "understand_node":
         pref = update.get("preferences")
         loc = pref.location_text if pref else ""
         budget = f"Ngân sách: {pref.max_price/1e6:.1f}tr" if pref and pref.max_price else ""
@@ -46,7 +46,7 @@ def _describe_node_update(node_name: str, update: dict[str, Any]) -> tuple[str, 
         reason = insights.top_1_reason if insights else "Đã hoàn thành xếp hạng đa tiêu chí."
         return "Đánh giá & Xếp hạng đa tiêu chí (MCDM)", reason[:120] + ("..." if len(reason) > 120 else ""), "ok"
 
-    if node_name in ("verify_node", "grounding_node"):
+    if node_name == "verify_node":
         gr = update.get("grounding_report", {})
         is_grounded = update.get("answer_grounded", gr.get("is_grounded", True) if isinstance(gr, dict) else getattr(gr, "is_grounded", True))
         if is_grounded:
@@ -84,14 +84,10 @@ def stream_text_chunks(text: str, words_per_chunk: int = 2, delay: float = 0.015
                 time.sleep(delay)
 
 
-_stream_text_chunks = stream_text_chunks
-
-
 def stream_graph_events(
     user_message: str,
     effective_session_id: str,
     graph: Any = None,
-    fallback_runner: Any = None,
 ) -> Iterator[str]:
     """Generator phát SSE thời gian thực qua LangGraph State Machine."""
     state: dict[str, Any] = {
@@ -103,8 +99,8 @@ def stream_graph_events(
     final_resp: Optional[AgentResponse] = None
 
     if graph is None:
-        from api.routes import HOUSING_GRAPH
-        graph = HOUSING_GRAPH
+        from graph import build_housing_graph, default_deps
+        graph = build_housing_graph(default_deps())
 
     try:
         for chunk in graph.stream(
@@ -138,12 +134,6 @@ def stream_graph_events(
                 if "final_response" in node_update and isinstance(node_update["final_response"], AgentResponse):
                     final_resp = node_update["final_response"]
 
-        if final_resp is None and fallback_runner is not None:
-            final_resp = fallback_runner(
-                user_message=user_message,
-                session_id=effective_session_id,
-            )
-
         if final_resp is not None:
             reply_text = final_resp.text_reply or ""
             for text_chunk in stream_text_chunks(reply_text):
@@ -152,15 +142,7 @@ def stream_graph_events(
 
             complete_payload = {
                 "type": "complete",
-                "session_id": final_resp.session_id,
-                "text_reply": final_resp.text_reply,
-                "rooms": [r.model_dump(by_alias=True) for r in final_resp.rooms],
-                "insights": final_resp.insights.model_dump() if final_resp.insights else None,
-                "current_preferences": final_resp.current_preferences.model_dump() if final_resp.current_preferences else None,
-                "need_clarification": final_resp.need_clarification,
-                "follow_up_questions": final_resp.follow_up_questions,
-                "grounding_report": final_resp.grounding_report.model_dump() if hasattr(final_resp.grounding_report, "model_dump") else final_resp.grounding_report,
-                "trace_events": final_resp.trace_events,
+                **final_resp.model_dump(by_alias=True),
             }
             yield f"event: complete\ndata: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
     except Exception as exc:

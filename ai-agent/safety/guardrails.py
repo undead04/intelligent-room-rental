@@ -4,9 +4,6 @@
   Lớp 1: luật độ tin cậy CAO, chạy trên văn bản đã bỏ dấu => 'bo qua chi dan truoc' cũng bị bắt.
   scan_untrusted_text(): cùng bộ luật cho dữ liệu bên thứ ba (tiêu đề/mô tả tin đăng) - đường injection gián tiếp.
 
-Đã gỡ OFF_TOPIC_PATTERNS và cờ `has_housing_context` (từ khoá chung như 'giá', 'xe' khiến câu "giá bitcoin" lọt qua).
-Các luật cố tình chặt để tránh chặn nhầm câu hợp lệ ("bỏ qua quy tắc cũ của nhà trọ" KHÔNG bị chặn).
-SQL injection KHÔNG phải việc của lớp này (backend tham số hoá truy vấn); chỉ giữ để log payload đáng ngờ.
 """
 
 from __future__ import annotations

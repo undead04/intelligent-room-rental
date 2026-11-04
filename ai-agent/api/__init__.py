@@ -10,7 +10,7 @@ from api.routes import (
     prepare_session_with_history,
     service,
 )
-from api.sse import _stream_text_chunks, stream_graph_events, stream_text_chunks
+from api.sse import stream_graph_events, stream_text_chunks
 
 __all__ = [
     "ChatRequest",
@@ -22,6 +22,5 @@ __all__ = [
     "chat_stream_endpoint",
     "prepare_session_with_history",
     "stream_text_chunks",
-    "_stream_text_chunks",
     "stream_graph_events",
 ]

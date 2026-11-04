@@ -927,7 +927,7 @@ def _c_latency() -> SubCriterionResult:
         mults = apply_priorities(None, prio)
         weights = compute_normalized_weights(pref, mults)
         ctx = verify_context_grounding([r1, r2], pref)
-        build_decision_insights(ctx.valid_rooms, weights)
+        build_decision_insights(ctx.valid_rooms)
         verify_answer_grounding(sample_answer, ctx.valid_rooms, pref)
 
     for _ in range(LATENCY_WARMUP):

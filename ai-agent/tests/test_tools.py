@@ -1,7 +1,6 @@
 import json
 import sys
 import types
-import warnings
 
 import httpx
 import pytest
@@ -92,16 +91,6 @@ def test_shared_client_is_reused_and_recreated_after_reset():
     http.set_client(None)
 
 
-def test_legacy_client_context_manager_does_not_close_shared_client(be):
-    with ht._client() as c:
-        assert c is http.get_client()
-    assert not http.get_client().is_closed
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        assert ht.set_turn_query_context("x") is None and ht.clear_turn_query_context() is None
-    assert any(issubclass(x.category, DeprecationWarning) for x in w)
-
-
 # ---------------- hành chính / định vị ----------------
 def test_admin_lookup_scopes_and_swallows_errors(be):
     assert [r["id"] for r in ht.admin_lookup("district", "Quận 7", city_id=79)] == [778]
@@ -127,52 +116,6 @@ def test_geocode_point_404_triggers_llm_expansion_once(be, monkeypatch):
     assert ht.geocode_point("zzz") is None and seen == [1]
 
 
-def test_geocode_tool_refuses_administrative_names_without_calling_geocode(be):
-    out = json.loads(ht.geocode_location.invoke({"query": "Thủ Đức"}))
-    assert out["ok"] is False and out["is_administrative"] and "get_location_hierarchy" in out["error"]
-    assert "/geocode" not in be.paths()                                                          # quyết định bằng khớp tên chính xác, không LLM
-    out = json.loads(ht.geocode_location.invoke({"query": "Phường 1"}))                           # trùng tên cũng là hành chính
-    assert out["is_administrative"]
-    assert json.loads(ht.geocode_location.invoke({"query": "Chợ Thủ Đức"}))["ok"] is False        # không phải hành chính, nhưng geocode không có
-    assert "/geocode" in be.paths()
-
-
-def test_geocode_tool_place_success_and_errors(be):
-    assert json.loads(ht.geocode_location.invoke({"query": "UIT"})) == {"ok": True, "data": {"lat": 10.87, "lon": 106.8}}
-    assert "Không tìm thấy toạ độ" in json.loads(ht.geocode_location.invoke({"query": "xyz"}))["error"]
-    assert json.loads(ht.geocode_location.invoke({"query": "  "}))["ok"] is False
-
-
-def _h(**kw):
-    return json.loads(ht.get_location_hierarchy.invoke(kw))
-
-
-def test_hierarchy_exact_first_and_levels(be):
-    r = _h(district_name="Quận 1")
-    assert r["level"] == "district" and r["match"] == "exact" and [x["id"] for x in r["data"]] == [760]     # 'Quận 10' không lọt vào
-    r = _h(ward_name="Linh Trung", district_name="Thủ Đức", city_name="TP.HCM")
-    assert r["level"] == "ward" and [x["id"] for x in r["data"]] == [1001]
-    r = _h(ward_name="Phường 1")
-    assert {x["id"] for x in r["data"]} == {2001, 2002}                                             # trùng tên: trả cả hai để agent hỏi lại
-    r = _h(ward_name="Phường 1", district_name="Quận 7")
-    assert [x["id"] for x in r["data"]] == [2002]
-    r = _h(city_name="Hà Nội")
-    assert r["level"] == "city" and r["data"][0]["id"] == 1
-
-
-def test_hierarchy_partial_match_is_labelled_and_city_falls_back_to_district(be):
-    r = _h(ward_name="Linh")
-    assert r["match"] == "partial" and len(r["data"]) == 2
-    r = _h(city_name="Dĩ An")                                                                       # nhập nhầm vào city_name nhưng nằm ở bảng quận/huyện
-    assert r["level"] == "district" and r["data"][0]["id"] == 724 and "district_id" in r["note"]
-
-
-def test_hierarchy_not_found_messages(be):
-    assert "chưa có dữ liệu" in _h(city_name="Quảng Ngãi")["message"]
-    assert "chưa có dữ liệu" in _h(district_name="Không Có")["message"]
-    assert "chưa có dữ liệu" in _h(ward_name="Không Có")["message"]
-
-
 # ---------------- tìm phòng ----------------
 def test_search_rooms_api_builds_body_and_normalizes(be):
     be.rooms = [{"listing": {"id": "x"}}]
@@ -196,7 +139,7 @@ def test_search_rooms_empty_results_carry_context_suggestions(be):
     r = ht.search_rooms_api({"query": "q", "max_price": 3_000_000, "ward_id": 7, "amenities": ["ml"], "min_area": 25})
     assert r["data"] == []
     sug = " | ".join(r["context_suggestions"])
-    assert "3.45 triệu/tháng" in sug and "toàn Quận/Huyện" in sug and "aircon" in sug and "25m²" in sug
+    assert "ngân sách" in sug and "toàn Quận/Huyện" in sug and "aircon" in sug and "25m²" in sug
 
 
 def test_search_rooms_api_backend_error_and_tool_wrapper(be):
@@ -218,7 +161,6 @@ def test_listing_detail_validates_id_before_any_request(be):
 
 
 def test_price_stats_never_guess_city(be):
-    assert json.loads(ht.get_market_price_stats.invoke({}))["ok"] is False and be.calls == []
     assert ht.fetch_price_stats(None) is None and be.calls == []
     g = ht.fetch_price_stats(79, district_id=5, room_type_id=2)
     assert g["minimum_price_vnd"] == 1_800_000 and be.calls[-1][2] == {"city_id": "79", "district_id": "5", "room_type_id": "2"}

@@ -28,6 +28,13 @@ def make_clarification_node(deps: Deps):
         model = deps.get_llm("fast") or deps.get_llm("main")
         text = ""
         suggestions: list[str] = []
+        session = deps.sessions.get_or_create_session(state["session_id"]) if state.get("session_id") else None
+        hist = session.compact_history_tuples(window=4) if session and hasattr(session, "compact_history_tuples") else []
+        hist_str = ""
+        if hist:
+            lines = [f"- {'Người dùng' if r == 'user' else 'Trợ lý Homigo'}: {m}" for r, m in hist]
+            hist_str = "Lịch sử đối thoại gần nhất (không hỏi lại thông tin người dùng đã trả lời):\n" + "\n".join(lines) + "\n\n"
+
         if model is not None:
             guide = ("Người dùng nhắc tới một địa danh chung chung chưa có tên riêng"
                      f" (nhóm: {vague.get('category')}, khu vực: {vague.get('region') or 'chưa rõ'}). Hãy hỏi lại tên cụ thể và đề xuất 3-4 địa điểm nổi tiếng tương ứng tại khu vực đó."
@@ -36,7 +43,7 @@ def make_clarification_node(deps: Deps):
             try:
                 reply = traced_call(trace, lambda: model.with_structured_output(ClarifyReply).invoke([
                     ("system", deps.base_prompt),
-                    ("human", f"{guide}\n\nTiêu chí đã biết:\n{pref.to_context_string() if pref else 'chưa có'}\n\n<user_message>\n{text_in}\n</user_message>"),
+                    ("human", f"{guide}\n\n{hist_str}Tiêu chí đã biết:\n{pref.to_context_string() if pref else 'chưa có'}\n\n<user_message>\n{text_in}\n</user_message>"),
                 ]))
                 reply = reply if isinstance(reply, ClarifyReply) else ClarifyReply.model_validate(reply)
                 text = reply.text.strip()

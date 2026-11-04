@@ -26,7 +26,6 @@ from intelligence.nlu import (
     apply_patch,
     apply_priorities,
     build_nlu_system_prompt,
-    build_system_prompt,
     mult_to_level,
     multipliers_to_levels,
     sanitize_user_text,
@@ -53,7 +52,6 @@ __all__ = [
     "multipliers_to_levels",
     "mult_to_level",
     "build_nlu_system_prompt",
-    "build_system_prompt",
     "sanitize_user_text",
     "analyze_turn",
     # Understand

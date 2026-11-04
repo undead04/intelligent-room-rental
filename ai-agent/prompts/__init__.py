@@ -30,7 +30,6 @@ __all__ = [
     "NLU_RULES",
     "ADVICE_RULES",
     "DECISION_RULES",
-    "CAPABILITY_PROMPT",
     "build_nlu_system_prompt",
     "build_advice_prompt",
     "build_decision_prompt",

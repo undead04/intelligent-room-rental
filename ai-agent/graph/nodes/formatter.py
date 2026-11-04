@@ -56,6 +56,7 @@ def make_formatter_node(deps: Deps):
             follow_up_questions=follow_up,
             grounding_report=report,
             trace_events=list(state.get("trace_events") or []),
+            searched=bool(state.get("searched")),
         )
         if not blocked:     # tin nhắn bị chặn (injection...) KHÔNG được vào lịch sử, tránh đầu độc các lượt sau
             deps.sessions.commit_turn(session, state.get("user_message", ""), final_text, rooms, searched=bool(state.get("searched")))

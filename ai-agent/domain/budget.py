@@ -108,7 +108,7 @@ def propose_budget(
         return None
     user_max = float(user_max)
     is_gap = bool(market and market.reliable and user_max < market.min_price * GAP_RATIO)
-    proposed = round_up_step(market.min_price) if is_gap and market else relax_budget(user_max)
+    proposed = round_up_step(market.min_price) if is_gap and market else user_max
     dorm = user_max <= DORM_THRESHOLD and RoomType.SLEEPBOX not in set(excluded_room_types or ())
     return BudgetProposal(user_budget=user_max, proposed_budget=proposed, is_market_gap=is_gap,
                           suggest_dormitory=dorm, market=market, area_name=area_name)

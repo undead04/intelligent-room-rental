@@ -21,6 +21,8 @@ def make_understand_node(deps: Deps):
             session.multipliers = dict(plan.multipliers)
             if hasattr(session, "record_preference_snapshot"):
                 session.record_preference_snapshot(plan.preferences)
+        if plan.focus_rank is not None:
+            session.focused_room_rank = plan.focus_rank
         out: dict[str, Any] = {
             "intent": plan.intent,
             "preferences": plan.preferences,

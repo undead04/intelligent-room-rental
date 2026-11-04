@@ -82,10 +82,21 @@ def generate_advice(
     if model is None or not rooms:
         return None
     try:
-        sys = system_prompt if "QUY TẮC BẮT BUỘC" in system_prompt or "TUYỆT ĐỐI KHÔNG" in system_prompt else f"{system_prompt}\n\n{ADVICE_RULES}"
+        if "QUY TẮC BẮT BUỘC" in system_prompt or "TUYỆT ĐỐI KHÔNG" in system_prompt:
+            sys = system_prompt
+        else:
+            sys = f"{system_prompt}\n\n{ADVICE_RULES}"
+
+        user_msg = build_decision_user_message(
+            question,
+            pref,
+            rooms,
+            retry_issues=retry_issues,
+            focus_rank=focus_rank,
+        )
         raw = model.with_structured_output(Advice).invoke([
             ("system", sys),
-            ("human", build_decision_user_message(question, pref, rooms, retry_issues=retry_issues, focus_rank=focus_rank)),
+            ("human", user_msg),
         ])
         return raw if isinstance(raw, Advice) else Advice.model_validate(raw)
     except Exception:
@@ -94,10 +105,27 @@ def generate_advice(
 
 
 class ZeroResultAdvice(BaseModel):
-    analysis: str = Field(description="1-2 câu phân tích khách quan vì sao chưa tìm thấy phòng dựa trên tương quan giữa yêu cầu người dùng (ngân sách, tiện ích, vị trí) và thực tế thị trường")
-    market_assessment: str = Field(description="Nhận định mặt bằng giá tại khu vực (kèm số liệu giá sàn, giá trung bình nếu có). Nếu người dùng đặt giá quá cao hoặc quá thấp so với khu vực, hãy giải thích rõ")
-    suggestions: list[str] = Field(description="2-3 hướng giải pháp cụ thể (nâng/hạ ngân sách, gợi ý các khu vực lân cận cụ thể, gợi ý mô hình phòng hoặc lược bớt tiện ích)")
-    closing_question: str = Field(description="Câu hỏi mở thân thiện để người dùng tự do nhắn lại quyết định tiếp theo")
+    analysis: str = Field(
+        description=(
+            "1-2 câu phân tích khách quan vì sao chưa tìm thấy phòng dựa trên tương quan "
+            "giữa yêu cầu người dùng (ngân sách, tiện ích, vị trí) và thực tế thị trường"
+        )
+    )
+    market_assessment: str = Field(
+        description=(
+            "Nhận định mặt bằng giá tại khu vực (kèm số liệu giá sàn, giá trung bình nếu có). "
+            "Nếu người dùng đặt giá quá cao hoặc quá thấp so với khu vực, hãy giải thích rõ"
+        )
+    )
+    suggestions: list[str] = Field(
+        description=(
+            "2-3 hướng giải pháp cụ thể (nâng/hạ ngân sách, gợi ý các khu vực lân cận cụ thể, "
+            "gợi ý mô hình phòng hoặc lược bớt tiện ích)"
+        )
+    )
+    closing_question: str = Field(
+        description="Câu hỏi mở thân thiện để người dùng tự do nhắn lại quyết định tiếp theo"
+    )
 
 
 def render_zero_result_advice(advice: ZeroResultAdvice, location: str = "") -> str:

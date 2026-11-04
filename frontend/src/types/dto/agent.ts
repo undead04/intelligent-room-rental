@@ -93,6 +93,7 @@ export interface AgentResponse {
   follow_up_questions?: string[];
   grounding_report?: Record<string, unknown> | null;
   trace_events?: AgentTraceEvent[];
+  searched?: boolean;
 }
 
 export interface AgentChatRequest {

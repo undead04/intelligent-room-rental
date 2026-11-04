@@ -22,7 +22,7 @@ from core.paths import PROJECT_ROOT, SKILLS_DIR
 logger = logging.getLogger(__name__)
 
 # Thứ tự ưu tiên khi trùng slug: thư mục đứng trước thắng
-SKILL_DIRS: list[Path] = [SKILLS_DIR, PROJECT_ROOT / "fixtures" / "skills"]
+SKILL_DIRS: list[Path] = [SKILLS_DIR]
 
 
 @dataclass

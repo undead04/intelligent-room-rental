@@ -12,7 +12,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from domain.budget import tighten_budget
 from domain.schemas import UserPreferenceState, format_vnd_million
 from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import (
@@ -109,6 +108,7 @@ def interpret_turn(
     rooms = list(session.last_rooms or [])
     has_history = bool(rooms or session.messages)
 
+    recent_dialog_turns = session.compact_history_tuples(window=4) if hasattr(session, "compact_history_tuples") else None
     recent_user_turns = [text for role, text in (getattr(session, "history", None) or []) if role == "user"][-3:]
     analysis = analyze_turn(
         model,
@@ -118,6 +118,7 @@ def interpret_turn(
         multipliers=mult0,
         n_rooms=len(rooms),
         skills=skills,
+        recent_dialog_turns=recent_dialog_turns,
         recent_user_turns=recent_user_turns,
     )
 
@@ -176,7 +177,12 @@ def interpret_turn(
         if not rooms:
             # Chưa có phòng nào được đề xuất trong phiên -> chuyển sang hỏi làm rõ nhu cầu
             return plan(needs_clarification=True)
-        return plan(is_followup=True, focus_rank=analysis.referenced_room_rank)
+        current_focus = (
+            analysis.referenced_room_rank
+            if analysis.referenced_room_rank is not None
+            else getattr(session, "focused_room_rank", None)
+        )
+        return plan(is_followup=True, focus_rank=current_focus or 1)
 
     # 3) Tư vấn kỹ năng
     if intent == "skill_advice":
@@ -279,14 +285,26 @@ def interpret_turn(
         mult = apply_priorities(mult0, analysis.priorities, reset=analysis.reset_priorities)
     explanations.extend([r for r in analysis.priority_reasons if r][:3])
 
-    # Xử lý giảm ngân sách tương đối ("rẻ hơn", "hạ giá") khi người dùng không nêu con số cụ thể
+    # Xử lý ưu tiên giá rẻ ("rẻ hơn", "hạ giá") khi người dùng không nêu con số cụ thể
     is_asking_cheaper = any(kw in clean_user_text for kw in ("re hon", "re nua", "ha gia", "giam gia", "bot tien", "tiet kiem hon", "thap hon"))
-    if is_asking_cheaper and analysis.patch.max_price is None and pref0.max_price:
-        new_max = tighten_budget(pref0.max_price)
-        if pref.max_price is None or new_max < pref.max_price:
-            pref.max_price = new_max
-            mult["price"] = max(mult.get("price", 1.0), 2.0)
-            explanations.append(f"đã hạ trần ngân sách xuống {format_vnd_million(new_max)} theo yêu cầu rẻ hơn")
+    if is_asking_cheaper and analysis.patch.max_price is None:
+        if pref.max_price and pref.max_price > 0:
+            reduced = round((pref.max_price * 0.85) / 50_000.0) * 50_000.0
+            if reduced < pref.max_price:
+                pref.max_price = float(reduced)
+                explanations.append(f"giảm trần ngân sách xuống {format_vnd_million(pref.max_price)} theo yêu cầu rẻ hơn")
+        mult["price"] = max(mult.get("price", 1.0), 2.0)
+        explanations.append("ưu tiên tìm các phòng có giá rẻ nhất")
+
+    # Xử lý nới ngân sách ("đắt hơn", "mắc hơn", "nới giá", "tăng ngân sách", "cao hơn", "phòng xịn hơn") khi người dùng không nêu con số cụ thể
+    is_asking_higher = any(kw in clean_user_text for kw in ("dat hon", "mac hon", "noi gia", "tang ngan sach", "tang gia", "cao hon", "phong xin hon", "phong dep hon", "phong cao cap hon"))
+    if is_asking_higher and analysis.patch.max_price is None:
+        if pref.max_price and pref.max_price > 0:
+            increased = round((pref.max_price * 1.15) / 50_000.0) * 50_000.0
+            if increased > pref.max_price:
+                pref.max_price = float(increased)
+                explanations.append(f"nới trần ngân sách lên {format_vnd_million(pref.max_price)} để tìm thêm phòng tiện nghi hơn")
+        mult["amenity"] = max(mult.get("amenity", 1.0), 1.8)
 
     vague_info = None
     if analysis.patch.location_is_vague:

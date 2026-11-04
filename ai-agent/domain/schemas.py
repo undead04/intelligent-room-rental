@@ -1,12 +1,12 @@
 """Pydantic schemas cho AI Agent: chuẩn hoá dữ liệu vào/ra, khớp frontend Tim-Kiem-AI và backend Smart Housing.
 
-Thay đổi so với bản cũ (xem MIGRATION.md):
+Các đặc điểm chính:
   - Tiện ích / loại phòng là enum (domain.enums), UserPreferenceState tự chuẩn hoá khi gán (validate_assignment).
   - room_type_id là property chỉ đọc, suy ra từ room_type.
   - UserPreferenceState.set_location(): đổi vị trí => xoá toạ độ/ID cũ ở MỘT chỗ.
-  - RoomItem: thêm area_m2, match_percent; không còn tự bịa địa chỉ/số ảnh; pin map ổn định giữa các lần chạy;
-    tag suy đoán từ ML tách riêng (inferred_tags).
-  - GroundingReport có kiểu (extra="allow" nên dict cũ vẫn nhận được).
+  - RoomItem: chuẩn hoá diện tích (area_m2), điểm phù hợp %, phân biệt thẻ xác thực và thẻ suy đoán ML (inferred_tags).
+  - GroundingReport: báo cáo kiểm định 2 tầng (Context Grounding & Answer Grounding) kèm vết retry.
+  - MarketContext: phản ánh khoảng trống thị trường khi 0 phòng và đề xuất ngân sách nới lỏng.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
-from domain.enums import (  # noqa: F401  (re-export cho code cũ: from domain.schemas import CANONICAL_AMENITIES ...)
+from domain.enums import (
     Amenity,
     RoomType,
     normalize_amenities,
@@ -331,11 +331,6 @@ class UserPreferenceState(BaseModel):
         """Có ID hành chính (tỉnh/quận/phường)."""
         return any(x is not None for x in (self.city_id, self.district_id, self.ward_id))
 
-    @property
-    def has_location(self) -> bool:
-        """Có toạ độ điểm mốc hoặc ID hành chính."""
-        return self.has_point or self.has_admin
-
     # -- thao tác có bất biến ------------------------------------------------
     def set_location(self, text: Optional[str], kind: Optional[str] = None, **resolved: Any) -> None:
         """Đổi vị trí => xoá MỌI thứ cũ liên quan vị trí, chỉ giữ giá trị truyền vào.
@@ -451,7 +446,7 @@ class GroundingReport(BaseModel):
     # --- Cơ chế tự sửa sai (Self-Correction Retry Loop) & Fallback ---
     context_retries: Optional[int] = Field(
         None,
-        description="Số lần đã thử lại ở tầng Retrieval khi không tìm thấy phòng thỏa mãn",
+        description="Số lần đã thử lại ở tầng Retrieval (giữ cho tương thích ngược schema)",
     )
     answer_retries: Optional[int] = Field(
         None,
@@ -500,3 +495,4 @@ class AgentResponse(BaseModel):
         default_factory=list,
         description="Các bước suy nghĩ và thực thi tool (model_request, model_response, tool_started, tool_finished)",
     )
+    searched: bool = Field(False, description="True nếu lượt này đã thực hiện tìm kiếm phòng")

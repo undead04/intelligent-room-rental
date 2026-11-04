@@ -3,10 +3,6 @@ import json
 import pytest
 
 from domain.enums import (
-    AMENITY_LABELS_VI,
-    CANONICAL_AMENITIES,
-    ROOM_TYPE_ID_TO_NAME,
-    ROOM_TYPE_NAME_TO_ID,
     Amenity,
     RoomType,
     amenity_glossary,
@@ -22,8 +18,9 @@ from utils.text import norm_key
 
 
 def test_17_canonical_amenities():
-    assert len(CANONICAL_AMENITIES) == 17
-    assert set(AMENITY_LABELS_VI) == CANONICAL_AMENITIES
+    assert len(Amenity) == 17
+    assert len(set(Amenity)) == 17
+    assert all(a.label_vi for a in Amenity)
 
 
 @pytest.mark.parametrize(
@@ -91,7 +88,8 @@ def test_str_enum_behaves_like_string():
         ("SLEEPBOX", RoomType.SLEEPBOX), ("sleepbox", RoomType.SLEEPBOX), ("KTX", RoomType.SLEEPBOX),
         ("ký túc xá", RoomType.SLEEPBOX), ("ở ghép", RoomType.SLEEPBOX),
         (4, RoomType.SLEEPBOX), ("4", RoomType.SLEEPBOX), (RoomType.SLEEPBOX, RoomType.SLEEPBOX),
-        ("phòng trọ", RoomType.ROOM), ("studio", RoomType.STUDIO), ("chung cư", RoomType.APARTMENT),
+        ("phòng trọ", RoomType.ROOM), ("phòng đơn", RoomType.ROOM), ("phòng trọ truyền thống", RoomType.ROOM),
+        ("studio", RoomType.STUDIO), ("chung cư", RoomType.APARTMENT),
         ("nhà nguyên căn", RoomType.WHOLE_HOUSE), (5, RoomType.WHOLE_HOUSE),
     ],
 )
@@ -107,8 +105,6 @@ def test_normalize_room_type_unknown(raw):
 def test_room_type_id_mapping_roundtrip():
     for rt in RoomType:
         assert RoomType.from_id(rt.type_id) is rt
-        assert ROOM_TYPE_NAME_TO_ID[rt.value] == rt.type_id
-        assert ROOM_TYPE_ID_TO_NAME[rt.type_id] == rt.value
         assert rt.label_vi
     assert sorted(r.type_id for r in RoomType) == [1, 2, 3, 4, 5]
 
@@ -119,5 +115,5 @@ def test_normalize_room_types_dedup():
 
 def test_amenity_glossary_lists_every_code():
     g = amenity_glossary()
-    for code in CANONICAL_AMENITIES:
-        assert f"- {code}:" in g
+    for a in Amenity:
+        assert f"- {a.value}:" in g

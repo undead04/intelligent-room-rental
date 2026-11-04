@@ -7,10 +7,7 @@ from skills.skills_discovery import (
 )
 from tools.housing_tools import (
     consult_housing_skill,
-    geocode_location,
     get_listing_detail,
-    get_location_hierarchy,
-    get_market_price_stats,
     list_housing_skills,
     search_rooms,
 )
@@ -20,6 +17,8 @@ from tools.location_service import (
     Geocode,
     Kind,
     LocationResolution,
+    infer_region_from_location_text,
+    infer_region_from_preference,
     resolve_location,
 )
 from tools.registry import (
@@ -40,15 +39,14 @@ __all__ = [
     "set_client",
     "unwrap_response",
     # housing tools
-    "geocode_location",
-    "get_location_hierarchy",
     "search_rooms",
     "get_listing_detail",
-    "get_market_price_stats",
     "list_housing_skills",
     "consult_housing_skill",
     # location service
     "resolve_location",
+    "infer_region_from_location_text",
+    "infer_region_from_preference",
     "LocationResolution",
     "Kind",
     "AdminLookup",
