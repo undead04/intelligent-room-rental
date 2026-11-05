@@ -5,46 +5,23 @@ from sentence_transformers import SentenceTransformer
 import torch
 from pathlib import Path
 
+from app.core.paths import MODELS_CACHE_DIR
+
 
 def resolve_model_cache_dir(custom_path: Optional[str] = None) -> str:
-    """Tự động tìm kiếm thư mục models_cache/model_cache."""
+    """Tự động tìm kiếm thư mục models_cache dùng chung ở root dự án."""
+    # 1. Ưu tiên custom_path hợp lệ
     if custom_path and os.path.exists(custom_path):
         return str(Path(custom_path).resolve())
 
-    # Kiểm tra biến môi trường
+    # 2. Kiểm tra biến môi trường
     env_cache = os.getenv("MODELS_CACHE_DIR") or os.getenv("MODEL_CACHE_DIR")
     if env_cache and os.path.exists(env_cache):
         return str(Path(env_cache).resolve())
 
-    file_path = Path(__file__).resolve()
-    # Các ứng viên thư mục cache (Workspace root, Backend dir)
-    # parents: [0]=services, [1]=app, [2]=backend, [3]=workspace root
-    candidates = []
-    if len(file_path.parents) > 3:
-        candidates.extend([
-            file_path.parents[3] / "models_cache",
-            file_path.parents[3] / "model_cache",
-        ])
-    if len(file_path.parents) > 2:
-        candidates.extend([
-            file_path.parents[2] / "models_cache",
-            file_path.parents[2] / "model_cache",
-        ])
-
-    # 1. Ưu tiên thư mục đã có model e5-base
-    for p in candidates:
-        if (p / "models--intfloat--multilingual-e5-base").exists():
-            return str(p.resolve())
-
-    # 2. Thư mục cache đã tồn tại
-    for p in candidates:
-        if p.is_dir():
-            return str(p.resolve())
-
-    # 3. Fallback: tạo thư mục models_cache ở workspace root (nếu có) hoặc backend
-    target_dir = file_path.parents[3] / "models_cache" if len(file_path.parents) > 3 else file_path.parents[2] / "models_cache"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    return str(target_dir.resolve())
+    # 3. Mặc định dùng MODELS_CACHE_DIR ở root dự án
+    MODELS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return str(MODELS_CACHE_DIR.resolve())
 
 
 class EmbeddingModel:
