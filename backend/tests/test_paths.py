@@ -120,36 +120,11 @@ class TestBackendPaths:
         resolved = resolve_model_cache_dir(custom_dir)
         assert Path(resolved).resolve() == custom_dir.resolve()
 
-    def test_resolve_model_cache_dir_with_model_cache_dir_no_s(self, tmp_path, monkeypatch):
-        """Nhóm 4 - Persistence & Environment: Biến môi trường MODEL_CACHE_DIR (không có chữ 'S') phải hoạt động."""
-        env_dir = tmp_path / "model_cache_no_s"
-        env_dir.mkdir()
-
-        monkeypatch.delenv("MODELS_CACHE_DIR", raising=False)
-        monkeypatch.setenv("MODEL_CACHE_DIR", str(env_dir))
-
-        resolved = resolve_model_cache_dir()
-        assert Path(resolved).resolve() == env_dir.resolve()
-
-    def test_resolve_model_cache_dir_env_precedence_when_first_is_invalid(self, tmp_path, monkeypatch):
-        """Nhóm 4 - Persistence & Environment: MODELS_CACHE_DIR không hợp lệ (không tồn tại),
-        nhưng MODEL_CACHE_DIR hợp lệ -> phải fallback sang MODEL_CACHE_DIR trước khi về default.
-        """
-        valid_model_dir = tmp_path / "valid_model_dir"
-        valid_model_dir.mkdir()
-
-        monkeypatch.setenv("MODELS_CACHE_DIR", str(tmp_path / "non_existent_models_dir"))
-        monkeypatch.setenv("MODEL_CACHE_DIR", str(valid_model_dir))
-
-        resolved = resolve_model_cache_dir()
-        assert Path(resolved).resolve() == valid_model_dir.resolve()
-
-    def test_resolve_model_cache_dir_when_both_envs_invalid_fallback_safe(self, tmp_path, monkeypatch):
-        """Nhóm 4 - Persistence & Environment: Cả 2 biến môi trường đều trỏ tới thư mục không tồn tại
+    def test_resolve_model_cache_dir_when_env_is_invalid_fallback_safe(self, tmp_path, monkeypatch):
+        """Nhóm 4 - Persistence & Environment: Biến môi trường MODELS_CACHE_DIR trỏ tới thư mục không tồn tại
         -> fallback an toàn về root MODELS_CACHE_DIR.
         """
-        monkeypatch.setenv("MODELS_CACHE_DIR", str(tmp_path / "ghost_dir_1"))
-        monkeypatch.setenv("MODEL_CACHE_DIR", str(tmp_path / "ghost_dir_2"))
+        monkeypatch.setenv("MODELS_CACHE_DIR", str(tmp_path / "ghost_models_dir"))
 
         resolved = resolve_model_cache_dir()
         assert Path(resolved).resolve() == MODELS_CACHE_DIR.resolve()
@@ -163,15 +138,14 @@ class TestBackendPaths:
         fake_file.write_bytes(b"data")
 
         monkeypatch.setenv("MODELS_CACHE_DIR", str(fake_file))
-        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
 
         resolved = resolve_model_cache_dir()
         assert Path(resolved).resolve() == MODELS_CACHE_DIR.resolve()
         assert Path(resolved).is_dir()
 
     def test_resolve_model_cache_dir_priority_hierarchy(self, tmp_path, monkeypatch):
-        """Nhóm 3 - State Mutation & Hierarchy: Kiểm tra thứ tự ưu tiên tuyệt đối:
-        custom_path (hợp lệ) > MODELS_CACHE_DIR > MODEL_CACHE_DIR > root default.
+        """Nhóm 3 - State Mutation & Hierarchy: Kiểm tra thứ tự ưu tiên:
+        custom_path (hợp lệ) > MODELS_CACHE_DIR (hợp lệ) > root default.
         """
         custom_dir = tmp_path / "custom_priority"
         custom_dir.mkdir()
@@ -179,11 +153,7 @@ class TestBackendPaths:
         models_dir = tmp_path / "models_env_dir"
         models_dir.mkdir()
 
-        model_dir = tmp_path / "model_env_dir"
-        model_dir.mkdir()
-
         monkeypatch.setenv("MODELS_CACHE_DIR", str(models_dir))
-        monkeypatch.setenv("MODEL_CACHE_DIR", str(model_dir))
 
         # 1. custom_path cao nhất
         assert Path(resolve_model_cache_dir(str(custom_dir))).resolve() == custom_dir.resolve()
@@ -191,12 +161,8 @@ class TestBackendPaths:
         # 2. Không có custom_path -> MODELS_CACHE_DIR
         assert Path(resolve_model_cache_dir()).resolve() == models_dir.resolve()
 
-        # 3. MODELS_CACHE_DIR bị xóa -> MODEL_CACHE_DIR
+        # 3. MODELS_CACHE_DIR bị xóa -> Default root
         monkeypatch.delenv("MODELS_CACHE_DIR", raising=False)
-        assert Path(resolve_model_cache_dir()).resolve() == model_dir.resolve()
-
-        # 4. MODEL_CACHE_DIR bị xóa -> Default root
-        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
         assert Path(resolve_model_cache_dir()).resolve() == MODELS_CACHE_DIR.resolve()
 
     def test_paths_immutability_and_constants_integrity(self):
