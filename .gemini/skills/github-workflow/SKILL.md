@@ -95,3 +95,55 @@ Sau khi PR đã được tạo (hoặc khi người dùng yêu cầu gộp nhán
      git fetch --prune
      ```
 3. **Báo cáo hoàn tất:** Xác nhận với người dùng nhánh `main` đã được đồng bộ code mới nhất và branch `<tên-branch>` đã được dọn dẹp sạch sẽ.
+
+---
+
+## 5. Quy Trình Xử Lý Xung Đột Khi Merge (Merge Conflict Resolution Protocol)
+
+Trong quá trình merge (cả trên GitHub PR lẫn local), nếu xảy ra xung đột mã nguồn (Merge Conflict), Agent **BẮT BUỘC** phải tuân thủ nghiêm ngặt 5 bước sau:
+
+### 5.1. Kiểm Tra Dự Phòng Trước Khi Merge (Pre-Merge Conflict Check)
+- Trước khi gõ lệnh merge, Agent phải chủ động kiểm tra trạng thái xung đột:
+  ```bash
+  # Nếu kiểm tra qua GitHub CLI:
+  gh pr view <số-PR> --json mergeable,mergeStateStatus
+  # Trạng thái an toàn: mergeable="MERGEABLE", mergeStateStatus="CLEAN"
+  # Trạng thái xung đột: mergeable="CONFLICTING", mergeStateStatus="DIRTY"
+  ```
+  Hoặc kiểm tra cục bộ:
+  ```bash
+  git fetch origin main
+  git merge-tree $(git merge-base origin/main <tên-branch>) origin/main <tên-branch>
+  ```
+
+### 5.2. Khi Phát Hiện Xung Đột — Điều Cấm Tuyệt Đối:
+- ❌ **DỪNG LẠI NGAY LẬP TỨC!**
+- ❌ **CẤM TỰ Ý xóa code** của bất kỳ bên nào mà chưa hỏi ý kiến người dùng.
+- ❌ **CẤM tự tiện chạy `git checkout --ours` hoặc `git checkout --theirs`** để ép pass.
+- ❌ **CẤM dùng cờ ép buộc (`--force`)**.
+
+### 5.3. Báo Cáo Xung Đột Minh Bạch Cho Người Dùng:
+Agent lập tức phản hồi và trình bày rõ 3 thông tin:
+1. **Danh sách file bị xung đột:** Liệt kê các file xuất hiện conflict marker (`<<<<<<<`, `=======`, `>>>>>>>`).
+2. **Chi tiết đoạn code đụng độ:** Trích dẫn nội dung giữa 2 nhánh:
+   - `<<<<<<< HEAD` (Code hiện tại trên nhánh đang đứng / `main`).
+   - `=======`
+   - `>>>>>>> <tên-branch>` (Code mới từ nhánh tính năng).
+3. **Phân tích nguyên nhân & Đề xuất phương án giải quyết:**
+   - Đưa ra các phương án cụ thể (ví dụ: Giữ bản mới của feature, hay giữ logic của main, hay kết hợp cả hai).
+
+### 5.4. Chờ Người Dùng Quyết Định (Waiting Gate):
+- Agent **DỪNG LẠI** và chờ người dùng chọn phương án xử lý xung đột.
+- Tuyệt đối không tự ý quyết định thay người dùng.
+
+### 5.5. Thực Hiện Gỡ Conflict & Kiểm Thử Kiểm Chứng:
+Sau khi người dùng đồng ý phương án giải quyết:
+1. Agent tiến hành sửa file, loại bỏ toàn bộ conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
+2. **Bắt buộc chạy lại toàn bộ test suite** của microservice liên quan để đảm bảo không gãy logic sau khi gộp:
+   ```powershell
+   # Ví dụ:
+   .\backend\.venv\Scripts\pytest.exe backend/tests -q
+   .\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
+   .\crawler\.venv\Scripts\pytest.exe crawler/tests -q
+   ```
+3. Báo cáo kết quả test pass 100% cho người dùng trước khi thực hiện commit merge hoàn tất.

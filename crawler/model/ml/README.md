@@ -65,7 +65,7 @@ Mỗi tin đăng được trích xuất thành vector 19 đặc trưng cốt lõ
 Trong không gian logarit $\ell(x) = \ln(1 + x)$:
 $$\mu = \frac{\ell(P_{\text{low}}) + \ell(P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ell(P_{\text{high}}) - \ell(P_{\text{low}})}{2}, 10^{-6}\right)$$
 $$z = \frac{\ell(P_{\text{actual}}) - \mu}{\sigma}$$
-$$\text{price\_score}_{100} = \text{clip}(50 - 25 \cdot z,\ 0,\ 100), \quad \text{price\_score} = \frac{\text{price\_score}_{100}}{100} \in [0.0, 1.0]$$
+$$\text{PriceScore}_{100} = \text{clip}(50 - 25 \cdot z,\ 0,\ 100), \quad \text{PriceScore} = \frac{\text{PriceScore}_{100}}{100} \in [0.0, 1.0]$$
 
 - **`price_score` $\ge 0.75$ ($z < -1.0$)**: Rẻ / Rất hời so với mặt bằng và tiện nghi tương đương.
 - **`price_score` $\approx 0.50$ ($-1.0 \le z \le 1.0$)**: Giá hợp lý, sát kỳ vọng thị trường.

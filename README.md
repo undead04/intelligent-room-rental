@@ -255,10 +255,10 @@ Thay vì dùng đơn giá thô `price / area_m2` (vốn sai lệch lớn khi di�
 - **Kết Quả Thực Nghiệm**: Huấn luyện trên **9.693 bản ghi sạch toàn quốc** (24 tỉnh/thành) đạt **$R^2 = 0.6659$** (Log-$R^2 = 0.7220$), **$\text{MAE} = 599.687\ \text{VNĐ}$** (giảm 40.3% so với mô hình cũ).
 - **Công thức tính điểm hợp lý giá (`price_score`)**:
   $$\mu = \frac{\ln(1 + P_{\text{low}}) + \ln(1 + P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ln(1 + P_{\text{high}}) - \ln(1 + P_{\text{low}})}{2}, 10^{-6}\right)$$
-  $$z = \frac{\ln(1 + P_{\text{actual}}) - \mu}{\sigma}, \quad \text{price\_score} = \frac{\text{clip}(50 - 25 \cdot z,\ 0,\ 100)}{100} \in [0.0, 1.0]$$
-  - $\text{price\_score} \ge 0.75$: Giá rất hời so với mặt bằng chung cùng tiện nghi.
-  - $\text{price\_score} \approx 0.50$: Giá sát với giá trị thị trường.
-  - $\text{price\_score} \le 0.25$: Giá cao hơn đáng kể so với mặt bằng.
+  $$z = \frac{\ln(1 + P_{\text{actual}}) - \mu}{\sigma}, \quad \text{PriceScore} = \frac{\text{clip}(50 - 25 \cdot z,\ 0,\ 100)}{100} \in [0.0, 1.0]$$
+  - `price_score` $\ge 0.75$: Giá rất hời so với mặt bằng chung cùng tiện nghi.
+  - `price_score` $\approx 0.50$: Giá sát với giá trị thị trường.
+  - `price_score` $\le 0.25$: Giá cao hơn đáng kể so với mặt bằng.
 
 ---
 

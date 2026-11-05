@@ -29,10 +29,10 @@ Qua kiểm tra thực tế mã nguồn tại [`crawler/model/ml/`](file:///c:/UI
    - Việc giữ Bounding Box TP.HCM làm loại bỏ toàn bộ ~1.550 phòng ở các tỉnh/thành phố khác khi huấn luyện và gắn cờ lỗi `oor` (Out of Range) sai lệch khi suy luận.
 
 3. **Ngưỡng đơn giá `ppm = price / area` cứng nhắc, phạt nhầm Phòng ở ghép & Ký túc xá (`SLEEPBOX`):**
-   - Bộ lọc hiện tại ép cứng $\text{ppm} \in [30.000,\ 600.000]\ \text{VNĐ/m}^2$ và $\text{area\_m2} \in [8.0,\ 150.0]\ m^2$ cho mọi loại hình phòng.
+   - Bộ lọc hiện tại ép cứng `ppm` $\in [30.000,\ 600.000]\ \text{VNĐ/m}^2$ và `area_m2` $\in [8.0,\ 150.0]\ \text{m}^2$ cho mọi loại hình phòng.
    - Tuy nhiên, thống kê thực tế từ PostgreSQL trên 10.431 tin đăng cho thấy:
      - Với phân khúc **`SLEEPBOX` (Ký túc xá / Sleepbox / Phòng ở ghép — 374 tin)** và các phòng trọ cho thuê theo giường/ở ghép: Chủ nhà thường nhập diện tích của **cả căn phòng sinh hoạt chung ($25 - 50\ m^2$)** nhưng giá đăng là **giá 1 giường / 1 suất ở ghép ($800.000 - 1.800.000\ \text{VNĐ/người}$)**. Khi đó đơn giá $\text{ppm} = \frac{\text{price}}{\text{area}}$ chỉ rơi vào khoảng **$6.000 - 25.000\ \text{VNĐ/m}^2$** (thấp hơn ngưỡng $30.000\ \text{VNĐ/m}^2$).
-     - Hoặc nếu chủ nhà nhập đúng diện tích 1 hộp ngủ ($3 - 6\ m^2$) thì lại bị chặn bởi ngưỡng $\text{area\_m2} < 8.0\ m^2$.
+     - Hoặc nếu chủ nhà nhập đúng diện tích 1 hộp ngủ ($3 - 6\ m^2$) thì lại bị chặn bởi ngưỡng `area_m2` $< 8.0\ \text{m}^2$.
      - Với **`WHOLE_HOUSE` (Nhà nguyên căn)** hoặc **`APARTMENT`** ở các tỉnh (Cần Thơ, Bình Dương, ngoại thành), diện tích rộng khiến $\text{ppm}$ phân vị 5% chỉ từ **$17.000 - 26.000\ \text{VNĐ/m}^2$**.
 
 4. **Thiếu các đặc trưng (Features) quyết định phân khúc giá:**

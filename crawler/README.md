@@ -288,7 +288,7 @@ Mỗi tín hiệu trích xuất bởi LLM (`Signal`) gồm 2 trường:
 
 Bộ xác thực `verify_evidence` so khớp trực tiếp đoạn `evidence` vào văn bản gốc:
 
-$$\text{evidence} \notin \text{raw\_text} \implies \text{value} = \text{unknown}$$
+$$\text{Evidence} \notin \text{RawText} \implies \text{Value} = \text{Unknown}$$
 
 *(Nếu bằng chứng không khớp chính xác từng ký tự trong văn bản gốc $\implies$ tự động hạ cờ về `unknown`)*. Cơ chế này loại bỏ hoàn toàn hiện tượng mô hình "suy đoán mò" hoặc bịa tiện ích không có thực.
 
@@ -308,18 +308,18 @@ $$\text{evidence} \notin \text{raw\_text} \implies \text{value} = \text{unknown}
 | **Chỗ để xe** | 5 điểm | Xác nhận `yes` |
 | **Thang máy** | 5 điểm | Xác nhận `yes` |
 
-$$\text{amenity\_overall\_score} = \min\left(1.0, \frac{\sum \text{points}}{100}\right)$$
+$$\text{AmenityScore} = \min\left(1.0, \frac{\sum \text{points}}{100}\right)$$
 
 ### 7.3. Thang Điểm An Ninh (`safety_score`)
 Điểm an ninh tổng hợp được tính theo trọng số ưu tiên:
 
-$$\text{safety\_score} = 0.30 \cdot S_{\text{camera}} + 0.30 \cdot S_{\text{guard}} + 0.25 \cdot S_{\text{fingerprint}} + 0.15 \cdot S_{\text{safe\_area}}$$
+$$\text{SafetyScore} = 0.30 \cdot S_{\text{camera}} + 0.30 \cdot S_{\text{guard}} + 0.25 \cdot S_{\text{fingerprint}} + 0.15 \cdot S_{\text{safe}}$$
 
 Trong đó:
 - $S_{\text{camera}}$: Camera quan sát an ninh ($30\%$)
 - $S_{\text{guard}}$: Có bảo vệ trông coi ($30\%$)
 - $S_{\text{fingerprint}}$: Khóa vân tay / thẻ từ an toàn ($25\%$)
-- $S_{\text{safe\_area}}$: Nằm trong khu vực an ninh tốt ($15\%$)
+- $S_{\text{safe}}$: Nằm trong khu vực an ninh tốt ($15\%$)
 - Với mỗi tiêu chí: $S_{\text{yes}} = 1.0$, $S_{\text{unknown}} = 0.0$, $S_{\text{no}} = 0.0$ (chỉ tính điểm khi có bằng chứng xác nhận `yes`, tránh làm phẳng điểm số Score Flattening).
 
 ### 7.4. Thang Điểm Thẩm Định Giá Thị Trường (`price_score` từ Machine Learning)
@@ -331,7 +331,7 @@ Thay vì sử dụng phép chia đơn giá thô (`price / m²`) vốn không ph�
 3. **Tính độ lệch chuẩn logarit ($z$-score)**:
    $$z = \frac{\ln(1 + P_{\text{actual}}) - \mu}{\sigma}$$
 4. **Chuẩn hóa thang điểm `price_score` $\in [0.0, 1.0]$**:
-   $$\text{price\_score} = \frac{\text{clip}(50 - 25 \cdot z,\ 0,\ 100)}{100}$$
+   $$\text{PriceScore} = \frac{\text{clip}(50 - 25 \cdot z,\ 0,\ 100)}{100}$$
 
 Kèm phân loại nhận định thị trường (`verdict`: *"Rất rẻ so với thị trường"*, *"Hợp lý"*, *"Đắt hơn thị trường"*...) phục vụ thuật toán Multi-Criteria Re-ranking.
 
