@@ -7,6 +7,8 @@ from app.schemas.user import UserResponse
 from app.schemas.location import CityResponse, DistrictResponse, WardResponse
 from app.schemas.room_type import RoomTypeResponse, ROOM_TYPE_CODE_TO_ID
 
+RoomTypeReference = RoomTypeResponse
+
 
 class AmenityCode(str, Enum):
     """Danh mục tiện ích, quy định và an ninh chuẩn hóa (Canonical Taxonomy).
@@ -57,6 +59,9 @@ class ListingResponse(BaseModel):
     safety_score: Optional[float] = None
     amenity_overall: Optional[float] = None
     concept_scores: Optional[dict[str, float]] = None
+    is_active: bool = True
+    status: str = "active"
+    last_checked_at: Optional[datetime] = None
     city: Optional[CityResponse] = None
     district: Optional[DistrictResponse] = None
     ward: Optional[WardResponse] = None
@@ -74,6 +79,15 @@ class ListingDetailResponse(ListingResponse):
     furnishing_code: Optional[int] = None
     crawled_at: Optional[datetime] = None
     poster: Optional[UserResponse] = None
+    is_expired: bool = False
+    status_notice: Optional[str] = None
+
+    @model_validator(mode="after")
+    def compute_expiry_notice(self) -> "ListingDetailResponse":
+        if not self.is_active or (self.status and self.status.lower() != "active"):
+            self.is_expired = True
+            self.status_notice = "Bài đăng này đã hết hạn hoặc được người cho thuê gỡ bài trên nguồn gốc."
+        return self
 
 
 class ListingFilterParams(BaseModel):

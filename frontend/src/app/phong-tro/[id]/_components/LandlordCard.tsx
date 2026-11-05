@@ -31,10 +31,21 @@ export default function LandlordCard({ listing, defaultImage }: LandlordCardProp
   const isCompany = poster?.is_company ?? false;
   const liveAds = poster?.live_ads ?? 0;
   const soldAds = poster?.sold_ads ?? 0;
+  const isExpired = listing?.is_expired || listing?.is_active === false;
 
   return (
     <aside className="self-start lg:sticky lg:top-24 lg:col-span-4 lg:h-fit">
       <div className="rounded-2xl border border-[#E8E4DC] bg-white p-6 shadow-sm">
+        {isExpired && (
+          <div className="mb-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-xs text-[#991B1B]">
+            <div className="flex items-center gap-1.5 font-bold mb-0.5">
+              <span className="material-symbols-outlined text-[16px]">event_busy</span>
+              Phòng đã ngừng giao dịch
+            </div>
+            <p className="text-[11px] text-[#B91C1C]">Tin đăng không còn nhận liên hệ đặt phòng.</p>
+          </div>
+        )}
+
         <div className="flex items-center gap-3.5 border-b border-gray-100 pb-4">
           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-[#0F5F4A] bg-gray-200">
             <ImageWithFallback
@@ -50,8 +61,9 @@ export default function LandlordCard({ listing, defaultImage }: LandlordCardProp
             </h3>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isCompany ? "bg-[#FFF3DC] text-[#8A5A00]" : "bg-gray-100 text-gray-600"
-                  }`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                  isCompany ? "bg-[#FFF3DC] text-[#8A5A00]" : "bg-gray-100 text-gray-600"
+                }`}
               >
                 <span className="material-symbols-outlined text-[14px]">
                   {isCompany ? "apartment" : "person"}

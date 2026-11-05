@@ -47,6 +47,9 @@ export interface ListingDto {
   price_string: string | null;
   price_score?: number | null;
   amenity_overall?: number | null;
+  is_active?: boolean;
+  status?: string;
+  last_checked_at?: string | null;
   posted_date: string | null;
   city: CityDto | null;
   district: DistrictDto | null;
@@ -65,6 +68,8 @@ export interface ListingDetailDto extends ListingDto {
   safety_score: number | null;
   concept_scores: Record<AmenityKey, number> | null;
   poster: UserDto | null;
+  is_expired?: boolean;
+  status_notice?: string | null;
 }
 
 export interface UserDto {

@@ -63,8 +63,11 @@ class ListingRepository:
         max_price: Optional[float],
         min_area: Optional[float],
         max_area: Optional[float],
+        include_inactive: bool = False,
     ) -> Query:
         query = self.base_query()
+        if not include_inactive:
+            query = query.filter(Listing.is_active == True)
         if search:
             pattern = f"%{search}%"
             query = query.filter(or_(Listing.title.ilike(pattern), Listing.address_raw.ilike(pattern)))
@@ -251,6 +254,7 @@ class ListingRepository:
                 joinedload(Listing.ward),
                 joinedload(Listing.room_type),
             )
+            .filter(Listing.is_active == True)
         )
 
         # Filters

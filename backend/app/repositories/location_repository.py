@@ -59,15 +59,15 @@ class LocationRepository:
         """
         target_lat, target_lng = lat, lng
         if (target_lat is None or target_lng is None) and ward_id:
-            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.ward_id == ward_id).first()
+            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.ward_id == ward_id, Listing.is_active == True).first()
             if c and c[0] is not None:
                 target_lat, target_lng = float(c[0]), float(c[1])
         if (target_lat is None or target_lng is None) and district_id:
-            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.district_id == district_id).first()
+            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.district_id == district_id, Listing.is_active == True).first()
             if c and c[0] is not None:
                 target_lat, target_lng = float(c[0]), float(c[1])
         if (target_lat is None or target_lng is None) and city_id:
-            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.region_id == city_id).first()
+            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.region_id == city_id, Listing.is_active == True).first()
             if c and c[0] is not None:
                 target_lat, target_lng = float(c[0]), float(c[1])
 
@@ -127,7 +127,7 @@ class LocationRepository:
                     )
                     .join(District, Ward.district_id == District.id)
                     .join(Listing, Listing.ward_id == Ward.id)
-                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None))
+                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None), Listing.is_active == True)
                 )
                 if ward_id:
                     wq = wq.filter(Ward.id != ward_id)
@@ -177,7 +177,7 @@ class LocationRepository:
                     )
                     .join(City, District.city_id == City.id)
                     .join(Listing, Listing.district_id == District.id)
-                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None))
+                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None), Listing.is_active == True)
                 )
                 if district_id:
                     dq = dq.filter(District.id != district_id)

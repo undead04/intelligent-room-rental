@@ -79,6 +79,7 @@ class ListingService:
             Listing.region_id == city_id,
             Listing.price_vnd.isnot(None),
             Listing.price_vnd > 0,
+            Listing.is_active == True,
         ]
         if district_id is not None:
             base_filters.append(Listing.district_id == district_id)

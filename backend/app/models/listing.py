@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Boolean, Column, String, Integer, Float, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -32,6 +32,11 @@ class Listing(Base):
     # Timestamps
     posted_date = Column(DateTime, nullable=True)
     crawled_at = Column(DateTime, nullable=True)
+
+    # Lifecycle Status
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    status = Column(String(50), default="active", nullable=False, index=True)
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
 
     # Safety Score
     safety_score = Column(Float, nullable=True)

@@ -212,6 +212,7 @@ class ListingTransformer:
         # 7. Trạng thái và thời gian
         record["is_active"] = bool(record.get("is_active", True))
         record["status"] = str(record.get("status") or "active").lower()
+        record["last_checked_at"] = self.to_datetime(record.get("last_checked_at"))
         record["posted_date"] = self.to_datetime(record.get("posted_date") or record.get("posted_at"))
         record["crawled_at"] = self.to_datetime(record.get("crawled_at")) or datetime.now()
 

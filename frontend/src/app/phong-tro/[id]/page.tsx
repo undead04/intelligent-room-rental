@@ -52,6 +52,26 @@ export default function PropertyDetailPage() {
 
       {/* Main Content Layout */}
       <main className="max-w-[1380px] mx-auto px-4 lg:px-8 py-6 w-full flex-1">
+        {/* Banner cảnh báo tin đăng hết hạn */}
+        {(listing?.is_expired || listing?.is_active === false) && (
+          <div className="mb-6 rounded-2xl border border-[#FCD34D] bg-[#FFFBEB] p-4 sm:p-5 shadow-xs">
+            <div className="flex items-start gap-3.5">
+              <span className="material-symbols-outlined text-[26px] text-[#D97706] shrink-0 mt-0.5">
+                warning
+              </span>
+              <div>
+                <h3 className="font-['Plus_Jakarta_Sans'] text-base font-bold text-[#92400E]">
+                  Tin đăng này đã hết hạn hoặc đã ngừng cho thuê
+                </h3>
+                <p className="mt-1 text-xs sm:text-sm text-[#B45309]">
+                  {listing?.status_notice ||
+                    "Bài đăng này đã hết hạn hoặc được người cho thuê gỡ bài trên nguồn gốc. Các thông tin dưới đây chỉ mang tính chất tham khảo lưu trữ."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {apiError && (
           <BackendConnectionError
             message={apiError}
@@ -87,6 +107,7 @@ export default function PropertyDetailPage() {
               area={area}
               isSaved={isSaved}
               onToggleSave={() => setIsSaved(!isSaved)}
+              isExpired={listing?.is_expired || listing?.is_active === false}
             />
 
             <LocationMap address={location} latitude={listing?.lat} longitude={listing?.lng} />

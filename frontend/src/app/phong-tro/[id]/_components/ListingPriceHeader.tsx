@@ -5,6 +5,7 @@ interface ListingPriceHeaderProps {
   area?: string;
   isSaved: boolean;
   onToggleSave: () => void;
+  isExpired?: boolean;
 }
 
 export default function ListingPriceHeader({
@@ -14,13 +15,21 @@ export default function ListingPriceHeader({
   area,
   isSaved,
   onToggleSave,
+  isExpired,
 }: ListingPriceHeaderProps) {
   return (
     <div className="bg-white rounded-2xl p-6 border border-[#E8E4DC] shadow-xs">
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <span className="px-3 py-1 rounded-full bg-[#E6F4EE] text-[#0F5F4A] text-xs font-bold">
-          Homigo Verified
-        </span>
+        {isExpired ? (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#FEF2F2] text-[#991B1B] text-xs font-bold border border-[#FECACA]">
+            <span className="material-symbols-outlined text-[15px]">event_busy</span>
+            Đã hết hạn
+          </span>
+        ) : (
+          <span className="px-3 py-1 rounded-full bg-[#E6F4EE] text-[#0F5F4A] text-xs font-bold">
+            Homigo Verified
+          </span>
+        )}
         <button
           onClick={onToggleSave}
           className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[#DCECE4] bg-[#F5FBF7] px-3 py-1.5 text-xs font-semibold text-[#0F5F4A]"
