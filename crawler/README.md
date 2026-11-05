@@ -23,23 +23,23 @@ Module này đảm nhiệm toàn bộ chu trình kỹ thuật dữ liệu (Data 
 flowchart TD
     subgraph S1["Tầng 1: Thu Thập Dữ Liệu (Web Scraping)"]
         A1["NhaTot API (gateway.chotot.com)"] --> B1["Crawler Engine (spiders/)"]
-        A2["PhongTro123 / Đa nguồn"] --> B1
+        A2["PhongTro123 và Đa nguồn"] --> B1
         B1 -->|Lưu vết Checkpoint| C1["checkpoint.json"]
     end
 
     subgraph S2["Tầng 2: Vùng Đệm Thô (SQLite WAL Storage)"]
-        D1[("staging.db<br/>(raw_listings)")]
-        E1["Trạng thái xử lý<br/>(is_processed: 0/1)"]
-        D1 --- E1
+        D1["staging.db (raw_listings)"]
+        E1["Trạng thái xử lý (is_processed: 0 hoặc 1)"]
+        D1 --> E1
     end
 
-    subgraph S3["Tầng 3: Trích Xuất & Kiểm Thẩm Bằng LLM"]
-        F1["Dynamic Chunker<br/>(Token Window ~2500 tokens)"]
-        G1["Gemini Round-Robin<br/>(Quản lý xoay vòng API Keys)"]
-        H1["Pydantic Extraction<br/>(Tiện ích, An ninh, Quy định)"]
-        I1{"Evidence Verifier<br/>(So khớp nguyên văn text gốc)"}
-        J1["Tính Concept Scores<br/>(amenity_score, safety_score)"]
-        K1["Hạ cờ về unknown<br/>(Chống ảo giác)"]
+    subgraph S3["Tầng 3: Trích Xuất và Kiểm Thẩm Bằng LLM"]
+        F1["Dynamic Chunker (Token Window 2500 tokens)"]
+        G1["Gemini Round-Robin (Quản lý xoay vòng API Keys)"]
+        H1["Pydantic Extraction (Tiện ích, An ninh, Quy định)"]
+        I1{"Evidence Verifier (So khớp nguyên văn text gốc)"}
+        J1["Tính Concept Scores (amenity_score, safety_score)"]
+        K1["Hạ cờ về unknown (Chống ảo giác)"]
         L1["LLM Checkpoint JSONL"]
 
         F1 --> G1
@@ -51,15 +51,15 @@ flowchart TD
         J1 --> L1
     end
 
-    subgraph S4["Tầng 4: ETL, Embedding & Nạp Đa Đích"]
-        M1["Text Cleaner<br/>(Lọc SĐT, URL, Emoji, CTA)"]
-        N1["Context Enricher<br/>(5 khối ngữ cảnh + Tiền tố passage)"]
-        O1["Listing Transformer<br/>(Chuẩn hóa schema, tích hợp ML Price Score)"]
-        P1["Listing Embedder<br/>(intfloat/multilingual-e5-base 768-dim)"]
+    subgraph S4["Tầng 4: ETL, Embedding và Nạp Đa Đích"]
+        M1["Text Cleaner (Lọc SĐT, URL, Emoji, CTA)"]
+        N1["Context Enricher (5 khối ngữ cảnh và tiền tố passage)"]
+        O1["Listing Transformer (Chuẩn hóa schema, tích hợp ML Price Score)"]
+        P1["Listing Embedder (intfloat/multilingual-e5-base 768-dim)"]
         Q1["DataLoader"]
-        R1[("PostgreSQL + pgvector<br/>(Listings, Embeddings, Locations)")]
-        R2["Parquet File<br/>(Huấn luyện ML)"]
-        R3["CSV / JSON<br/>(Báo cáo & Phân tích)"]
+        R1["PostgreSQL và pgvector (Listings, Embeddings, Locations)"]
+        R2["Parquet File (Huấn luyện ML)"]
+        R3["CSV hoặc JSON (Báo cáo và Phân tích)"]
 
         M1 --> N1
         N1 --> O1
@@ -71,11 +71,11 @@ flowchart TD
     end
 
     %% Các luồng liên kết giữa các tầng
-    B1 -->|Upsert thô O1| D1
+    B1 -->|Ghi dữ liệu thô| D1
     D1 -->|Đọc tin thô| F1
     D1 --> M1
     L1 --> M1
-    Q1 -->|Cập nhật is_processed| D1
+    Q1 -->|Cập nhật trạng thái| D1
 ```
 
 ---

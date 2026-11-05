@@ -208,25 +208,25 @@ Hệ thống AI Agent không dùng cấu trúc prompt monolithic nguyên khối 
 
 ```mermaid
 flowchart TD
-    START([START: Tin nhắn người dùng]) --> N1["1. Guardrail Node\n(0 Tools - Regex / Heuristics)"]
+    START["START: Tin nhắn người dùng"] --> N1["1. Guardrail Node<br/>(0 Tools - Regex / Heuristics)"]
     
-    N1 -->|Phát hiện vi phạm / Jailbreak| N8["8. Formatter Node\n(0 Tools - Đóng gói phản hồi an toàn)"]
-    N1 -->|An toàn| N2["2. Understand Node\n(NLU + Dynamic MCDM + Dynamic Skill Match)"]
+    N1 -->|Phát hiện vi phạm hoặc Jailbreak| N8["8. Formatter Node<br/>(0 Tools - Đóng gói phản hồi an toàn)"]
+    N1 -->|An toàn| N2["2. Understand Node<br/>(NLU + Dynamic MCDM + Dynamic Skill Match)"]
     
-    N2 -->|Khớp trigger Kỹ năng chuyên sâu| N4["4. Advisory Node\n(Scope: ADVISORY_TOOLS)"]
-    N2 -->|Truy vấn quá mơ hồ| N3["3. Clarification Node\n(0 Tools - Hỏi gợi mở thân thiện)"]
-    N2 -->|Yêu cầu soi phòng cụ thể| N6["6. Decision Support Node\n(Scope: DETAIL_TOOLS)"]
-    N2 -->|Đủ tiêu chí tìm kiếm| N5["5. Hybrid Retrieval Node\n(Scope: RETRIEVAL_TOOLS)"]
+    N2 -->|Khớp trigger Kỹ năng chuyên sâu| N4["4. Advisory Node<br/>(Scope: ADVISORY_TOOLS)"]
+    N2 -->|Truy vấn quá mơ hồ| N3["3. Clarification Node<br/>(0 Tools - Hỏi gợi mở thân thiện)"]
+    N2 -->|Yêu cầu soi phòng cụ thể| N6["6. Decision Support Node<br/>(Scope: DETAIL_TOOLS)"]
+    N2 -->|Đủ tiêu chí tìm kiếm| N5["5. Hybrid Retrieval Node<br/>(Scope: RETRIEVAL_TOOLS)"]
     
     N4 --> N8
     N3 --> N8
     N5 --> N6
     
-    N6 --> N7["7. Verify Node (Self-RAG)\n(Kiểm chứng trung thực 100% ID, Giá, Toạ độ)"]
-    N7 -->|Phát hiện sai lệch & retry <= 2| N6
+    N6 --> N7["7. Verify Node (Self-RAG)<br/>(Kiểm chứng trung thực 100% ID, Giá, Toạ độ)"]
+    N7 -->|Phát hiện sai lệch và retry tối đa 2 lần| N6
     N7 -->|Grounded 100%| N8
     
-    N8 --> END([END: Trả về AgentResponse])
+    N8 --> END["END: Trả về AgentResponse"]
 ```
 
 #### Ưu thế của Phân Vùng Công Cụ (Tool Partitioning):

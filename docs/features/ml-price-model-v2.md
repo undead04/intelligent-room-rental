@@ -58,30 +58,35 @@ Qua kiểm tra thực tế mã nguồn tại [`crawler/model/ml/`](file:///c:/UI
 ```mermaid
 flowchart TD
     subgraph DataSources["1. Nguồn Dữ Liệu Toàn Quốc (10.430+ bản ghi)"]
-        A1[("SQLite staging.db<br/>(Raw Listings)")]
-        A2["checkpoint_reports.jsonl<br/>(LLM Gemini Reports)"]
-        A3["listings_clean.parquet<br/>(Cached Dataset)"]
-        A1 & A2 --> A3
+        A1["SQLite staging.db (Raw Listings)"]
+        A2["checkpoint_reports.jsonl (LLM Gemini Reports)"]
+        A3["listings_clean.parquet (Cached Dataset)"]
+        A1 --> A3
+        A2 --> A3
     end
 
-    subgraph GuardAndFilter["2. Bộ Lọc & National InputGuard Thích Ứng"]
-        A3 --> B1["Kiểm tra Bounding Box Việt Nam<br/>lat: [8.0, 23.5] | lng: [102.0, 110.0]"]
-        B1 --> B2["Kiểm tra Ngưỡng Thích Ứng Theo RoomType<br/>(SLEEPBOX / ROOM / STUDIO / APARTMENT / WHOLE_HOUSE)"]
+    subgraph GuardAndFilter["2. Bộ Lọc và National InputGuard Thích Ứng"]
+        A3 --> B1["Kiểm tra Bounding Box Việt Nam (lat 8.0-23.5, lng 102.0-110.0)"]
+        B1 --> B2["Kiểm tra Ngưỡng Thích Ứng Theo RoomType"]
     end
 
-    subgraph FeatureEngineering["3. Trích Xuất & Kỹ Thuật Đặc Trưng (35+ Features)"]
-        B2 --> C1["Base & Domain Features<br/>area_m2, lat, lng, room_type_id, furnishing_code"]
-        B2 --> C2["17 Canonical Binary Flags<br/>10 Amenities + 3 Rules + 4 Safety"]
-        B2 --> C3["LLM Semantic Scores<br/>amenity_overall, safety_score"]
-        B2 --> C4["Multi-City POI Distances<br/>dist_city_center_km, dist_uni_hub_km"]
-        C1 & C2 & C3 & C4 --> C5["Feature Interactions (make_base_features)<br/>log_area, amenity_density, is_shared_or_dorm, luxury_combo"]
-        C5 --> C6["Distance-Weighted SpatialTE (BallTree Haversine)<br/>Thống kê giá k=(5, 20) láng giềng có trọng số khoảng cách"]
+    subgraph FeatureEngineering["3. Trích Xuất và Kỹ Thuật Đặc Trưng (19 Features)"]
+        B2 --> C1["Base và Domain Features (area_m2, lat, lng, room_type_id, furnishing_code)"]
+        B2 --> C2["10 Cờ Tiện Nghi Cốt Lõi (8 Nội thất + 2 Quy định/An ninh)"]
+        B2 --> C3["LLM Semantic Scores (amenity_overall, safety_score)"]
+        B2 --> C4["Multi-City POI Distances (dist_nearest_hub_km, dist_nearest_uni_km)"]
+        C1 --> C5["Feature Interactions (amenity_density, lat_lng_sum, lat_lng_diff)"]
+        C2 --> C5
+        C3 --> C5
+        C4 --> C5
+        C5 --> C6["Distance-Weighted SpatialTE (BallTree Haversine k=5, 20)"]
     end
 
-    subgraph ModelTraining["4. Huấn Luyện Ensemble & Mondrian CQR"]
-        C6 --> D1["LightGBM + XGBoost Blend<br/>(Optuna 5-Fold Stratified CV + Smearing Correction)"]
-        C6 --> D2["MondrianPriceInterval (CQR 80%)<br/>Phân tầng theo Phân khúc Phòng & Mức giá"]
-        D1 & D2 --> E["Xuất Artifacts (.joblib) & Cập nhật price_score PostgreSQL"]
+    subgraph ModelTraining["4. Huấn Luyện Ensemble và Mondrian CQR"]
+        C6 --> D1["LightGBM và XGBoost Blend (Optuna 5-Fold Stratified CV)"]
+        C6 --> D2["MondrianPriceInterval (CQR 80% theo 5 phân vị giá)"]
+        D1 --> E["Xuất Artifacts .joblib và Cập nhật price_score PostgreSQL"]
+        D2 --> E
     end
 ```
 
