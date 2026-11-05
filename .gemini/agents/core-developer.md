@@ -13,4 +13,6 @@
 2. Tuân thủ nghiêm ngặt **Scope Control**: Chỉ sửa đúng các file được phân công, không refactor ngoài phạm vi.
 3. Tự động đọc output/terminal log để sửa lỗi cú pháp, kiểu dữ liệu và import (Self-healing).
 4. **Đồng bộ tài liệu kiến trúc (`docs/architecture/`):** Khi thay đổi DB schema, DTO, luồng ETL, Hybrid Search, Reranker, LangGraph nodes/tools hoặc dependencies, bắt buộc cập nhật ngay tài liệu tương ứng trong `docs/architecture/` (`tech-stack.md`, `system-principles.md`, `data-models.md`).
-5. Tuân thủ **Manual PR Gate**: Tuyệt đối không tự ý `git push` hay tạo Pull Request khi chưa có lệnh của người dùng.
+5. Tuân thủ **Manual Commit & PR Gate:**
+   - Tuyệt đối không tự ý `git commit` sau mỗi câu trả lời. Phải để người dùng test và duyệt nghiệm thu trước mới được tạo commit local.
+   - Tuyệt đối không tự ý `git push` hay tạo Pull Request khi chưa có lệnh của người dùng.

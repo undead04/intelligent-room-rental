@@ -1,11 +1,11 @@
 ---
 name: github-workflow
-description: Quy trình Git chuẩn kiểm soát chặt chẽ: Tạo branch, commit theo mốc nhỏ, hỏi ý kiến trước khi Push/PR, và tự động Merge + Dọn dẹp (Remove) branch cũ khi người dùng xác nhận hoàn tất.
+description: Quy trình Git chuẩn kiểm soát chặt chẽ: Tạo branch, tuyệt đối cấm tự ý commit khi người dùng chưa test và duyệt, hỏi ý kiến trước khi Push/PR, và tự động Merge + Dọn dẹp branch khi người dùng xác nhận.
 ---
 
-# Skill: Git Workflow Kiểm Soát Chặt Chẽ (Manual PR & Merge Gate)
+# Skill: Git Workflow Kiểm Soát Chặt Chẽ (Manual Commit, PR & Merge Gate)
 
-Quy tắc cốt lõi: **Agent chỉ là trợ lý gõ lệnh Git ở local, quyền mở PR, Push, Merge và Xóa Branch thuộc về quyết định của người dùng.**
+Quy tắc cốt lõi: **Agent chỉ là trợ lý gõ lệnh Git ở local. Mọi thao tác Commit, Push, Mở PR, Merge và Xóa Branch đều BẮT BUỘC phải qua sự kiểm tra và phê duyệt của người dùng. TUYỆT ĐỐI CẤM tự ý commit sau mỗi câu trả lời.**
 
 ---
 
@@ -20,15 +20,25 @@ Quy tắc cốt lõi: **Agent chỉ là trợ lý gõ lệnh Git ở local, quy�
 
 ---
 
-## 1. Trong Quá Trình Làm Việc (Giai đoạn Code & Commit)
-Một tính năng (feature) có thể có **rất nhiều commit nhỏ** (chưa hoàn thiện, sửa giao diện, sửa logic...).
-- Mỗi khi xong một phần việc nhỏ hoặc hết 1 bước trong task:
-  - Chỉ chạy: `git add .`
-  - Tạo commit cục bộ: `git commit -m "feat/fix: ..."`
-- **ĐIỀU CẤM:** 
-  - ❌ **CẤM TỰ Ý `git push`**
-  - ❌ **CẤM TỰ Ý tạo Pull Request hoặc Merge**
-  - Giữ toàn bộ commit ở máy local của người dùng.
+## 1. Trong Quá Trình Làm Việc (Giai đoạn Code, Test & Nghiệm Thu Trước Commit)
+- **Quy trình chuẩn sau khi code / sửa file:**
+  1. Agent chủ động chạy test / linter / parser để tự kiểm chứng kỹ thuật trước.
+  2. Trình bày rõ ràng các thay đổi, file đã chỉnh sửa và hướng dẫn kiểm thử cho người dùng.
+  3. **DỪNG LẠI (WAITING GATE) — Để người dùng tự tay test và nghiệm thu.**
+  4. Giữ nguyên working tree (trạng thái uncommitted), **TUYỆT ĐỐI CẤM tự ý gõ `git commit`**.
+- **Khi nào mới được phép commit?**
+  - **CHỈ KHI** người dùng kiểm tra xong và ra lệnh rõ ràng bằng văn bản (ví dụ: *"OK commit đi"*, *"Duyệt commit"*, *"Thấy ổn rồi commit đi"*).
+  - Lúc đó mới chạy:
+    ```bash
+    git add <cac-file-thay-doi>
+    git commit -m "feat/fix/docs: <thông điệp rõ ràng>"
+    ```
+- **ĐIỀU CẤM TUYỆT ĐỐI:** 
+  - ❌ **CẤM tự ý `git commit` sau mỗi câu trả lời của Agent.**
+  - ❌ **CẤM commit khi người dùng chưa kịp test và xác nhận.**
+  - ❌ **CẤM tự ý `git push`.**
+  - ❌ **CẤM tự ý tạo Pull Request hoặc Merge.**
+  - Giữ toàn bộ thay đổi ở local và chỉ commit khi có lệnh.
 
 ---
 
