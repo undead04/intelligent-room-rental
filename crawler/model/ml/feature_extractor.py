@@ -67,6 +67,41 @@ CANONICAL_SAFETY_KEYS = [
 
 ALL_BINARY_KEYS = CANONICAL_AMENITY_KEYS + CANONICAL_RULE_KEYS + CANONICAL_SAFETY_KEYS
 
+# Danh sách 7 cờ nhị phân có mức độ đóng góp (gain) cận 0 đối với bài toán định giá tiền thuê
+# Đã được kiểm chứng thực nghiệm cắt bỏ trong Phương án B (Feature Pruning)
+PRUNED_LOW_IMPACT_FLAGS: list[str] = [
+    "is_kitchen",
+    "is_parking",
+    "is_no_shared_landlord",
+    "is_pet_allowed",
+    "is_fingerprint_lock",
+    "is_camera",
+    "is_safe_area",
+]
+
+# Danh sách 19 đặc trưng cốt lõi sau khi tinh gọn cho mô hình định giá ML
+PRUNED_19_FEATURES: list[str] = [
+    "area_m2",
+    "lat",
+    "lng",
+    "room_type_id",
+    "furnishing_code",
+    "is_private_wc",
+    "is_aircon",
+    "is_mezzanine",
+    "is_fridge",
+    "is_washing_machine",
+    "is_window_balcony",
+    "is_furniture",
+    "is_elevator",
+    "is_free_hours",
+    "is_guard",
+    "amenity_overall",
+    "safety_score",
+    "dist_nearest_hub_km",
+    "dist_nearest_uni_km",
+]
+
 # Trọng số tính điểm nội suy amenity_overall (thang 100 điểm) khớp 1-1 với ListingExtraction
 AMENITY_WEIGHTS: dict[str, float] = {
     "private_wc": 20.0,
@@ -525,9 +560,14 @@ def _build_or_load_clean_dataset() -> list[dict[str, Any]]:
 def load_and_preprocess_dataset(
     data_path: str | Path = DEFAULT_DATA_PATH,
     auto_build_cache: bool = True,
+    pruned: bool = True,
     **kwargs: Any,
 ) -> Tuple[pd.DataFrame, pd.Series]:
-    """Nạp dataset từ Parquet (ưu tiên) hoặc JSON/Staging DB, áp dụng bộ lọc Toàn Quốc và trả về (X, y)."""
+    """Nạp dataset từ Parquet (ưu tiên) hoặc JSON/Staging DB, áp dụng bộ lọc Toàn Quốc và trả về (X, y).
+    
+    Tham số `pruned`: Mặc định True (Phương án B: Tinh gọn 19 features loại bỏ các cờ ít đóng góp cho định giá ML).
+    Nếu truyền `pruned=False`, trả về đầy đủ 26 features.
+    """
     path_obj = Path(data_path)
 
     # 1. Tìm hoặc tự động tổng hợp dữ liệu
@@ -560,6 +600,10 @@ def load_and_preprocess_dataset(
 
     y = df_clean["price_vnd"].copy()
     X = df_clean.drop(columns=["listing_id", "price_vnd"]).copy()
+
+    if pruned:
+        drop_cols = [c for c in PRUNED_LOW_IMPACT_FLAGS if c in X.columns]
+        X = X.drop(columns=drop_cols).copy()
 
     return X, y
 

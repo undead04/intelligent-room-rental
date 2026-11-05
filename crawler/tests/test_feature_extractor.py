@@ -322,15 +322,17 @@ class TestFeatureExtractorPersistenceAndIntegration:
                 bad_path.unlink()
 
     def test_load_and_preprocess_dataset_full_dataset(self):
-        """Kiểm tra nạp dataset thực tế đạt đủ tiêu chí số lượng bản ghi >= 9.500 và 26 features."""
-        X, y = load_and_preprocess_dataset(auto_build_cache=True)
+        """Kiểm tra nạp dataset thực tế đạt đủ tiêu chí số lượng bản ghi >= 9.500 và 19 features tinh gọn (hoặc 26 features đầy đủ)."""
+        X_pruned, y_pruned = load_and_preprocess_dataset(auto_build_cache=True, pruned=True)
+        X_full, y_full = load_and_preprocess_dataset(auto_build_cache=True, pruned=False)
 
         # 1. Số lượng bản ghi sạch phải đạt >= 9.500
-        assert len(X) >= 9500, f"Số lượng bản ghi {len(X)} thấp hơn kỳ vọng 9.500!"
-        assert len(y) == len(X)
+        assert len(X_pruned) >= 9500, f"Số lượng bản ghi {len(X_pruned)} thấp hơn kỳ vọng 9.500!"
+        assert len(y_pruned) == len(X_pruned)
+        assert len(X_full) == len(X_pruned)
 
-        # 2. Đầy đủ 26 features
-        expected_features = [
+        # 2. Đầy đủ 26 features khi pruned=False
+        expected_26_features = [
             "area_m2",
             "lat",
             "lng",
@@ -358,16 +360,21 @@ class TestFeatureExtractorPersistenceAndIntegration:
             "dist_nearest_hub_km",
             "dist_nearest_uni_km",
         ]
-        assert X.columns.tolist() == expected_features
+        assert X_full.columns.tolist() == expected_26_features
 
-        # 3. Toàn bộ 5 loại phòng đều có dữ liệu
-        counts = X["room_type_id"].value_counts().to_dict()
+        # 3. Đầy đủ 19 features tinh gọn khi pruned=True (Phương án B)
+        assert len(X_pruned.columns) == 19
+        for dropped in ("is_pet_allowed", "is_no_shared_landlord", "is_camera", "is_kitchen", "is_parking", "is_safe_area", "is_fingerprint_lock"):
+            assert dropped not in X_pruned.columns
+
+        # 4. Toàn bộ 5 loại phòng đều có dữ liệu
+        counts = X_pruned["room_type_id"].value_counts().to_dict()
         for rt_id in (1, 2, 3, 4, 5):
             assert rt_id in counts, f"Thiếu dữ liệu của room_type_id={rt_id}"
             assert counts[rt_id] > 0
 
-        # 4. Giá thuê hợp lệ và không có giá trị NaN
-        assert not X.isna().any().any(), "Tập đặc trưng X có chứa giá trị NaN!"
-        assert not y.isna().any(), "Biến mục tiêu y có chứa giá trị NaN!"
-        assert (y > 0).all(), "Có bản ghi giá thuê <= 0!"
+        # 5. Giá thuê hợp lệ và không có giá trị NaN
+        assert not X_pruned.isna().any().any(), "Tập đặc trưng X có chứa giá trị NaN!"
+        assert not y_pruned.isna().any(), "Biến mục tiêu y có chứa giá trị NaN!"
+        assert (y_pruned > 0).all(), "Có bản ghi giá thuê <= 0!"
 

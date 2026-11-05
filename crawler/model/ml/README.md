@@ -26,14 +26,14 @@ crawler/model/ml/
 
 ## ⚙️ 2. Cơ Sở Toán Học & Thuật Toán (v2)
 
-### 2.1. Tập 26 Đặc Trưng Đầu Vào Đã Khử Đa Cộng Tuyến (`feature_extractor.py`)
-Mỗi tin đăng được trích xuất thành vector 26 đặc trưng kết hợp giữa dữ liệu có cấu trúc, tọa độ không gian và tín hiệu ngữ nghĩa từ LLM:
+### 2.1. Tập 19 Đặc Trưng Cốt Lõi Tinh Gọn Cho Mô Hình ML (`feature_extractor.py`)
+Mỗi tin đăng được trích xuất thành vector 19 đặc trưng cốt lõi (sau khi tinh gọn, loại bỏ 7 cờ quy định & an ninh có gain cận 0 không đóng góp cho bài toán định giá tiền thuê):
 1. **Quy mô & Phân khúc (5 features):** `area_m2`, `lat`, `lng`, `room_type_id` (`1: ROOM`, `2: STUDIO`, `3: APARTMENT`, `4: SLEEPBOX`, `5: WHOLE_HOUSE`), `furnishing_code`.
-2. **Đầy đủ 17 Cờ Nhị Phân Chuẩn Hóa (Canonical Taxonomy):**
-   - **10 Tiện ích (`Amenities`):** `is_private_wc`, `is_aircon`, `is_mezzanine`, `is_kitchen`, `is_fridge`, `is_washing_machine`, `is_window_balcony`, `is_furniture`, `is_parking`, `is_elevator`.
-   - **3 Quy định (`Rules`):** `is_free_hours`, `is_no_shared_landlord`, `is_pet_allowed`.
-   - **4 An ninh (`Safety`):** `is_fingerprint_lock`, `is_camera`, `is_guard`, `is_safe_area`.
-3. **Điểm Ngữ Nghĩa LLM (2 features):** `amenity_overall` $\in [0.0, 1.0]$ và `safety_score` $\in [0.0, 1.0]$ (có cơ chế tự động nội suy từ trọng số chuẩn khi chấm điểm tin lẻ chưa qua LLM).
+2. **Nội thất & Tiện nghi cốt lõi (10 cờ nhị phân):**
+   - **8 Tiện ích & Nội thất cấu thành chi phí thuê:** `is_furniture`, `is_aircon`, `is_window_balcony`, `is_elevator`, `is_mezzanine`, `is_private_wc`, `is_fridge`, `is_washing_machine`.
+   - **2 Quy định & An ninh trọng yếu:** `is_free_hours`, `is_guard`.
+   *(7 cờ `is_kitchen`, `is_parking`, `is_no_shared_landlord`, `is_pet_allowed`, `is_fingerprint_lock`, `is_camera`, `is_safe_area` vẫn được lưu trữ và sử dụng đầy đủ ở tầng Database/Backend để phục vụ bộ lọc tìm kiếm người dùng và AI Agent).*
+3. **Điểm Ngữ Nghĩa LLM (2 features):** `amenity_overall` $\in [0.0, 1.0]$ và `safety_score` $\in [0.0, 1.0]$ (tổng hợp ngữ nghĩa toàn diện từ LLM).
 4. **Khoảng Cách Haversine Đa Trung Tâm Đô Thị & Đại Học (2 features):** `dist_nearest_hub_km` (đến 48 trung tâm hành chính/thương mại) và `dist_nearest_uni_km` (đến 50 cụm đại học lớn).
 
 ### 2.2. Đặc Trưng Phái Sinh & `SpatialTE` Trọng Số Khoảng Cách (`models.py`)
@@ -47,7 +47,13 @@ Mỗi tin đăng được trích xuất thành vector 26 đặc trưng kết h�
 
 ### 2.4. Kết Quả Thực Nghiệm (Tập Dữ Liệu Toàn Quốc `N = 9.693` Bản Ghi Sạch)
 
-| Chỉ Số Đánh Giá (Trên Tập Test Độc Lập 15%) | Mô Hình v1 (1.249 mẫu) | Mô Hình v2 (9.693 mẫu) | Mức Cải Thiện |
+| Chỉ Số Đánh Giá (Trên Tập Test Độc Lập 15%) | Mô Hình v1 (1.249 mẫu) | Mô Hình v2 (9.693 mẫu - 19 Features) | Mức Cải Thiện |
+| :--- | :---: | :---: | :---: |
+| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$599.687\ \text{VNĐ}$** | **$-40,3\%$ sai số** |
+| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$860.175\ \text{VNĐ}$** | **$-42,6\%$ sai số** |
+| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6659$** | **Tăng $\times 2,14$ lần (+35,48 điểm %)** |
+| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7220$** | Giải thích $> 72,2\%$ phương sai |
+| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$82,5\%$** | Đạt chuẩn $[78\%, 85\%]$ |
 | :--- | :---: | :---: | :---: |
 | **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$599.972\ \text{VNĐ}$** | **$-40,3\%$ sai số** |
 | **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$859.532\ \text{VNĐ}$** | **$-42,7\%$ sai số** |

@@ -16,13 +16,14 @@ from sklearn.neighbors import BallTree
 import xgboost as xgb
 
 from crawler.model.ml.feature_extractor import (
+    PRUNED_LOW_IMPACT_FLAGS,
     ROOM_TYPE_FILTER_RULES,
     VIETNAM_LAT_RANGE,
     VIETNAM_LNG_RANGE,
 )
 
 
-DROP_COLS = ["region_price_median", "district_median_price", "ward_median_price"]
+DROP_COLS = ["region_price_median", "district_median_price", "ward_median_price"] + PRUNED_LOW_IMPACT_FLAGS
 PPM_RANGE = (30_000, 600_000)
 MAX_PRICE = 25_000_000
 
