@@ -8,16 +8,17 @@ from pathlib import Path
 from app.core.paths import MODELS_CACHE_DIR
 
 
-def resolve_model_cache_dir(custom_path: Optional[str] = None) -> str:
+def resolve_model_cache_dir(custom_path: Optional[Union[str, Path]] = None) -> str:
     """Tự động tìm kiếm thư mục models_cache dùng chung ở root dự án."""
-    # 1. Ưu tiên custom_path hợp lệ
-    if custom_path and os.path.exists(custom_path):
+    # 1. Ưu tiên custom_path hợp lệ (phải tồn tại và là thư mục)
+    if custom_path and os.path.exists(custom_path) and os.path.isdir(custom_path):
         return str(Path(custom_path).resolve())
 
-    # 2. Kiểm tra biến môi trường
-    env_cache = os.getenv("MODELS_CACHE_DIR") or os.getenv("MODEL_CACHE_DIR")
-    if env_cache and os.path.exists(env_cache):
-        return str(Path(env_cache).resolve())
+    # 2. Kiểm tra biến môi trường (ưu tiên MODELS_CACHE_DIR rồi đến MODEL_CACHE_DIR)
+    for env_key in ("MODELS_CACHE_DIR", "MODEL_CACHE_DIR"):
+        env_cache = os.getenv(env_key)
+        if env_cache and os.path.exists(env_cache) and os.path.isdir(env_cache):
+            return str(Path(env_cache).resolve())
 
     # 3. Mặc định dùng MODELS_CACHE_DIR ở root dự án
     MODELS_CACHE_DIR.mkdir(parents=True, exist_ok=True)

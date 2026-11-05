@@ -82,3 +82,131 @@ class TestBackendPaths:
         monkeypatch.setenv("MODELS_CACHE_DIR", str(env_dir))
         resolved = resolve_model_cache_dir()
         assert Path(resolved).resolve() == env_dir.resolve()
+
+    # ==============================================================================
+    # BỔ SUNG CÁC BÀI TEST BIÊN & BẺ GÃY CODE (ANTI-CHEATING RIGOROUS TESTS)
+    # ==============================================================================
+
+    def test_resolve_model_cache_dir_with_whitespace_only(self):
+        """Nhóm 2 - Boundary: Chuỗi chỉ chứa khoảng trắng ('   ') phải fallback về MODELS_CACHE_DIR."""
+        resolved = resolve_model_cache_dir("   ")
+        assert Path(resolved).resolve() == MODELS_CACHE_DIR.resolve()
+
+    def test_resolve_model_cache_dir_when_custom_path_is_file(self, tmp_path):
+        """Nhóm 2 - Boundary: Tham số custom_path là file thông thường (không phải thư mục)
+        thì hàm resolve_model_cache_dir KHÔNG được trả về file mà phải fallback về thư mục hợp lệ.
+        """
+        regular_file = tmp_path / "not_a_dir.txt"
+        regular_file.write_text("This is a regular file, not a directory.")
+
+        resolved = resolve_model_cache_dir(str(regular_file))
+        assert Path(resolved).resolve() == MODELS_CACHE_DIR.resolve()
+        assert Path(resolved).is_dir(), "Kết quả resolve_model_cache_dir luôn phải là thư mục"
+
+    def test_resolve_model_cache_dir_with_vietnamese_diacritics_and_spaces(self, tmp_path):
+        """Nhóm 2 - Boundary: Đường dẫn có chứa khoảng trắng và dấu tiếng Việt (ví dụ: 'Đồ Án tốt nghiệp')."""
+        vn_dir = tmp_path / "Đồ Án Tốt Nghiệp Cache Thử Nghiệm" / "Thư Mục Mô Hình 2026"
+        vn_dir.mkdir(parents=True)
+
+        resolved = resolve_model_cache_dir(str(vn_dir))
+        assert Path(resolved).resolve() == vn_dir.resolve()
+        assert Path(resolved).is_dir()
+
+    def test_resolve_model_cache_dir_with_path_object(self, tmp_path):
+        """Nhóm 2 - Boundary: Truyền trực tiếp đối tượng Path thay vì str."""
+        custom_dir = tmp_path / "path_obj_dir"
+        custom_dir.mkdir()
+
+        resolved = resolve_model_cache_dir(custom_dir)
+        assert Path(resolved).resolve() == custom_dir.resolve()
+
+    def test_resolve_model_cache_dir_with_model_cache_dir_no_s(self, tmp_path, monkeypatch):
+        """Nhóm 4 - Persistence & Environment: Biến môi trường MODEL_CACHE_DIR (không có chữ 'S') phải hoạt động."""
+        env_dir = tmp_path / "model_cache_no_s"
+        env_dir.mkdir()
+
+        monkeypatch.delenv("MODELS_CACHE_DIR", raising=False)
+        monkeypatch.setenv("MODEL_CACHE_DIR", str(env_dir))
+
+        resolved = resolve_model_cache_dir()
+        assert Path(resolved).resolve() == env_dir.resolve()
+
+    def test_resolve_model_cache_dir_env_precedence_when_first_is_invalid(self, tmp_path, monkeypatch):
+        """Nhóm 4 - Persistence & Environment: MODELS_CACHE_DIR không hợp lệ (không tồn tại),
+        nhưng MODEL_CACHE_DIR hợp lệ -> phải fallback sang MODEL_CACHE_DIR trước khi về default.
+        """
+        valid_model_dir = tmp_path / "valid_model_dir"
+        valid_model_dir.mkdir()
+
+        monkeypatch.setenv("MODELS_CACHE_DIR", str(tmp_path / "non_existent_models_dir"))
+        monkeypatch.setenv("MODEL_CACHE_DIR", str(valid_model_dir))
+
+        resolved = resolve_model_cache_dir()
+        assert Path(resolved).resolve() == valid_model_dir.resolve()
+
+    def test_resolve_model_cache_dir_when_both_envs_invalid_fallback_safe(self, tmp_path, monkeypatch):
+        """Nhóm 4 - Persistence & Environment: Cả 2 biến môi trường đều trỏ tới thư mục không tồn tại
+        -> fallback an toàn về root MODELS_CACHE_DIR.
+        """
+        monkeypatch.setenv("MODELS_CACHE_DIR", str(tmp_path / "ghost_dir_1"))
+        monkeypatch.setenv("MODEL_CACHE_DIR", str(tmp_path / "ghost_dir_2"))
+
+        resolved = resolve_model_cache_dir()
+        assert Path(resolved).resolve() == MODELS_CACHE_DIR.resolve()
+        assert Path(resolved).is_dir()
+
+    def test_resolve_model_cache_dir_when_env_is_file(self, tmp_path, monkeypatch):
+        """Nhóm 4 - Persistence & Environment: Biến môi trường MODELS_CACHE_DIR trỏ tới file thông thường
+        -> không được trả về file mà phải fallback an toàn.
+        """
+        fake_file = tmp_path / "fake_cache_file.bin"
+        fake_file.write_bytes(b"data")
+
+        monkeypatch.setenv("MODELS_CACHE_DIR", str(fake_file))
+        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
+
+        resolved = resolve_model_cache_dir()
+        assert Path(resolved).resolve() == MODELS_CACHE_DIR.resolve()
+        assert Path(resolved).is_dir()
+
+    def test_resolve_model_cache_dir_priority_hierarchy(self, tmp_path, monkeypatch):
+        """Nhóm 3 - State Mutation & Hierarchy: Kiểm tra thứ tự ưu tiên tuyệt đối:
+        custom_path (hợp lệ) > MODELS_CACHE_DIR > MODEL_CACHE_DIR > root default.
+        """
+        custom_dir = tmp_path / "custom_priority"
+        custom_dir.mkdir()
+
+        models_dir = tmp_path / "models_env_dir"
+        models_dir.mkdir()
+
+        model_dir = tmp_path / "model_env_dir"
+        model_dir.mkdir()
+
+        monkeypatch.setenv("MODELS_CACHE_DIR", str(models_dir))
+        monkeypatch.setenv("MODEL_CACHE_DIR", str(model_dir))
+
+        # 1. custom_path cao nhất
+        assert Path(resolve_model_cache_dir(str(custom_dir))).resolve() == custom_dir.resolve()
+
+        # 2. Không có custom_path -> MODELS_CACHE_DIR
+        assert Path(resolve_model_cache_dir()).resolve() == models_dir.resolve()
+
+        # 3. MODELS_CACHE_DIR bị xóa -> MODEL_CACHE_DIR
+        monkeypatch.delenv("MODELS_CACHE_DIR", raising=False)
+        assert Path(resolve_model_cache_dir()).resolve() == model_dir.resolve()
+
+        # 4. MODEL_CACHE_DIR bị xóa -> Default root
+        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
+        assert Path(resolve_model_cache_dir()).resolve() == MODELS_CACHE_DIR.resolve()
+
+    def test_paths_immutability_and_constants_integrity(self):
+        """Nhóm 3 - State Mutation: Các biến hằng số đường dẫn phải giữ nguyên tính toàn vẹn."""
+        from app.core import paths
+
+        assert isinstance(paths.PROJECT_ROOT, Path)
+        assert isinstance(paths.MODELS_CACHE_DIR, Path)
+        assert isinstance(paths.BACKEND_DIR, Path)
+        assert isinstance(paths.APP_DIR, Path)
+
+        # Đảm bảo PROJECT_ROOT là thư mục cha cấp 2 của APP_DIR
+        assert paths.APP_DIR.parent.parent == paths.PROJECT_ROOT
