@@ -51,3 +51,7 @@ AGENTS.md
 *.db
 *.db-wal
 *.db-shm
+
+# Local MCP secrets
+.gemini/mcp_config.json
+!.gemini/mcp_config.json.example
