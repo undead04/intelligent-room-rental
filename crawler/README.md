@@ -107,7 +107,7 @@ crawler/
 │   │   ├── processor.py         # Xử lý kết quả trả về từ Gemini và cập nhật state
 │   │   ├── prompt.py            # System prompt tối ưu hóa trích xuất thuộc tính phòng
 │   │   └── pipeline.py          # Runner bóc tách LLM độc lập
-│   └── ml/                      # Module huấn luyện Machine Learning (định giá, ranking)
+│   └── ml/                      # Module Machine Learning v2 định giá phòng trọ Toàn Quốc (19 features, Weighted SpatialTE, Mondrian CQR)
 ├── schema/
 │   ├── enums.py                 # Danh mục chuẩn canonical (RoomType, AmenityCode, Amenities)
 │   ├── enum.py                  # Shim tương thích ngược (re-export từ schema/enums.py)
@@ -120,7 +120,7 @@ crawler/
 │   ├── count_token.py           # Đếm token đầu vào cho LLM
 │   ├── http.py                  # Client HTTP với Retry & Exponential Backoff
 │   └── parser.py                # Bóc tách và chuẩn hóa dữ liệu thô từ payload API
-├── tests/                       # Unit tests cho schema, staging DB, pipeline chunking, transform
+├── tests/                       # 81 Unit & Integration tests (Schema, Staging DB, Pipeline chunking, Transform và ML v2)
 ├── staging_db.py                # SQLite Staging DB interface & schema
 ├── main.py                      # CLI điều khiển chính của Crawler
 ├── README.md                    # Tài liệu hướng dẫn chi tiết

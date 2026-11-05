@@ -60,7 +60,7 @@ ai-agent/
 ├── tools/                       # Native LangChain Tools & Phân vùng Scopes (RETRIEVAL, DETAIL, ADVISORY)
 ├── skills/                      # Dynamic Skill Discovery qua YAML triggers (rental-contract-advisor)
 ├── eval/                        # Bộ benchmark đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding...)
-├── tests/                       # 488 Unit & Integration Tests (100% Passed)
+├── tests/                       # 454 Unit & Integration Tests (100% Passed)
 ├── main.py                      # Uvicorn entrypoint (Port 8001)
 ├── service.py                   # HousingAgentService shim tương thích ngược
 ├── pyproject.toml / uv.lock     # Quản lý phụ thuộc uv
@@ -103,7 +103,7 @@ if res.insights:
 
 ## 🧪 4. Chạy Kiểm Thử (Unit Tests)
 
-Chạy toàn bộ 488 unit & integration tests của Homigo AI Agent (100% Passed):
+Chạy toàn bộ 454 unit & integration tests của Homigo AI Agent (100% Passed):
 ```powershell
 .\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 ```
