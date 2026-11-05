@@ -103,7 +103,7 @@ def main():
 
     if args.mode == "verify":
         print("\n>>> TỰ ĐỘNG ĐỒNG BỘ TRẠNG THÁI VÒNG ĐỜI TIN ĐĂNG SANG POSTGRESQL...", flush=True)
-        from crawler.sync_status import sync_status_to_postgres
+        from crawler.staging_db import sync_status_to_postgres
         sync_status_to_postgres()
     elif not args.no_clean:
         print("\n>>> TỔNG HỢP VÀ LÀM SẠCH TOÀN BỘ DỮ LIỆU ĐA NGUỒN (ETL)...", flush=True)
