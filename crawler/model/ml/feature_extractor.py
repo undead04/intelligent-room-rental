@@ -270,8 +270,10 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
     """
     lid = str(r.get("listing_id") or r.get("id") or "")
     area_m2 = _safe_float(r.get("area_m2"), default=0.0)
-    lat = _safe_float(r.get("lat"), default=0.0)
-    lng = _safe_float(r.get("lng"), default=0.0)
+    raw_lat = r.get("lat") if r.get("lat") is not None else r.get("latitude")
+    raw_lng = r.get("lng") if r.get("lng") is not None else r.get("longitude")
+    lat = _safe_float(raw_lat, default=0.0)
+    lng = _safe_float(raw_lng, default=0.0)
     price_vnd = _safe_float(r.get("price_vnd"), default=0.0)
     raw_furnishing = _safe_float(r.get("furnishing_code"), default=2.0)
     furnishing_code = raw_furnishing if raw_furnishing > 0 else 2.0
@@ -319,6 +321,21 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
         "furnishing_code": furnishing_code,
     }
 
+    # Bảng ánh xạ tương thích ngược cho các dict phẳng truyền trực tiếp
+    legacy_flat_aliases: dict[str, str] = {
+        "private_wc": "has_private_wc",
+        "aircon": "has_air_conditioner",
+        "mezzanine": "has_mezzanine",
+        "kitchen": "has_kitchen",
+        "fridge": "has_refrigerator",
+        "washing_machine": "has_washing_machine",
+        "window_balcony": "has_balcony",
+        "parking": "has_parking",
+        "free_hours": "free_time",
+        "pet_allowed": "allow_pets",
+        "camera": "security_camera",
+    }
+
     # Trích xuất 17 cờ nhị phân chuẩn hóa
     for k in ALL_BINARY_KEYS:
         val = 0
@@ -339,6 +356,12 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
             sig = rep_safety[k]
             v = sig.get("value") if isinstance(sig, dict) else getattr(sig, "value", None)
             val = 1 if v == "yes" else 0
+        elif f"is_{k}" in r and r[f"is_{k}"] is not None:
+            val = 1 if bool(r[f"is_{k}"]) and _safe_float(r[f"is_{k}"], 1.0) > 0 else 0
+        elif k in r and r[k] is not None:
+            val = 1 if bool(r[k]) and _safe_float(r[k], 1.0) > 0 else 0
+        elif k in legacy_flat_aliases and legacy_flat_aliases[k] in r:
+            val = 1 if bool(r[legacy_flat_aliases[k]]) else 0
 
         row[f"is_{k}"] = int(val)
 

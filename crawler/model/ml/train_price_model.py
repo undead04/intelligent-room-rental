@@ -25,7 +25,7 @@ import numpy as np
 import optuna
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 import xgboost as xgb
 
 ML_DIR = Path(__file__).resolve().parent
@@ -138,11 +138,28 @@ models_config = {
 
 
 # ----------------------------------------------------------------------------
-# 3. Huấn luyện Optuna với K-Fold CV
+# 3. Huấn luyện Optuna với Stratified K-Fold CV
 # ----------------------------------------------------------------------------
-def _build_folds(X, y, kf, es_frac=0.15, random_state=42, ks=(5, 20), winsor=(0.01, 0.99)):
+def _make_strata(X: pd.DataFrame, y: pd.Series, n_quantiles: int = 5) -> np.ndarray:
+    """Tạo nhãn phân tầng kết hợp room_type_id và phân vị giá để cân bằng các phân khúc."""
+    q_bins = pd.qcut(y, q=n_quantiles, labels=False, duplicates="drop").fillna(0).astype(int).to_numpy()
+    if "room_type_id" in X.columns:
+        rt = X["room_type_id"].fillna(1).astype(int).to_numpy()
+        raw_strata = rt * 10 + q_bins
+    else:
+        return q_bins
+
+    # Gộp các nhóm nhỏ (< 15 mẫu) vào phân vị giá tương ứng của nhóm chính (10 + q)
+    vals, counts = np.unique(raw_strata, return_counts=True)
+    small_vals = set(vals[counts < 15])
+    if small_vals:
+        raw_strata = np.array([10 + q if s in small_vals else s for s, q in zip(raw_strata, q_bins)])
+    return raw_strata
+
+
+def _build_folds(X, y, kf, strata, es_frac=0.15, random_state=42, ks=(5, 20), winsor=(0.01, 0.99)):
     folds = []
-    for tr_idx, val_idx in kf.split(X, y):
+    for tr_idx, val_idx in kf.split(X, strata):
         fit_idx, es_idx = train_test_split(
             tr_idx, test_size=es_frac, random_state=random_state
         )
@@ -171,10 +188,11 @@ def train_models_optuna(
 ) -> List[Dict[str, Any]]:
     y = pd.Series(np.asarray(y, dtype=float).ravel())
     X = make_base_features(X_raw).reset_index(drop=True)
+    strata = _make_strata(X, y)
 
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    print(f"[OPTUNA] Đang tính toán feature láng giềng SpatialTE cho {n_splits} folds...")
-    folds = _build_folds(X, y, kf, 0.15, random_state, ks, winsor)
+    kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    print(f"[OPTUNA] Đang tính toán feature láng giềng SpatialTE cho {n_splits} Stratified folds...")
+    folds = _build_folds(X, y, kf, strata, 0.15, random_state, ks, winsor)
 
     y_clip = y.clip(y.quantile(winsor[0]), y.quantile(winsor[1]))
     results = []
@@ -185,20 +203,26 @@ def train_models_optuna(
         def objective(trial):
             params = {**config["fixed_params"], **config["param_fn"](trial)}
             cvm = {k: [] for k in METRIC_LABELS}
-            best_iters, resid = [], []
+            best_iters, y_oof_list, p_oof_list = [], [], []
 
             for f in folds:
                 model = config["train_fn"](params, f["Xf"], f["yf"], f["Xe"], f["ye"])
                 best_iters.append(config["best_iter_fn"](model))
                 pred_log = config["predict_fn"](model, f["Xv"])
-                resid.append(np.log1p(f["y_val"]) - pred_log)
-                for k, v in evaluate_metrics(f["y_val"], np.expm1(pred_log)).items():
+                pred_raw = np.expm1(pred_log)
+                y_oof_list.append(f["y_val"])
+                p_oof_list.append(pred_raw)
+                for k, v in evaluate_metrics(f["y_val"], pred_raw).items():
                     cvm[k].append(v)
+
+            y_oof = np.concatenate(y_oof_list)
+            p_oof = np.concatenate(p_oof_list)
+            smear_ls = float(np.clip(np.sum(y_oof * p_oof) / np.clip(np.sum(p_oof ** 2), 1.0, None), 0.95, 1.08))
 
             trial.set_user_attr("cv_metrics", cvm)
             trial.set_user_attr("best_iters", best_iters)
-            trial.set_user_attr("smear", float(np.mean(np.exp(np.concatenate(resid)))))
-            return float(np.mean(cvm["mae"]))
+            trial.set_user_attr("smear", smear_ls)
+            return float(np.mean(cvm["rmse"]))
 
         study = optuna.create_study(
             direction="minimize",
@@ -251,9 +275,10 @@ def main():
     print(f"[DATA] Đã nạp thành công {len(X)} bản ghi sạch.")
     print(f"[DATA] Danh sách {len(X.columns)} features đầu vào: {X.columns.tolist()}")
 
-    # 2. Train-test split (85% train, 15% test)
+    # 2. Train-test split phân tầng theo loại phòng + phân vị giá (85% train, 15% test)
+    strata = _make_strata(X, y)
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.15, random_state=42
+        X, y, test_size=0.15, random_state=42, stratify=strata
     )
 
     # 3. Chạy Optuna tuning
@@ -263,7 +288,7 @@ def main():
     # 4. Huấn luyện khoảng giá Mondrian Conformal Prediction
     print("\n[INTERVAL] Đang huấn luyện mô hình khoảng giá Mondrian Conformal Prediction (80%)...")
     lgb_res = next(r for r in results if r["model_name"] == "LightGBM")
-    pi = MondrianPriceInterval(lgb_res, n_bins=4, coverage=0.8, seed=42).fit(X_train, y_train)
+    pi = MondrianPriceInterval(lgb_res, n_bins=5, coverage=0.8, seed=42).fit(X_train, y_train)
 
     # 5. Huấn luyện InputGuard
     guard = InputGuard().fit(X_train)
@@ -274,9 +299,11 @@ def main():
     print("=" * 60)
     p_blend = blend_predict(results, X_test)
     test_metrics = evaluate_metrics(y_test.values, p_blend)
-    print(f"  * MAE  : {test_metrics['mae']:,.0f} VNĐ")
-    print(f"  * RMSE : {test_metrics['rmse']:,.0f} VNĐ")
-    print(f"  * R²   : {test_metrics['r2']:.4f}")
+    r2_log = float(r2_score(np.log1p(y_test.values), np.log1p(np.clip(p_blend, 0, None))))
+    print(f"  * MAE      : {test_metrics['mae']:,.0f} VNĐ")
+    print(f"  * RMSE     : {test_metrics['rmse']:,.0f} VNĐ")
+    print(f"  * R² (VND) : {test_metrics['r2']:.4f}")
+    print(f"  * R² (Log) : {r2_log:.4f}")
 
     # Đánh giá độ phủ khoảng giá
     rng_test = pi.predict(X_test)
@@ -289,7 +316,7 @@ def main():
     print("\n[EXPORT] Huấn luyện pipeline hoàn chỉnh trên toàn bộ dữ liệu sạch để xuất xưởng...")
     results_full = train_models_optuna(X, y, n_splits=5, n_trials=15, random_state=42)
     lgb_full = next(r for r in results_full if r["model_name"] == "LightGBM")
-    pi_full = MondrianPriceInterval(lgb_full, n_bins=4, coverage=0.8, seed=42).fit(X, y)
+    pi_full = MondrianPriceInterval(lgb_full, n_bins=5, coverage=0.8, seed=42).fit(X, y)
     guard_full = InputGuard().fit(X)
 
     # 8. Lưu Artifacts
@@ -313,6 +340,7 @@ def main():
         "mae_vnd": round(test_metrics["mae"], 2),
         "rmse_vnd": round(test_metrics["rmse"], 2),
         "r2_score": round(test_metrics["r2"], 4),
+        "r2_log_score": round(r2_log, 4),
         "conformal_coverage": round(actual_coverage, 4),
         "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }

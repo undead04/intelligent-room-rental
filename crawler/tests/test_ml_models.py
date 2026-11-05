@@ -195,3 +195,51 @@ def test_models_joblib_persistence(tmp_path: Path):
 
     pd.testing.assert_frame_equal(guard.check(sample, sample_prices), loaded_guard.check(sample, sample_prices))
     pd.testing.assert_frame_equal(pi.predict(sample), loaded_pi.predict(sample))
+
+
+def test_price_evaluator_real_artifacts():
+    """Kiểm tra PriceEvaluator nạp artifacts thực tế và chấm điểm cho nhiều tỉnh thành & loại phòng."""
+    from crawler.model.ml.price_evaluator import PriceEvaluator
+
+    evaluator = PriceEvaluator()
+    assert evaluator.evaluate_batch([]).empty
+
+    records = [
+        {
+            "listing_id": "hcm_room_1",
+            "price_vnd": 3_200_000,
+            "area_m2": 20.0,
+            "lat": 10.772,
+            "lng": 106.657,
+            "room_type_id": 1,
+            "aircon": True,
+            "private_wc": True,
+        },
+        {
+            "listing_id": "hn_sleepbox_1",
+            "price_vnd": 1_500_000,
+            "area_m2": 60.0,
+            "lat": 21.037,
+            "lng": 105.781,
+            "room_type_id": 4,
+            "aircon": True,
+        },
+        {
+            "listing_id": "dn_studio_1",
+            "price_vnd": 4_200_000,
+            "area_m2": 28.0,
+            "lat": 16.061,
+            "lng": 108.220,
+            "room_type_id": 2,
+            "aircon": True,
+            "private_wc": True,
+            "kitchen": True,
+        },
+    ]
+
+    df_res = evaluator.evaluate_batch(records)
+    assert len(df_res) == 3
+    assert df_res["guard_status"].tolist() == ["ok", "ok", "ok"]
+    assert ((df_res["price_score"] >= 0.0) & (df_res["price_score"] <= 1.0)).all()
+    assert (df_res["price_low"] <= df_res["price_mid"]).all()
+    assert (df_res["price_mid"] <= df_res["price_high"]).all()
