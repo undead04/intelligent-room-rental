@@ -6,6 +6,7 @@ sẽ không bị lỗi module '__main__'.
 """
 
 from __future__ import annotations
+import copy
 from typing import Tuple
 import lightgbm as lgb
 import numpy as np
@@ -14,6 +15,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import BallTree
 import xgboost as xgb
 
+from crawler.model.ml.feature_extractor import (
+    ROOM_TYPE_FILTER_RULES,
+    VIETNAM_LAT_RANGE,
+    VIETNAM_LNG_RANGE,
+)
+
 
 DROP_COLS = ["region_price_median", "district_median_price", "ward_median_price"]
 PPM_RANGE = (30_000, 600_000)
@@ -21,11 +28,16 @@ MAX_PRICE = 25_000_000
 
 
 def make_base_features(X: pd.DataFrame) -> pd.DataFrame:
-    """Tạo các đặc trưng phái sinh cơ sở."""
+    """Tạo các đặc trưng phái sinh cơ sở (đã khử đa cộng tuyến cho mô hình cây)."""
     X = X.drop(columns=[c for c in DROP_COLS if c in X.columns]).copy()
-    amen = [c for c in X.columns if c.startswith("is_")]
-    X["n_amenities"] = X[amen].sum(axis=1)
-    X["log_area"] = np.log1p(X["area_m2"])
+    safe_area = np.clip(X["area_m2"].to_numpy(dtype=float), 1.0, None)
+    if "amenity_overall" in X.columns:
+        amen_score = X["amenity_overall"].to_numpy(dtype=float)
+    else:
+        amen_cols = [c for c in X.columns if c.startswith("is_")]
+        amen_score = X[amen_cols].mean(axis=1).to_numpy(dtype=float) * 5.0 if amen_cols else np.full(len(X), 3.0)
+
+    X["amenity_density"] = amen_score / np.log1p(safe_area)
     X["lat_lng_sum"] = X["lat"] + X["lng"]
     X["lat_lng_diff"] = X["lat"] - X["lng"]
     return X
@@ -36,7 +48,7 @@ def attach(X: pd.DataFrame, nb: pd.DataFrame) -> pd.DataFrame:
 
 
 class SpatialTE:
-    """Feature giá của k phòng gần nhất theo tọa độ. Fit trên tập train."""
+    """Feature giá của k phòng gần nhất theo tọa độ (Inverse-Distance Weighting). Fit trên tập train."""
 
     def __init__(self, ks=(5, 20)):
         self.ks = tuple(ks)
@@ -54,28 +66,37 @@ class SpatialTE:
         return self
 
     def _agg(self, dist: np.ndarray, idx: np.ndarray) -> pd.DataFrame:
+        dist_km = dist * 6371.0
+        weights = 1.0 / (1.0 + dist_km)
+        max_avail = idx.shape[1]
         out = {}
         for k in self.ks:
-            out[f"nb{k}_logy_mean"] = self.logy[idx[:, :k]].mean(1)
-            out[f"nb{k}_logppm_mean"] = self.logppm[idx[:, :k]].mean(1)
-            out[f"nb{k}_logppm_med"] = np.median(self.logppm[idx[:, :k]], axis=1)
-            out[f"nb{k}_dist_km"] = dist[:, :k].mean(1) * 6371.0
+            k_eff = min(k, max_avail)
+            wk = weights[:, :k_eff]
+            wk_norm = wk / np.clip(wk.sum(axis=1, keepdims=True), 1e-9, None)
+            out[f"nb{k}_logy_mean"] = np.sum(self.logy[idx[:, :k_eff]] * wk_norm, axis=1)
+            out[f"nb{k}_logppm_mean"] = np.sum(self.logppm[idx[:, :k_eff]] * wk_norm, axis=1)
+            out[f"nb{k}_dist_km"] = dist_km[:, :k_eff].mean(1)
         out[f"nb{self.kmax}_logy_std"] = self.logy[idx].std(1)
         return pd.DataFrame(out)
 
     def transform_train(self, X: pd.DataFrame) -> pd.DataFrame:
         """Cho chính các dòng đã fit: loại chính nó để chống rò rỉ dữ liệu (leakage)."""
         n = len(X)
-        d, i = self.tree.query(np.radians(X[["lat", "lng"]].values), k=self.kmax + 1)
+        n_fit = len(self.logy)
+        k_query = min(self.kmax + 1, n_fit)
+        d, i = self.tree.query(np.radians(X[["lat", "lng"]].values), k=k_query)
         keep = i != np.arange(n)[:, None]
         order = np.argsort(~keep, axis=1, kind="stable")
-        i = np.take_along_axis(i, order, 1)[:, : self.kmax]
-        d = np.take_along_axis(d, order, 1)[:, : self.kmax]
+        k_take = min(self.kmax, max(1, k_query - 1))
+        i = np.take_along_axis(i, order, 1)[:, :k_take]
+        d = np.take_along_axis(d, order, 1)[:, :k_take]
         return self._agg(d, i)
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """Cho các dòng suy luận / val / test."""
-        d, i = self.tree.query(np.radians(X[["lat", "lng"]].values), k=self.kmax)
+        k_query = min(self.kmax, len(self.logy))
+        d, i = self.tree.query(np.radians(X[["lat", "lng"]].values), k=k_query)
         return self._agg(d, i)
 
 
@@ -207,20 +228,34 @@ class MondrianPriceInterval(PriceInterval):
 
 
 class InputGuard:
+    """Bảo vệ biên dữ liệu toàn quốc và thích ứng ngưỡng theo từng phân loại phòng (room_type_id)."""
+
     def __init__(self, ppm_range=PPM_RANGE, max_price=MAX_PRICE, margin_deg=0.02):
         self.ppm_range = ppm_range
         self.max_price = max_price
         self.margin = margin_deg
-        self.area_rng = (8.0, 150.0)
-        self.lat_rng = (10.3, 11.2)
-        self.lng_rng = (106.3, 107.1)
+        self.area_rng = (4.0, 300.0)
+        self.lat_rng = VIETNAM_LAT_RANGE
+        self.lng_rng = VIETNAM_LNG_RANGE
+        self.rules = copy.deepcopy(ROOM_TYPE_FILTER_RULES)
 
     def fit(self, X_raw: pd.DataFrame):
         a = X_raw["area_m2"]
         m = self.margin
-        self.area_rng = (float(a.quantile(0.005)), float(a.quantile(0.995)))
-        self.lat_rng = (float(X_raw["lat"].min() - m), float(X_raw["lat"].max() + m))
-        self.lng_rng = (float(X_raw["lng"].min() - m), float(X_raw["lng"].max() + m))
+        self.area_rng = (
+            min(4.0, float(a.quantile(0.001))),
+            max(300.0, float(a.quantile(0.999))),
+        )
+        # Mở rộng toàn lãnh thổ Việt Nam để không chặn các tỉnh/thành hợp lệ
+        self.lat_rng = (
+            min(VIETNAM_LAT_RANGE[0], float(X_raw["lat"].min() - m)),
+            max(VIETNAM_LAT_RANGE[1], float(X_raw["lat"].max() + m)),
+        )
+        self.lng_rng = (
+            min(VIETNAM_LNG_RANGE[0], float(X_raw["lng"].min() - m)),
+            max(VIETNAM_LNG_RANGE[1], float(X_raw["lng"].max() + m)),
+        )
+        self.rules = copy.deepcopy(ROOM_TYPE_FILTER_RULES)
         return self
 
     def check(self, X_new: pd.DataFrame, price: np.ndarray) -> pd.DataFrame:
@@ -230,16 +265,31 @@ class InputGuard:
         lng = X_new["lng"].to_numpy(dtype=float)
         ppm = price / np.clip(area, 1e-6, None)
 
-        odd = (ppm < self.ppm_range[0]) | (ppm > self.ppm_range[1])
+        if "room_type_id" in X_new.columns:
+            rt_ids = X_new["room_type_id"].fillna(1).to_numpy(dtype=int)
+        else:
+            rt_ids = np.ones(len(X_new), dtype=int)
+
+        rules = getattr(self, "rules", None) or ROOM_TYPE_FILTER_RULES
+
+        area_min = np.array([rules.get(int(rt), rules[1])["area"][0] for rt in rt_ids], dtype=float)
+        area_max = np.array([rules.get(int(rt), rules[1])["area"][1] for rt in rt_ids], dtype=float)
+        price_min = np.array([rules.get(int(rt), rules[1])["price"][0] for rt in rt_ids], dtype=float)
+        price_max = np.array([rules.get(int(rt), rules[1])["price"][1] for rt in rt_ids], dtype=float)
+        ppm_min = np.array([rules.get(int(rt), rules[1])["ppm"][0] for rt in rt_ids], dtype=float)
+        ppm_max = np.array([rules.get(int(rt), rules[1])["ppm"][1] for rt in rt_ids], dtype=float)
+
         oor = (
-            (price > self.max_price)
-            | (area < self.area_rng[0])
-            | (area > self.area_rng[1])
+            (price < price_min)
+            | (price > price_max)
+            | (area < area_min)
+            | (area > area_max)
             | (lat < self.lat_rng[0])
             | (lat > self.lat_rng[1])
             | (lng < self.lng_rng[0])
             | (lng > self.lng_rng[1])
         )
+        odd = (ppm < ppm_min) | (ppm > ppm_max)
 
         status = np.where(oor, "oor", np.where(odd, "odd", "ok"))
         return pd.DataFrame({"status": status})
