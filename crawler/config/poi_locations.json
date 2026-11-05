@@ -1,0 +1,607 @@
+{
+  "_description": "Danh mục tọa độ các trung tâm đô thị (city_hubs) và cụm trường Đại học lớn (university_hubs) trên toàn quốc dùng để tính khoảng cách POI cho mô hình định giá Homigo ML. Bao phủ 100% 24 tỉnh/thành phố và các cụm đại học lớn có trong cơ sở dữ liệu.",
+  "city_hubs": [
+    {
+      "name": "TP.HCM - Bến Thành (Quận 1)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7725,
+      "lng": 106.6980
+    },
+    {
+      "name": "TP.HCM - Ngã tư Thủ Đức (TP. Thủ Đức)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8494,
+      "lng": 106.7726
+    },
+    {
+      "name": "TP.HCM - Hàng Xanh (Bình Thạnh)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8016,
+      "lng": 106.7114
+    },
+    {
+      "name": "TP.HCM - Ngã sáu Gò Vấp",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8275,
+      "lng": 106.6792
+    },
+    {
+      "name": "TP.HCM - Phú Mỹ Hưng (Quận 7)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7326,
+      "lng": 106.7058
+    },
+    {
+      "name": "TP.HCM - Ngã tư Bảy Hiền (Tân Bình / Tân Phú)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7932,
+      "lng": 106.6547
+    },
+    {
+      "name": "TP.HCM - Khu Tên Lửa (Bình Tân / Bình Chánh)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7510,
+      "lng": 106.6130
+    },
+    {
+      "name": "TP.HCM - Ngã tư An Sương (Quận 12 / Hóc Môn)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8475,
+      "lng": 106.6152
+    },
+    {
+      "name": "Hà Nội - Hồ Hoàn Kiếm",
+      "province": "Hà Nội",
+      "lat": 21.0285,
+      "lng": 105.8542
+    },
+    {
+      "name": "Hà Nội - Cầu Giấy",
+      "province": "Hà Nội",
+      "lat": 21.0333,
+      "lng": 105.7833
+    },
+    {
+      "name": "Hà Nội - Đống Đa",
+      "province": "Hà Nội",
+      "lat": 21.0180,
+      "lng": 105.8280
+    },
+    {
+      "name": "Hà Nội - Hai Bà Trưng",
+      "province": "Hà Nội",
+      "lat": 21.0060,
+      "lng": 105.8520
+    },
+    {
+      "name": "Hà Nội - Mỹ Đình (Nam Từ Liêm)",
+      "province": "Hà Nội",
+      "lat": 21.0205,
+      "lng": 105.7640
+    },
+    {
+      "name": "Hà Nội - Hà Đông",
+      "province": "Hà Nội",
+      "lat": 20.9720,
+      "lng": 105.7760
+    },
+    {
+      "name": "Cần Thơ - Bến Ninh Kiều",
+      "province": "Cần Thơ",
+      "lat": 10.0342,
+      "lng": 105.7876
+    },
+    {
+      "name": "Cần Thơ - Cái Răng",
+      "province": "Cần Thơ",
+      "lat": 10.0050,
+      "lng": 105.7530
+    },
+    {
+      "name": "Đà Nẵng - Hải Châu (Cầu Rồng)",
+      "province": "Đà Nẵng",
+      "lat": 16.0618,
+      "lng": 108.2208
+    },
+    {
+      "name": "Đà Nẵng - Thanh Khê",
+      "province": "Đà Nẵng",
+      "lat": 16.0650,
+      "lng": 108.1880
+    },
+    {
+      "name": "Đà Nẵng - Ngũ Hành Sơn",
+      "province": "Đà Nẵng",
+      "lat": 16.0350,
+      "lng": 108.2450
+    },
+    {
+      "name": "Đà Nẵng - Liên Chiểu",
+      "province": "Đà Nẵng",
+      "lat": 16.0820,
+      "lng": 108.1450
+    },
+    {
+      "name": "Bình Dương - Thủ Dầu Một",
+      "province": "Bình Dương",
+      "lat": 10.9805,
+      "lng": 106.6745
+    },
+    {
+      "name": "Bình Dương - Dĩ An",
+      "province": "Bình Dương",
+      "lat": 10.9067,
+      "lng": 106.7719
+    },
+    {
+      "name": "Bình Dương - Thuận An",
+      "province": "Bình Dương",
+      "lat": 10.9230,
+      "lng": 106.7030
+    },
+    {
+      "name": "Bình Dương - Bến Cát",
+      "province": "Bình Dương",
+      "lat": 11.1350,
+      "lng": 106.6080
+    },
+    {
+      "name": "Bình Dương - Tân Uyên",
+      "province": "Bình Dương",
+      "lat": 11.0710,
+      "lng": 106.7720
+    },
+    {
+      "name": "Bà Rịa - Vũng Tàu - Bãi Trước (TP. Vũng Tàu)",
+      "province": "Bà Rịa - Vũng Tàu",
+      "lat": 10.3460,
+      "lng": 107.0843
+    },
+    {
+      "name": "Bà Rịa - Vũng Tàu - TP. Bà Rịa",
+      "province": "Bà Rịa - Vũng Tàu",
+      "lat": 10.4950,
+      "lng": 107.1680
+    },
+    {
+      "name": "Lâm Đồng - Đà Lạt (Hồ Xuân Hương)",
+      "province": "Lâm Đồng",
+      "lat": 11.9404,
+      "lng": 108.4583
+    },
+    {
+      "name": "Lâm Đồng - TP. Bảo Lộc",
+      "province": "Lâm Đồng",
+      "lat": 11.5470,
+      "lng": 107.8080
+    },
+    {
+      "name": "Long An - TP. Tân An",
+      "province": "Long An",
+      "lat": 10.5360,
+      "lng": 106.4130
+    },
+    {
+      "name": "Long An - Bến Lức / Đức Hòa",
+      "province": "Long An",
+      "lat": 10.6380,
+      "lng": 106.4900
+    },
+    {
+      "name": "Đồng Nai - TP. Biên Hòa",
+      "province": "Đồng Nai",
+      "lat": 10.9574,
+      "lng": 106.8427
+    },
+    {
+      "name": "Đồng Nai - Long Thành / Nhơn Trạch",
+      "province": "Đồng Nai",
+      "lat": 10.7420,
+      "lng": 106.9450
+    },
+    {
+      "name": "Đắk Lắk - TP. Buôn Ma Thuột",
+      "province": "Đắk Lắk",
+      "lat": 12.6667,
+      "lng": 108.0500
+    },
+    {
+      "name": "Sóc Trăng - TP. Sóc Trăng",
+      "province": "Sóc Trăng",
+      "lat": 9.6030,
+      "lng": 105.9740
+    },
+    {
+      "name": "Hưng Yên - TP. Hưng Yên (Phố Hiến)",
+      "province": "Hưng Yên",
+      "lat": 20.6500,
+      "lng": 106.0500
+    },
+    {
+      "name": "Hưng Yên - Văn Giang (Ecopark / Ocean Park)",
+      "province": "Hưng Yên",
+      "lat": 20.9420,
+      "lng": 105.9550
+    },
+    {
+      "name": "Thừa Thiên Huế - TP. Huế (Sông Hương)",
+      "province": "Thừa Thiên Huế",
+      "lat": 16.4637,
+      "lng": 107.5909
+    },
+    {
+      "name": "Tây Ninh - TP. Tây Ninh",
+      "province": "Tây Ninh",
+      "lat": 11.3100,
+      "lng": 106.0980
+    },
+    {
+      "name": "Tây Ninh - Trảng Bàng",
+      "province": "Tây Ninh",
+      "lat": 11.0330,
+      "lng": 106.3570
+    },
+    {
+      "name": "Khánh Hòa - Nha Trang (Trần Phú / Chợ Đầm)",
+      "province": "Khánh Hòa",
+      "lat": 12.2388,
+      "lng": 109.1967
+    },
+    {
+      "name": "Kiên Giang - TP. Rạch Giá",
+      "province": "Kiên Giang",
+      "lat": 10.0130,
+      "lng": 105.0810
+    },
+    {
+      "name": "Kiên Giang - TP. Phú Quốc",
+      "province": "Kiên Giang",
+      "lat": 10.2200,
+      "lng": 103.9600
+    },
+    {
+      "name": "Hà Nam - TP. Phủ Lý",
+      "province": "Hà Nam",
+      "lat": 20.5410,
+      "lng": 105.9140
+    },
+    {
+      "name": "Ninh Thuận - TP. Phan Rang - Tháp Chàm",
+      "province": "Ninh Thuận",
+      "lat": 11.5670,
+      "lng": 108.9890
+    },
+    {
+      "name": "Bến Tre - TP. Bến Tre",
+      "province": "Bến Tre",
+      "lat": 10.2430,
+      "lng": 106.3760
+    },
+    {
+      "name": "Phú Yên - TP. Tuy Hòa",
+      "province": "Phú Yên",
+      "lat": 13.0880,
+      "lng": 109.3090
+    },
+    {
+      "name": "Tiền Giang - TP. Mỹ Tho",
+      "province": "Tiền Giang",
+      "lat": 10.3540,
+      "lng": 106.3650
+    },
+    {
+      "name": "Hậu Giang - TP. Vị Thanh",
+      "province": "Hậu Giang",
+      "lat": 9.7840,
+      "lng": 105.4700
+    },
+    {
+      "name": "Bình Phước - TP. Đồng Xoài",
+      "province": "Bình Phước",
+      "lat": 11.5330,
+      "lng": 106.8830
+    },
+    {
+      "name": "Hải Phòng - Nhà hát lớn (Hồng Bàng / Ngô Quyền)",
+      "province": "Hải Phòng",
+      "lat": 20.8600,
+      "lng": 106.6800
+    }
+  ],
+  "university_hubs": [
+    {
+      "name": "TP.HCM - ĐHQG TP.HCM (Làng đại học Thủ Đức)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8752,
+      "lng": 106.8007
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Bách Khoa TP.HCM (Quận 10)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7721,
+      "lng": 106.6579
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Kinh Tế TP.HCM - UEH (Quận 3 / Quận 10)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7818,
+      "lng": 106.6869
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Sư Phạm - ĐH Sài Gòn - ĐH KHTN (Quận 5)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7601,
+      "lng": 106.6822
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Y Dược TP.HCM (Quận 5)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7554,
+      "lng": 106.6601
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH HUTECH / UEF / Ngoại Thương CS2 (Bình Thạnh)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8016,
+      "lng": 106.7114
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH RMIT / Tôn Đức Thắng (Quận 7)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.7326,
+      "lng": 106.7058
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Công Nghiệp TP.HCM (Gò Vấp)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8275,
+      "lng": 106.6792
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Công Thương TP.HCM (Tân Phú)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8066,
+      "lng": 106.6286
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Nông Lâm TP.HCM (Linh Trung, Thủ Đức)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8700,
+      "lng": 106.7915
+    },
+    {
+      "name": "TP.HCM - Cụm ĐH Văn Lang CS3 (Gò Vấp)",
+      "province": "Tp Hồ Chí Minh",
+      "lat": 10.8272,
+      "lng": 106.6973
+    },
+    {
+      "name": "Hà Nội - Cụm Bách Khoa - Kinh Tế - Xây Dựng (Hai Bà Trưng)",
+      "province": "Hà Nội",
+      "lat": 21.0044,
+      "lng": 105.8433
+    },
+    {
+      "name": "Hà Nội - Cụm ĐHQG Hà Nội - Sư Phạm (Cầu Giấy)",
+      "province": "Hà Nội",
+      "lat": 21.0371,
+      "lng": 105.7816
+    },
+    {
+      "name": "Hà Nội - Cụm Kiến Trúc - Bưu Chính - An Ninh (Hà Đông)",
+      "province": "Hà Nội",
+      "lat": 20.9808,
+      "lng": 105.7958
+    },
+    {
+      "name": "Hà Nội - Cụm Ngoại Thương - Ngoại Giao - Luật (Đống Đa)",
+      "province": "Hà Nội",
+      "lat": 21.0232,
+      "lng": 105.8080
+    },
+    {
+      "name": "Hà Nội - Cụm ĐH Y Hà Nội - Thủy Lợi - Công Đoàn (Đống Đa)",
+      "province": "Hà Nội",
+      "lat": 21.0033,
+      "lng": 105.8290
+    },
+    {
+      "name": "Hà Nội - Cụm ĐH Công Nghiệp Hà Nội (Bắc Từ Liêm)",
+      "province": "Hà Nội",
+      "lat": 21.0537,
+      "lng": 105.7352
+    },
+    {
+      "name": "Hà Nội - Cụm ĐH Mỏ Địa Chất - Học viện Tài Chính (Bắc Từ Liêm)",
+      "province": "Hà Nội",
+      "lat": 21.0722,
+      "lng": 105.7733
+    },
+    {
+      "name": "Hà Nội - Cụm Học viện Nông Nghiệp Việt Nam (Gia Lâm)",
+      "province": "Hà Nội",
+      "lat": 21.0055,
+      "lng": 105.9328
+    },
+    {
+      "name": "Đà Nẵng - ĐH Bách Khoa Đà Nẵng (Liên Chiểu)",
+      "province": "Đà Nẵng",
+      "lat": 16.0748,
+      "lng": 108.1499
+    },
+    {
+      "name": "Đà Nẵng - Cụm ĐH Kinh Tế - ĐH Đà Nẵng (Ngũ Hành Sơn / Hải Châu)",
+      "province": "Đà Nẵng",
+      "lat": 16.0597,
+      "lng": 108.2148
+    },
+    {
+      "name": "Đà Nẵng - Cụm ĐH Sư Phạm - ĐH Ngoại Ngữ Đà Nẵng",
+      "province": "Đà Nẵng",
+      "lat": 16.0610,
+      "lng": 108.1820
+    },
+    {
+      "name": "Đà Nẵng - ĐH FPT Đà Nẵng (FPT City)",
+      "province": "Đà Nẵng",
+      "lat": 15.9690,
+      "lng": 108.2610
+    },
+    {
+      "name": "Cần Thơ - ĐH Cần Thơ (Khu II)",
+      "province": "Cần Thơ",
+      "lat": 10.0312,
+      "lng": 105.7690
+    },
+    {
+      "name": "Cần Thơ - ĐH Y Dược Cần Thơ",
+      "province": "Cần Thơ",
+      "lat": 10.0270,
+      "lng": 105.7570
+    },
+    {
+      "name": "Cần Thơ - ĐH Nam Cần Thơ",
+      "province": "Cần Thơ",
+      "lat": 9.9980,
+      "lng": 105.7360
+    },
+    {
+      "name": "Cần Thơ - ĐH FPT Cần Thơ",
+      "province": "Cần Thơ",
+      "lat": 10.0260,
+      "lng": 105.7300
+    },
+    {
+      "name": "Bình Dương - ĐH Thủ Dầu Một",
+      "province": "Bình Dương",
+      "lat": 10.9806,
+      "lng": 106.6740
+    },
+    {
+      "name": "Bình Dương - ĐH Quốc Tế Miền Đông (EIU)",
+      "province": "Bình Dương",
+      "lat": 11.0530,
+      "lng": 106.6660
+    },
+    {
+      "name": "Bình Dương - ĐH Việt Đức (VGU Bến Cát)",
+      "province": "Bình Dương",
+      "lat": 11.1380,
+      "lng": 106.6110
+    },
+    {
+      "name": "Bình Dương - ĐH Bình Dương",
+      "province": "Bình Dương",
+      "lat": 10.9870,
+      "lng": 106.6740
+    },
+    {
+      "name": "Đồng Nai - ĐH Đồng Nai (Biên Hòa)",
+      "province": "Đồng Nai",
+      "lat": 10.9630,
+      "lng": 106.8520
+    },
+    {
+      "name": "Đồng Nai - ĐH Lạc Hồng (Biên Hòa)",
+      "province": "Đồng Nai",
+      "lat": 10.9570,
+      "lng": 106.8080
+    },
+    {
+      "name": "Lâm Đồng - ĐH Đà Lạt",
+      "province": "Lâm Đồng",
+      "lat": 11.9560,
+      "lng": 108.4440
+    },
+    {
+      "name": "Lâm Đồng - ĐH Yersin Đà Lạt",
+      "province": "Lâm Đồng",
+      "lat": 11.9680,
+      "lng": 108.4550
+    },
+    {
+      "name": "Thừa Thiên Huế - Cụm ĐH Huế (ĐH Y Dược, Sư Phạm, Khoa Học)",
+      "province": "Thừa Thiên Huế",
+      "lat": 16.4590,
+      "lng": 107.5900
+    },
+    {
+      "name": "Thừa Thiên Huế - ĐH Kinh Tế - ĐH Huế",
+      "province": "Thừa Thiên Huế",
+      "lat": 16.4460,
+      "lng": 107.6030
+    },
+    {
+      "name": "Khánh Hòa - ĐH Nha Trang",
+      "province": "Khánh Hòa",
+      "lat": 12.2680,
+      "lng": 109.2010
+    },
+    {
+      "name": "Khánh Hòa - ĐH Khánh Hòa",
+      "province": "Khánh Hòa",
+      "lat": 12.2510,
+      "lng": 109.1960
+    },
+    {
+      "name": "Đắk Lắk - ĐH Tây Nguyên (Buôn Ma Thuột)",
+      "province": "Đắk Lắk",
+      "lat": 12.6570,
+      "lng": 108.0380
+    },
+    {
+      "name": "Kiên Giang - ĐH Kiên Giang (Rạch Giá)",
+      "province": "Kiên Giang",
+      "lat": 9.9320,
+      "lng": 105.1510
+    },
+    {
+      "name": "Tiền Giang - ĐH Tiền Giang (Mỹ Tho)",
+      "province": "Tiền Giang",
+      "lat": 10.3720,
+      "lng": 106.3350
+    },
+    {
+      "name": "Hưng Yên - ĐH Sư phạm Kỹ thuật Hưng Yên",
+      "province": "Hưng Yên",
+      "lat": 20.8350,
+      "lng": 106.0140
+    },
+    {
+      "name": "Hưng Yên - ĐH Anh Quốc Việt Nam (BUV Ecopark)",
+      "province": "Hưng Yên",
+      "lat": 20.9640,
+      "lng": 105.9320
+    },
+    {
+      "name": "Hải Phòng - ĐH Hàng Hải Việt Nam",
+      "province": "Hải Phòng",
+      "lat": 20.8400,
+      "lng": 106.6910
+    },
+    {
+      "name": "Hải Phòng - ĐH Y Dược Hải Phòng",
+      "province": "Hải Phòng",
+      "lat": 20.8490,
+      "lng": 106.6990
+    },
+    {
+      "name": "Long An - ĐH Kinh tế Công nghiệp Long An (Tân An)",
+      "province": "Long An",
+      "lat": 10.5310,
+      "lng": 106.4010
+    },
+    {
+      "name": "Bà Rịa - Vũng Tàu - ĐH Bà Rịa - Vũng Tàu",
+      "province": "Bà Rịa - Vũng Tàu",
+      "lat": 10.3550,
+      "lng": 107.0860
+    },
+    {
+      "name": "Sóc Trăng - CĐ Cộng đồng Sóc Trăng",
+      "province": "Sóc Trăng",
+      "lat": 9.6000,
+      "lng": 105.9800
+    }
+  ]
+}

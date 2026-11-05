@@ -1,28 +1,30 @@
 {
-  "dataset_size": 1249,
+  "dataset_size": 9693,
   "features": [
     "area_m2",
     "lat",
     "lng",
+    "room_type_id",
     "furnishing_code",
     "is_private_wc",
     "is_aircon",
     "is_mezzanine",
-    "is_kitchen",
+    "is_fridge",
     "is_washing_machine",
     "is_window_balcony",
     "is_furniture",
-    "is_parking",
+    "is_elevator",
     "is_free_hours",
-    "is_no_shared_landlord",
-    "is_fingerprint_lock",
-    "is_camera",
     "is_guard",
-    "is_safe_area"
+    "amenity_overall",
+    "safety_score",
+    "dist_nearest_hub_km",
+    "dist_nearest_uni_km"
   ],
-  "mae_vnd": 950440.28,
-  "rmse_vnd": 1292866.84,
-  "r2_score": 0.3111,
-  "conformal_coverage": 0.7447,
-  "trained_at": "2026-10-19 22:28:29"
+  "mae_vnd": 599687.27,
+  "rmse_vnd": 860174.89,
+  "r2_score": 0.6659,
+  "r2_log_score": 0.722,
+  "conformal_coverage": 0.8246,
+  "trained_at": "2026-11-05 17:01:57"
 }

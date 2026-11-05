@@ -124,6 +124,7 @@ class ListingService:
                     Listing.district_id == district_id,
                     Listing.price_vnd.isnot(None),
                     Listing.price_vnd > 0,
+                    Listing.is_active == True,
                 )
                 .group_by(Ward.id, Ward.name)
             )
@@ -157,6 +158,7 @@ class ListingService:
                     Listing.region_id == city_id,
                     Listing.price_vnd.isnot(None),
                     Listing.price_vnd > 0,
+                    Listing.is_active == True,
                 )
                 .group_by(District.id, District.name)
             )

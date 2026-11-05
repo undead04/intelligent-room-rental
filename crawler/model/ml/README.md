@@ -1,39 +1,67 @@
-# 🧠 ML Module — Conformal Prediction & Room Price Evaluator (`ml/`)
+# 🧠 ML Module — Conformal Prediction & Room Price Evaluator v2 (`crawler/model/ml/`)
 
-Module **Machine Learning (`ml/`)** chịu trách nhiệm huấn luyện và suy luận mô hình thẩm định mức độ hợp lý của giá thuê phòng trọ (**`price_score`**). Thay vì sử dụng phép chia thô `price_per_m2` (vốn sai lệch nặng khi phòng diện tích nhỏ hoặc phòng Studio full nội thất), hệ thống dự đoán khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ theo từng phân khúc và quy đổi thành điểm số chuẩn hóa `price_score` $\in [0.0, 1.0]$.
+Module **Machine Learning (`crawler/model/ml/`)** chịu trách nhiệm huấn luyện và suy luận mô hình thẩm định mức độ hợp lý của giá thuê phòng trọ (**`price_score`**) trên phạm vi **Toàn Quốc (24+ tỉnh/thành phố)** và **Đa phân khúc phòng (5 loại phòng)**. Thay vì sử dụng phép chia thô `price_per_m2` (vốn sai lệch nặng khi phòng diện tích nhỏ, phòng Studio full nội thất, hoặc phòng Ký túc xá / Sleepbox / Ở ghép), hệ thống dự đoán khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ theo từng phân khúc và quy đổi thành điểm số chuẩn hóa `price_score` $\in [0.0, 1.0]$.
 
 ---
 
 ## 📂 1. Cấu Trúc Thư Mục
 
 ```text
-ml/
+crawler/model/ml/
 ├── __init__.py                  # Export PriceEvaluator / RoomPriceEvaluator
-├── feature_extractor.py         # Trích xuất đặc trưng (Vị trí, Diện tích, Tiện ích, An ninh)
-├── models.py                    # Kiến trúc CatBoost + Ridge Blend & Mondrian Conformal Prediction
+├── feature_extractor.py         # Trích xuất 26 đặc trưng Toàn Quốc + Bộ lọc thích ứng theo RoomType
+├── models.py                    # LightGBM + XGBoost Blend, Weighted SpatialTE, Mondrian CQR & InputGuard
 ├── price_evaluator.py           # Service suy luận (Inference) tính price_score theo lô/đơn lẻ
-├── train_price_model.py         # Script huấn luyện model & xuất artifacts (.joblib)
+├── train_price_model.py         # Script huấn luyện Optuna 5-Fold Stratified CV & xuất artifacts
 ├── artifacts/                   # Thư mục lưu model đã huấn luyện
-│   ├── rent_pipeline.joblib     # Trọng số ensemble & Mondrian interval
-│   └── guard.joblib             # Bộ lọc ngoại lai InputGuard
+│   ├── rent_pipeline.joblib     # Trọng số ensemble (LightGBM + XGBoost) & MondrianPriceInterval
+│   ├── guard.joblib             # Bộ lọc ngoại lai InputGuard Toàn Quốc thích ứng theo loại phòng
+│   └── training_metrics.json    # Báo cáo chỉ số đánh giá (MAE, RMSE, R², Conformal Coverage)
 └── notebooks/                   # Jupyter Notebooks thực nghiệm & EDA
 ```
 
+*(Danh mục tọa độ 48 trung tâm đô thị & 50 cụm đại học lớn trên toàn quốc được tách độc lập tại [`crawler/config/poi_locations.json`](../../config/poi_locations.json)).*
+
 ---
 
-## ⚙️ 2. Cơ Sở Toán Học & Thuật Toán
+## ⚙️ 2. Cơ Sở Toán Học & Thuật Toán (v2)
 
-### 2.1. Tập Đặc Trưng Đầu Vào (`feature_extractor.py`)
-Mỗi tin đăng được trích xuất thành vector đặc trưng kết hợp giữa dữ liệu có cấu trúc và tín hiệu ngữ nghĩa từ LLM:
-- **Không gian & Địa lý**: `district`, `ward`, tọa độ `lat`, `lng`, mã hóa mục tiêu không gian (`SpatialTE`).
-- **Quy mô & Phân loại**: `area_m2`, `room_type` (`ROOM`, `STUDIO`, `APARTMENT`, `SLEEPBOX`, `WHOLE_HOUSE`), `furnishing_code`.
-- **Tiện ích & An ninh**: 10 cờ tiện ích chuẩn hóa (`private_wc`, `aircon`, `mezzanine`, `kitchen`, `fridge`, `washing_machine`, `window_balcony`, `furniture`, `parking`, `elevator`), `amenity_overall` và `safety_score`.
+### 2.1. Tập 19 Đặc Trưng Cốt Lõi Tinh Gọn Cho Mô Hình ML (`feature_extractor.py`)
+Mỗi tin đăng được trích xuất thành vector 19 đặc trưng cốt lõi (sau khi tinh gọn, loại bỏ 7 cờ quy định & an ninh có gain cận 0 không đóng góp cho bài toán định giá tiền thuê):
+1. **Quy mô & Phân khúc (5 features):** `area_m2`, `lat`, `lng`, `room_type_id` (`1: ROOM`, `2: STUDIO`, `3: APARTMENT`, `4: SLEEPBOX`, `5: WHOLE_HOUSE`), `furnishing_code`.
+2. **Nội thất & Tiện nghi cốt lõi (10 cờ nhị phân):**
+   - **8 Tiện ích & Nội thất cấu thành chi phí thuê:** `is_furniture`, `is_aircon`, `is_window_balcony`, `is_elevator`, `is_mezzanine`, `is_private_wc`, `is_fridge`, `is_washing_machine`.
+   - **2 Quy định & An ninh trọng yếu:** `is_free_hours`, `is_guard`.
+   *(7 cờ `is_kitchen`, `is_parking`, `is_no_shared_landlord`, `is_pet_allowed`, `is_fingerprint_lock`, `is_camera`, `is_safe_area` vẫn được lưu trữ và sử dụng đầy đủ ở tầng Database/Backend để phục vụ bộ lọc tìm kiếm người dùng và AI Agent).*
+3. **Điểm Ngữ Nghĩa LLM (2 features):** `amenity_overall` $\in [0.0, 1.0]$ và `safety_score` $\in [0.0, 1.0]$ (tổng hợp ngữ nghĩa toàn diện từ LLM).
+4. **Khoảng Cách Haversine Đa Trung Tâm Đô Thị & Đại Học (2 features):** `dist_nearest_hub_km` (đến 48 trung tâm hành chính/thương mại) và `dist_nearest_uni_km` (đến 50 cụm đại học lớn).
 
-### 2.2. Ensemble & Mondrian Conformal Prediction (`models.py`)
-1. **Dự đoán giá kỳ vọng ($P_{\text{mid}}$)**: Kết hợp tuyến tính (Blend) giữa **CatBoost Regressor** và **Ridge Regression** trên không gian logarit $\log(1 + P)$ kèm hiệu chỉnh chệch (Smearing Correction).
-2. **Dự đoán khoảng tin cậy ($[P_{\text{low}}, P_{\text{high}}]$)**: Áp dụng **Mondrian Conformal Prediction** (`MondrianPriceInterval`) phân tầng theo khu vực và phân khúc để ước lượng biên dưới $P_{\text{low}}$ và biên trên $P_{\text{high}}$.
+### 2.2. Đặc Trưng Phái Sinh & `SpatialTE` Trọng Số Khoảng Cách (`models.py`)
+- **`make_base_features`:** Tính mật độ tiện nghi trên quy mô diện tích `amenity_density = amenity_overall / ln(1 + area_m2)` và tương quan tọa độ phẳng `lat_lng_sum`, `lat_lng_diff` (đã loại bỏ các biến đa cộng tuyến `log_area` và `n_amenities`).
+- **Inverse-Distance Weighted `SpatialTE`:** Sử dụng `BallTree(metric="haversine")` tìm $k \in \{5, 20\}$ phòng láng giềng gần nhất và tính trung bình có trọng số nghịch đảo khoảng cách $w_j = \frac{1}{1 + d_j(\text{km})}$ (`nb5_logy_mean`, `nb5_logppm_mean`, `nb20_logy_mean`, `nb20_logppm_mean`, `nb5_dist_km`, `nb20_dist_km`, `nb20_logy_std`), đồng thời loại bỏ chính điểm đang xét trong `transform_train` để chống rò rỉ dữ liệu 100%.
 
-### 2.3. Công Thức Tính Điểm Hợp Lý Giá (`price_score`)
+### 2.3. Ensemble, Mondrian Conformal Prediction & `InputGuard` Toàn Quốc
+1. **Dự đoán giá kỳ vọng ($P_{\text{mid}}$):** Kết hợp (Blend) giữa **LightGBM** và **XGBoost** được tối ưu siêu tham số qua **Optuna 5-Fold Stratified CV** trên không gian logarit $\ln(1 + P)$ kèm hệ số hiệu chỉnh chệch bình phương tối thiểu (Least-Squares Smearing Calibration).
+2. **Dự đoán khoảng tin cậy ($[P_{\text{low}}, P_{\text{high}}]$):** Áp dụng **Mondrian Conformal Prediction** (`MondrianPriceInterval`, `n_bins=5`, độ phủ danh định $80\%$) phân tầng theo mức giá dự đoán.
+3. **`InputGuard` Toàn Quốc & Thích Ứng Theo `room_type_id`:** Hỗ trợ toàn lãnh thổ Việt Nam ($\text{lat} \in [8.0, 23.5]$, $\text{lng} \in [102.0, 110.0]$) và áp dụng bảng ngưỡng diện tích/giá/đơn giá (`ppm`) riêng biệt cho từng loại phòng (bảo vệ phân khúc `SLEEPBOX`/KTX/ở ghép có $\text{ppm} \ge 5.000\ \text{đ/m}^2$ và `WHOLE_HOUSE` diện tích lớn).
+
+### 2.4. Kết Quả Thực Nghiệm (Tập Dữ Liệu Toàn Quốc `N = 9.693` Bản Ghi Sạch)
+
+| Chỉ Số Đánh Giá (Trên Tập Test Độc Lập 15%) | Mô Hình v1 (1.249 mẫu) | Mô Hình v2 (9.693 mẫu - 19 Features) | Mức Cải Thiện |
+| :--- | :---: | :---: | :---: |
+| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$599.687\ \text{VNĐ}$** | **$-40,3\%$ sai số** |
+| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$860.175\ \text{VNĐ}$** | **$-42,6\%$ sai số** |
+| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6659$** | **Tăng $\times 2,14$ lần (+35,48 điểm %)** |
+| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7220$** | Giải thích $> 72,2\%$ phương sai |
+| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$82,5\%$** | Đạt chuẩn $[78\%, 85\%]$ |
+| :--- | :---: | :---: | :---: |
+| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$599.972\ \text{VNĐ}$** | **$-40,3\%$ sai số** |
+| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$859.532\ \text{VNĐ}$** | **$-42,7\%$ sai số** |
+| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6664$** | **$\times 2,14$ lần (+35,5 điểm %)** |
+| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7248$** | Giải thích $> 72\%$ phương sai |
+| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$83,0\%$** | Đạt chuẩn $[78\%, 85\%]$ |
+
+### 2.5. Công Thức Tính Điểm Hợp Lý Giá (`price_score`)
 Trong không gian logarit $\ell(x) = \ln(1 + x)$:
 $$\mu = \frac{\ell(P_{\text{low}}) + \ell(P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ell(P_{\text{high}}) - \ell(P_{\text{low}})}{2}, 10^{-6}\right)$$
 $$z = \frac{\ell(P_{\text{actual}}) - \mu}{\sigma}$$
@@ -47,31 +75,36 @@ $$\text{price\_score}_{100} = \text{clip}(50 - 25 \cdot z,\ 0,\ 100), \quad \tex
 
 ## 🚀 3. Hướng Dẫn Sử Dụng
 
-### 3.1. Huấn Luyện Lại Mô Hình
+### 3.1. Trích Xuất Đặc Trưng & Huấn Luyện Lại Mô Hình
 ```powershell
-.\.venv\Scripts\python.exe -m ml.train_price_model
+# 1. Kiểm tra trích xuất đặc trưng và cập nhật file cache Parquet
+.\crawler\.venv\Scripts\python.exe -m crawler.model.ml.feature_extractor
+
+# 2. Huấn luyện mô hình và xuất artifacts (.joblib, training_metrics.json)
+.\crawler\.venv\Scripts\python.exe -m crawler.model.ml.train_price_model
 ```
-Sau khi huấn luyện, model sẽ được lưu tại `ml/artifacts/rent_pipeline.joblib` và `ml/artifacts/guard.joblib`.
 
 ### 3.2. Sử Dụng Trong Code / ETL Pipeline
 ```python
-from ml import RoomPriceEvaluator
+from crawler.model.ml import RoomPriceEvaluator
 
 evaluator = RoomPriceEvaluator()
 result = evaluator.evaluate_single({
     "listing_id": "nhatot_123456",
-    "price_vnd": 2800000,
-    "area_m2": 25.0,
-    "district": "Thành phố Thủ Đức",
-    "ward": "Phường Linh Xuân",
-    "room_type": "ROOM",
+    "price_vnd": 3_200_000,
+    "area_m2": 20.0,
+    "lat": 10.772,
+    "lng": 106.657,
+    "room_type_id": 1,
+    "aircon": True,
+    "private_wc": True,
     "safety_score": 0.85,
     "amenity_overall": 0.80,
 })
-print(result["price_score"], result["verdict"])
+print(result["price_score"], result["verdict"], result["guard_status"])
 ```
 
 Trong luồng ETL (`crawler`), chỉ cần bật cờ `--eval-price`:
 ```powershell
-.\.venv\Scripts\python.exe -m crawler.etl.pipeline --eval-price --embed
+.\crawler\.venv\Scripts\python.exe -m crawler.etl.pipeline --eval-price --embed
 ```

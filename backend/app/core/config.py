@@ -2,8 +2,7 @@ from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
-ENV_FILE_PATH = BACKEND_DIR / ".env"
+from app.core.paths import BACKEND_DIR, ENV_FILE_PATH
 
 
 class Settings(BaseSettings):
