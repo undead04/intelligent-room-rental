@@ -3,14 +3,15 @@
 Thư mục này chứa toàn bộ tài liệu kiến trúc kỹ thuật của dự án **Homigo — Hệ thống Hỗ trợ Ra quyết định Tìm kiếm Phòng trọ Thông minh**. 
 
 > [!NOTE]
-> **Dành cho AI Agent ở phiên làm việc mới (New Session):**  
-> Trước khi thực hiện bất kỳ tác vụ lập trình nào, hãy đọc lướt qua 3 tài liệu cốt lõi bên dưới để nắm bắt chuẩn xác 100% bối cảnh, công nghệ và mô hình dữ liệu của dự án.
+> **Quy tắc Đồng bộ Kiến trúc dành cho AI Agent:**  
+> 1. **Khi bắt đầu phiên mới (New Session):** Hãy đọc lướt qua 3 tài liệu cốt lõi bên dưới để nắm bắt chuẩn xác 100% bối cảnh, công nghệ và mô hình dữ liệu của dự án.
+> 2. **Khi có thay đổi kiến trúc:** Bất kỳ thay đổi nào về DB Schema, DTO, luồng ETL, Hybrid Search/Reranker, LangGraph State Machine hoặc Tech Stack đều **bắt buộc** phải được cập nhật đồng bộ ngay vào các file tương ứng trong thư mục này.
 
 ---
 
 ## 📚 Danh Mục Tài Liệu Kiến Trúc
 
-1. 🛠️ [**Kiến Trúc Công Nghệ (Tech Stack)**](./techstack.md)
+1. 🛠️ [**Kiến Trúc Công Nghệ (Tech Stack)**](./tech-stack.md)
    - Phân tách 4 microservices: `backend/` (Port 8000), `ai-agent/` (Port 8001), `frontend/` (Port 3000), và `crawler/`.
    - Chi tiết dependencies, runtime môi trường ảo, cổng mạng và lệnh khởi chạy từng service.
 

@@ -8,21 +8,21 @@ Module **AI Agent (`ai-agent/`)** đóng vai trò là bộ não tư vấn và h�
 
 ```mermaid
 flowchart LR
-    START([User Message]) --> N1["1. guardrail_node\n(0 Tools)"]
+    START["User Message"] --> N1["1. guardrail_node<br/>(0 Tools)"]
     N1 -->|Vi phạm| N8["8. formatter_node"]
-    N1 -->|An toàn| N2["2. understand_node\n(Memory + Dynamic Weights)"]
-    N2 -->|Khớp Skill pháp lý/hợp đồng| N4["4. advisory_node\n(ADVISORY_TOOLS)"]
-    N2 -->|Thiếu thông tin cơ bản| N3["3. clarification_node\n(0 Tools)"]
-    N2 -->|Phản hồi trực tiếp / Giữ tiêu chí| N8
-    N2 -->|Hỏi tiếp về phòng cũ| N6["6. decision_node\n(ReAct Agent chi tiết)"]
-    N2 -->|Đủ tiêu chí tìm kiếm| N5["5. retrieval_node\n(RETRIEVAL_TOOLS)"]
+    N1 -->|An toàn| N2["2. understand_node<br/>(Memory + Dynamic Weights)"]
+    N2 -->|Khớp Skill pháp lý hoặc hợp đồng| N4["4. advisory_node<br/>(ADVISORY_TOOLS)"]
+    N2 -->|Thiếu thông tin cơ bản| N3["3. clarification_node<br/>(0 Tools)"]
+    N2 -->|Phản hồi trực tiếp hoặc Giữ tiêu chí| N8
+    N2 -->|Hỏi tiếp về phòng cũ| N6["6. decision_node<br/>(ReAct Agent chi tiết)"]
+    N2 -->|Đủ tiêu chí tìm kiếm| N5["5. retrieval_node<br/>(RETRIEVAL_TOOLS)"]
     N5 --> N6
-    N6 --> N7["7. verify_node\n(Anti-Hallucination Check)"]
-    N7 -->|Phát hiện ảo giác & retry <= 2| N6
+    N6 --> N7["7. verify_node<br/>(Anti-Hallucination Check)"]
+    N7 -->|Phát hiện ảo giác và retry tối đa 2 lần| N6
     N7 -->|Grounded 100%| N8
     N3 --> N8
     N4 --> N8
-    N8 --> END([AgentResponse])
+    N8 --> END["AgentResponse"]
 ```
 
 ### Điểm Nổi Bật Thiết Kế
@@ -60,7 +60,7 @@ ai-agent/
 ├── tools/                       # Native LangChain Tools & Phân vùng Scopes (RETRIEVAL, DETAIL, ADVISORY)
 ├── skills/                      # Dynamic Skill Discovery qua YAML triggers (rental-contract-advisor)
 ├── eval/                        # Bộ benchmark đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding...)
-├── tests/                       # 488 Unit & Integration Tests (100% Passed)
+├── tests/                       # 454 Unit & Integration Tests (100% Passed)
 ├── main.py                      # Uvicorn entrypoint (Port 8001)
 ├── service.py                   # HousingAgentService shim tương thích ngược
 ├── pyproject.toml / uv.lock     # Quản lý phụ thuộc uv
@@ -103,7 +103,7 @@ if res.insights:
 
 ## 🧪 4. Chạy Kiểm Thử (Unit Tests)
 
-Chạy toàn bộ 488 unit & integration tests của Homigo AI Agent (100% Passed):
+Chạy toàn bộ 454 unit & integration tests của Homigo AI Agent (100% Passed):
 ```powershell
 .\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 ```

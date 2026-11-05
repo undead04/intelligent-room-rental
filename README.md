@@ -14,7 +14,7 @@
 2. **Trọng số thích ứng theo ý định (Intent-Aware Dynamic MCDM)**: Tự động phân tích ý định từ ngôn ngữ tự nhiên của người dùng để kích hoạt các hệ số nhân ưu tiên (**Intent Multipliers**: giá rẻ $2.0\times$, sát trường $2.0\times$, an ninh cho nữ $2.0\times$, full nội thất $1.8\times$) và chuẩn hoá vector trọng số theo $L_1$-norm ($\sum w_i = 1.0$).
 3. **Máy trạng thái điều phối AI Agent 8 Node (LangGraph State Machine)**: Quản lý quy trình hội thoại khép kín gồm: Phòng thủ Guardrail an toàn, Trích xuất NLU & Tích lũy trạng thái đa lượt (Multi-turn Memory), Hỏi làm rõ khi mơ hồ, Định tuyến Kỹ năng chuyên sâu (Advisory Skills), Truy xuất lai & Rerank động, Phân tích đối sánh đánh đổi (**Trade-off Analysis Top 1 vs Top 2**), Tự kiểm chứng trung thực (**Self-RAG Grounding Verification**) và Đóng gói phản hồi chuẩn hóa.
 4. **Cơ chế phân vùng công cụ (Tool Partitioning)**: Chia tách công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giảm hơn **65% token overhead** và ngăn ngừa triệt để hiện tượng Tool Hallucination.
-5. **Thẩm định giá thuê bằng Machine Learning & Conformal Prediction**: Kết hợp mô hình CatBoost Regressor + Ridge Blend và Mondrian Conformal Prediction để ước lượng khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$, lượng hóa thành điểm số `price_score` $\in [0.0, 1.0]$.
+5. **Thẩm định giá thuê bằng Machine Learning & Conformal Prediction**: Kết hợp mô hình **LightGBM + XGBoost Blend**, **Inverse-Distance Weighted Spatial Target Encoding (`SpatialTE`)**, và **Mondrian Conformal Prediction** để ước lượng khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ trên 9.693 bản ghi sạch toàn quốc ($R^2 = 0.6659$, $\text{MAE} = 599.687\ \text{VNĐ}$), lượng hóa thành điểm số `price_score` $\in [0.0, 1.0]$.
 6. **Chu trình ETL & Trích xuất thuộc tính có kiểm chứng (Evidence Verification)**: Thu thập dữ liệu đa nguồn (Nhà Tốt, PhongTrọ123), đệm SQLite WAL $O(1)$, bóc tách thuộc tính sâu bằng LLM Gemini có cơ chế so khớp nguyên văn chống bịa đặt bằng chứng.
 7. **Bảo mật đa tầng (Dual-layer Security)**:
    - **Tầng Backend API**: Middleware chống tấn công **SQL Injection** trong query/path params và **Rate Limiting** thuật toán Sliding Window bảo vệ tài nguyên máy chủ.
@@ -59,7 +59,7 @@
 │                  CRAWLER & ETL PIPELINE (crawler/)                     │
 │   • Spiders: Thu thập đa nguồn (NhaTot, PhongTro123) + Staging SQLite  │
 │   • LLM Attribute Extractor: Gemini 2.5 Flash + Evidence Verification  │
-│   • ML Price Evaluator: CatBoost + Ridge Blend & Conformal Prediction   │
+│   • ML Price Evaluator: LightGBM + XGBoost Blend & Mondrian Conformal Prediction (v2) │
 │   • Enricher & Embedder: intfloat/multilingual-e5-base (768 chiều)     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -84,7 +84,7 @@
 │   │   │   └── reranker.py        # MCDM Dynamic Reranking Engine (5 tiêu chí, explain_match)
 │   │   ├── utils/                 # Tiện ích tương thích ngược
 │   │   └── main.py                # FastAPI App Entrypoint & Lifespan handler
-│   ├── tests/                     # 18 unit tests (Embedding, MCDM Rerank, Security Middleware)
+│   ├── tests/                     # 48 unit & integration tests (Embedding, MCDM Rerank, Security Middleware)
 │   ├── run.py                     # Script khởi chạy Backend nhanh qua Uvicorn
 │   ├── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
 │   └── requirements.txt           # Quản lý phụ thuộc pip
@@ -130,7 +130,7 @@
 │   │   ├── skills_discovery.py    # Tự động phát hiện Kỹ năng không cần sửa code graph
 │   │   └── rental-contract-advisor/ # Kỹ năng tư vấn hợp đồng thuê trọ, tiền cọc, rủi ro pháp lý
 │   ├── eval/                      # Bộ đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding, Decision, Safety)
-│   ├── tests/                     # 488 Unit & Integration Tests (100% Passed)
+│   ├── tests/                     # 454 Unit & Integration Tests (100% Passed)
 │   ├── main.py                    # Uvicorn entrypoint (Port 8001)
 │   ├── service.py                 # HousingAgentService shim tương thích ngược
 │   ├── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
@@ -141,9 +141,9 @@
 │   ├── staging_db.py              # SQLite Staging DB duy nhất (chế độ WAL, index O(1), trạng thái is_processed)
 │   ├── model/
 │   │   ├── llm/                   # Gemini Dynamic Chunking & Metadata Extraction có Evidence Verification
-│   │   └── ml/                    # CatBoost + Ridge Blend & Mondrian Conformal Prediction định giá phòng trọ
-│   │       ├── feature_extractor.py # Trích xuất vector đặc trưng (Địa lý, Diện tích, Tiện ích, An ninh)
-│   │       ├── models.py          # Kiến trúc mô hình Conformal Prediction
+│   │   └── ml/                    # LightGBM + XGBoost Blend & Mondrian Conformal Prediction v2 (19 features)
+│   │       ├── feature_extractor.py # Trích xuất vector đặc trưng Toàn Quốc & bộ lọc thích ứng loại phòng
+│   │       ├── models.py          # Kiến trúc Weighted SpatialTE, Mondrian CQR & InputGuard Toàn Quốc
 │   │       ├── price_evaluator.py # Service suy luận tính điểm price_score (0.0 - 1.0)
 │   │       └── artifacts/         # Lưu trữ model đã huấn luyện (rent_pipeline.joblib, guard.joblib)
 │   ├── etl/                       # Chu trình ETL tự động
@@ -155,7 +155,7 @@
 │   │   ├── load.py                # Bộ nạp đa đích: PostgreSQL (pgvector), Parquet, CSV, JSON
 │   │   └── pipeline.py            # CLI điều phối toàn bộ chu trình ETL khép kín
 │   ├── schema/                    # Danh mục chuẩn (enums.py) & Pydantic schemas (listing.py)
-│   ├── tests/                     # 30 Unit Tests Crawler & ETL (100% Passed)
+│   ├── tests/                     # 81 Unit & Integration Tests Crawler & ML v2 (100% Passed)
 │   ├── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
 │   └── requirements.txt
 │
@@ -208,25 +208,25 @@ Hệ thống AI Agent không dùng cấu trúc prompt monolithic nguyên khối 
 
 ```mermaid
 flowchart TD
-    START([START: Tin nhắn người dùng]) --> N1["1. Guardrail Node\n(0 Tools - Regex / Heuristics)"]
+    START["START: Tin nhắn người dùng"] --> N1["1. Guardrail Node<br/>(0 Tools - Regex / Heuristics)"]
     
-    N1 -->|Phát hiện vi phạm / Jailbreak| N8["8. Formatter Node\n(0 Tools - Đóng gói phản hồi an toàn)"]
-    N1 -->|An toàn| N2["2. Understand Node\n(NLU + Dynamic MCDM + Dynamic Skill Match)"]
+    N1 -->|Phát hiện vi phạm hoặc Jailbreak| N8["8. Formatter Node<br/>(0 Tools - Đóng gói phản hồi an toàn)"]
+    N1 -->|An toàn| N2["2. Understand Node<br/>(NLU + Dynamic MCDM + Dynamic Skill Match)"]
     
-    N2 -->|Khớp trigger Kỹ năng chuyên sâu| N4["4. Advisory Node\n(Scope: ADVISORY_TOOLS)"]
-    N2 -->|Truy vấn quá mơ hồ| N3["3. Clarification Node\n(0 Tools - Hỏi gợi mở thân thiện)"]
-    N2 -->|Yêu cầu soi phòng cụ thể| N6["6. Decision Support Node\n(Scope: DETAIL_TOOLS)"]
-    N2 -->|Đủ tiêu chí tìm kiếm| N5["5. Hybrid Retrieval Node\n(Scope: RETRIEVAL_TOOLS)"]
+    N2 -->|Khớp trigger Kỹ năng chuyên sâu| N4["4. Advisory Node<br/>(Scope: ADVISORY_TOOLS)"]
+    N2 -->|Truy vấn quá mơ hồ| N3["3. Clarification Node<br/>(0 Tools - Hỏi gợi mở thân thiện)"]
+    N2 -->|Yêu cầu soi phòng cụ thể| N6["6. Decision Support Node<br/>(Scope: DETAIL_TOOLS)"]
+    N2 -->|Đủ tiêu chí tìm kiếm| N5["5. Hybrid Retrieval Node<br/>(Scope: RETRIEVAL_TOOLS)"]
     
     N4 --> N8
     N3 --> N8
     N5 --> N6
     
-    N6 --> N7["7. Verify Node (Self-RAG)\n(Kiểm chứng trung thực 100% ID, Giá, Toạ độ)"]
-    N7 -->|Phát hiện sai lệch & retry <= 2| N6
+    N6 --> N7["7. Verify Node (Self-RAG)<br/>(Kiểm chứng trung thực 100% ID, Giá, Toạ độ)"]
+    N7 -->|Phát hiện sai lệch và retry tối đa 2 lần| N6
     N7 -->|Grounded 100%| N8
     
-    N8 --> END([END: Trả về AgentResponse])
+    N8 --> END["END: Trả về AgentResponse"]
 ```
 
 #### Ưu thế của Phân Vùng Công Cụ (Tool Partitioning):
@@ -247,9 +247,12 @@ Nhằm loại bỏ hiện tượng bịa đặt thông tin (Hallucination) — v
 
 ### 4.5. Định Giá Phòng Bằng Machine Learning & Conformal Prediction
 
-Thay vì dùng đơn giá thô `price / area_m2` (vốn sai lệch lớn khi diện tích nhỏ hoặc phòng Sleepbox/Studio full nội thất cao cấp), Homigo áp dụng mô hình máy học:
-- **Ensemble Blend**: Kết hợp **CatBoost Regressor** và **Ridge Regression** trên không gian logarit $\ln(1 + \text{price})$.
-- **Mondrian Conformal Prediction**: Dự đoán khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ với độ tin cậy được đảm bảo theo từng khu vực hành chính và phân khúc phòng trọ.
+Thay vì dùng đơn giá thô `price / area_m2` (vốn sai lệch lớn khi diện tích nhỏ hoặc phòng Sleepbox/Studio full nội thất cao cấp), Homigo áp dụng mô hình máy học v2 chuẩn hóa toàn quốc:
+- **Ensemble Blend**: Kết hợp **LightGBM** và **XGBoost** được tối ưu siêu tham số tự động bằng Optuna (5-Fold Stratified CV) trên không gian logarit $\ln(1 + \text{price})$ kèm hiệu chỉnh chệch Smearing Correction.
+- **Inverse-Distance Weighted SpatialTE**: Trích xuất thống kê giá láng giềng $k \in \{5, 20\}$ phòng gần nhất có trọng số nghịch đảo khoảng cách trên `BallTree(haversine)`, khử hoàn toàn rò rỉ dữ liệu (Zero Leakage).
+- **Mondrian Conformal Prediction**: Dự đoán khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ với độ tin cậy được đảm bảo theo 5 phân khúc giá (độ phủ danh định $80\%$, thực tế đạt $82.5\%$).
+- **InputGuard Toàn Quốc**: Kiểm soát biên tọa độ lãnh thổ Việt Nam ($\text{lat} \in [8.0, 23.5]$, $\text{lng} \in [102.0, 110.0]$) và thích ứng ngưỡng giá/diện tích/đơn giá cho 5 loại phòng (bảo vệ phân khúc KTX/Sleepbox/ở ghép).
+- **Kết Quả Thực Nghiệm**: Huấn luyện trên **9.693 bản ghi sạch toàn quốc** (24 tỉnh/thành) đạt **$R^2 = 0.6659$** (Log-$R^2 = 0.7220$), **$\text{MAE} = 599.687\ \text{VNĐ}$** (giảm 40.3% so với mô hình cũ).
 - **Công thức tính điểm hợp lý giá (`price_score`)**:
   $$\mu = \frac{\ln(1 + P_{\text{low}}) + \ln(1 + P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ln(1 + P_{\text{high}}) - \ln(1 + P_{\text{low}})}{2}, 10^{-6}\right)$$
   $$z = \frac{\ln(1 + P_{\text{actual}}) - \mu}{\sigma}, \quad \text{price\_score} = \frac{\text{clip}(50 - 25 \cdot z,\ 0,\ 100)}{100} \in [0.0, 1.0]$$
@@ -412,18 +415,18 @@ cd frontend; npm run dev
 
 ## 🧪 6. Kiểm Thử Hệ Thống & Báo Cáo Đánh Giá Chất Lượng
 
-Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **536 unit & integration tests** đã được kiểm chứng chạy thành công 100%:
+Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **583 unit & integration tests** đã được kiểm chứng chạy thành công 100%:
 
 ### 6.1. Chạy Toàn Bộ Test Suite Tự Động
 
 ```powershell
-# 1. Kiểm thử AI Agent (488 tests passed)
+# 1. Kiểm thử AI Agent (454 tests passed)
 ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 
-# 2. Kiểm thử Backend (18 tests passed)
+# 2. Kiểm thử Backend (48 tests passed)
 backend\.venv\Scripts\pytest.exe backend/tests -q
 
-# 3. Kiểm thử Crawler & ETL Pipeline (30 tests passed)
+# 3. Kiểm thử Crawler & ML v2 (81 tests passed)
 crawler\.venv\Scripts\pytest.exe crawler/tests -q
 
 # 4. Kiểm thử Frontend Type-safety & Linting (0 errors)

@@ -36,7 +36,7 @@ backend/
 │   ├── utils/
 │   │   └── utils.py                   # Tiện ích tương thích ngược (re-export từ app.services.reranker)
 │   └── main.py                        # FastAPI App Entrypoint & Lifespan (nạp sẵn multilingual-e5-base)
-├── tests/                             # Bộ Unit Tests (Embedding, MCDM Rerank, Security Middleware)
+├── tests/                             # 48 Unit & Integration Tests (Embedding, MCDM Rerank, Lifecycle, Security Middleware)
 ├── requirements.txt
 └── run.py                             # Script khởi chạy nhanh Uvicorn server
 ```
@@ -47,7 +47,7 @@ backend/
 
 ### 2.1. Giai đoạn 1 — Candidate Generation (`listing_repository.py`)
 1. **Lọc ràng buộc cứng (Hard Constraints)**: Lọc theo `city_id`, `district_id`, `ward_id`, `min_price`, `max_price`, `min_area`, `max_area`.
-2. **Chấm điểm Hybrid Search**: Kết hợp độ tương đồng Cosine trên vector 768 chiều (`keepitreal/vietnamese-sbert`) và điểm khớp từ khóa PostgreSQL Full-Text Search để lấy Top 50 ứng viên tiềm năng nhất:
+2. **Chấm điểm Hybrid Search**: Kết hợp độ tương đồng Cosine trên vector 768 chiều (`intfloat/multilingual-e5-base`) và điểm khớp từ khóa PostgreSQL Full-Text Search để lấy Top 50 ứng viên tiềm năng nhất:
    $$\text{CandidateScore} = 0.70 \times \text{DenseScore} + 0.30 \times \text{SparseScore}$$
 
 ### 2.2. Giai đoạn 2 — 5-Factor Dynamic MCDM Reranking (`app/services/reranker.py`)

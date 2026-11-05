@@ -51,9 +51,12 @@ Agent phải thực hiện theo đúng trình tự sau:
 3. **Kiểm soát phạm vi tuyệt đối (Strict Scope Control):**
    - **CHỈ TẬP TRUNG 100% VÀO PHẠM VI CỦA MỐC X.**
    - **TUYỆT ĐỐI KHÔNG** đụng vào code, schema hay các file thuộc phạm vi của các mốc sau.
-4. **Quy trình Git Workflow:**
-   - Tạo nhánh tính năng riêng: `git checkout -b feat/<ten-feature>`.
+4. **Đồng bộ Tài liệu Kiến trúc (`docs/architecture/`):**
+   - Nếu Mốc X có thay đổi đến Database Schema, DTO, thuật toán Rerank/Search, luồng ETL hoặc đồ thị LangGraph, bắt buộc cập nhật ngay vào `docs/architecture/` trước khi đóng mốc.
+5. **Quy trình Git Workflow:**
+   - Tạo nhánh tính năng riêng từ `main` mới nhất: `git checkout main && git pull origin main && git checkout -b feat/<ten-feature>`.
    - Mỗi bước nhỏ hoàn thành chỉ commit ở local: `git commit -m "feat/fix: ..."`.
    - Chạy test kiểm thử tự động pass 100%.
    - Dừng lại hỏi ý kiến người dùng trước khi push và mở Pull Request (Manual PR Gate).
+   - Khi người dùng duyệt Merge, thực hiện merge vào `main`, đồng bộ lại local `main` và xóa sạch branch tính năng ở cả local lẫn remote (Branch Cleanup).
 
