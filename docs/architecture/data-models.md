@@ -1,0 +1,228 @@
+# 🗄️ Mô Hình Dữ Liệu (Data Models & Database Schema)
+
+Tài liệu này mô tả chi tiết sơ đồ cơ sở dữ liệu quan hệ, các bảng PostgreSQL, bảng SQLite Staging DB và danh mục tiện ích chuẩn hóa của Homigo.
+
+---
+
+## 1. 📊 Sơ Đồ Quan Hệ Thực Thể (ERD - Entity Relationship Diagram)
+
+```mermaid
+erDiagram
+    CITIES ||--o{ DISTRICTS : "chứa"
+    DISTRICTS ||--o{ WARDS : "chứa"
+    CITIES ||--o{ LISTINGS : "thuộc tỉnh/thành"
+    DISTRICTS ||--o{ LISTINGS : "thuộc quận/huyện"
+    WARDS ||--o{ LISTINGS : "thuộc phường/xã"
+    ROOM_TYPES ||--o{ LISTINGS : "phân loại"
+    USERS ||--o{ LISTINGS : "đăng bởi"
+    LISTINGS ||--o{ LISTING_EMBEDDINGS : "có vector"
+
+    CITIES {
+        int id PK
+        string name
+    }
+
+    DISTRICTS {
+        int id PK
+        int city_id FK
+        string name
+    }
+
+    WARDS {
+        int id PK
+        int district_id FK
+        string name
+    }
+
+    ROOM_TYPES {
+        int id PK
+        string code "ROOM, STUDIO, APARTMENT..."
+        string name
+    }
+
+    USERS {
+        string id PK
+        string name
+        string avatar_url
+        int live_ads
+        int sold_ads
+        boolean is_company
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    LISTINGS {
+        string id PK "nhatot_123456"
+        string source "nhatot, phongtro123"
+        string url
+        string title
+        text description
+        float price_vnd
+        float area_m2
+        float price_million_per_m2
+        float deposit
+        int furnishing_code
+        string address_raw
+        float lat
+        float lng
+        timestamp posted_date
+        timestamp crawled_at
+        boolean is_active "True/False"
+        string status "active, expired_or_deleted"
+        timestamp last_checked_at
+        float safety_score
+        json concept_scores
+        float amenity_overall
+        float price_score "ML Score 0..1"
+        string poster_id FK
+        int region_id FK
+        int district_id FK
+        int ward_id FK
+        int room_type_id FK
+    }
+
+    LISTING_EMBEDDINGS {
+        int id PK
+        string listing_id FK
+        string model_name "intfloat/multilingual-e5-base"
+        int dimension "768"
+        vector vector "pgvector 768d"
+        string content_hash
+        timestamp created_at
+        timestamp updated_at
+    }
+```
+
+---
+
+## 2. 🗃 Chi Tiết Các Bảng PostgreSQL (Production Database)
+
+### 2.1. Bảng `listings` (Bài Đăng Phòng Trọ)
+Là bảng lưu trữ trung tâm của toàn bộ hệ thống:
+
+| Cột | Kiểu Dữ Liệu | Ràng Buộc | Ý Nghĩa / Ghi Chú |
+| :--- | :--- | :--- | :--- |
+| `id` | `VARCHAR` | `PRIMARY KEY` | Khóa chính dạng `{source}_{original_id}` (ví dụ: `nhatot_135387045`). |
+| `source` | `VARCHAR` | `DEFAULT 'nhatot'` | Nguồn cào dữ liệu (`nhatot`, `phongtro123`). |
+| `url` | `VARCHAR` | `NULLABLE` | Đường link dẫn đến tin gốc. |
+| `title` | `VARCHAR` | `NOT NULL` | Tiêu đề bài đăng phòng trọ. |
+| `description` | `TEXT` | `NULLABLE` | Mô tả chi tiết của bài đăng đã qua làm sạch. |
+| `price_vnd` | `FLOAT` | `INDEX` | Giá thuê tính theo VNĐ (ví dụ: `4500000.0`). |
+| `area_m2` | `FLOAT` | `INDEX` | Diện tích phòng ($m^2$). |
+| `price_million_per_m2`| `FLOAT` | `NULLABLE` | Đơn giá triệu/m2 (tính toán tự động). |
+| `deposit` | `FLOAT` | `NULLABLE` | Tiền cọc (VNĐ). |
+| `furnishing_code` | `INTEGER` | `NULLABLE` | Mã tình trạng nội thất (`0`: Trống, `1`: Cơ bản, `2`: Đầy đủ). |
+| `address_raw` | `VARCHAR` | `NULLABLE` | Địa chỉ thô người cho thuê nhập vào. |
+| `lat` / `lng` | `FLOAT` | `NULLABLE` | Tọa độ địa lý (Vĩ độ / Kinh độ). |
+| `posted_date` | `TIMESTAMP` | `NULLABLE` | Ngày người dùng đăng bài trên web gốc. |
+| `crawled_at` | `TIMESTAMP` | `NULLABLE` | Thời điểm bot cào tin này về hệ thống. |
+| `is_active` | `BOOLEAN` | `NOT NULL, DEFAULT TRUE, INDEX` | Cờ trạng thái: `True` = còn cho thuê, `False` = đã hết hạn/gỡ. |
+| `status` | `VARCHAR(50)`| `NOT NULL, DEFAULT 'active'` | Trạng thái: `active`, `expired_or_deleted`. |
+| `last_checked_at` | `TIMESTAMP` | `NULLABLE` | Thời điểm spider verify kiểm tra lần cuối. |
+| `safety_score` | `FLOAT` | `NULLABLE` | Điểm an ninh tính từ camera, bảo vệ, vân tay (0.0 - 1.0). |
+| `concept_scores` | `JSON` | `NULLABLE` | Object chứa điểm xác thực từng tiện ích (0.0 - 1.0). |
+| `amenity_overall`| `FLOAT` | `NULLABLE` | Điểm tiện nghi tổng thể tích lũy theo trọng số (0.0 - 1.0). |
+| `price_score` | `FLOAT` | `NULLABLE` | Điểm thẩm định giá từ mô hình Machine Learning (0.0 - 1.0). |
+| `poster_id` | `VARCHAR` | `FK -> users.id, INDEX` | ID người đăng tin. |
+| `region_id` | `INTEGER` | `FK -> cities.id, INDEX`| ID Tỉnh / Thành phố. |
+| `district_id` | `INTEGER` | `FK -> districts.id, INDEX`| ID Quận / Huyện. |
+| `ward_id` | `INTEGER` | `FK -> wards.id, INDEX`| ID Phường / Xã. |
+| `room_type_id` | `INTEGER` | `FK -> room_types.id, INDEX`| ID loại hình phòng trọ. |
+
+### 2.2. Bảng `listing_embeddings` (Vector Không Gian Ngữ Nghĩa)
+Lưu trữ vector ngữ nghĩa phục vụ Dense Retrieval trong Hybrid Search:
+
+| Cột | Kiểu Dữ Liệu | Ràng Buộc | Ý Nghĩa / Ghi Chú |
+| :--- | :--- | :--- | :--- |
+| `id` | `INTEGER` | `PRIMARY KEY, AUTOINCREMENT` | Khóa chính tự tăng. |
+| `listing_id` | `VARCHAR(150)` | `FK -> listings.id, ON DELETE CASCADE, INDEX` | ID bài đăng tương ứng. |
+| `model_name` | `VARCHAR(150)` | `NOT NULL, INDEX` | Tên model: `intfloat/multilingual-e5-base`. |
+| `dimension` | `INTEGER` | `NOT NULL` | Số chiều vector: `768`. |
+| `vector` | `VECTOR(768)` | `NOT NULL` | Vector kiểu pgvector hỗ trợ phép tính cosine distance `<=>`. |
+| `content_hash`| `VARCHAR(64)` | `NULLABLE, INDEX` | Hash SHA-256 để phát hiện thay đổi nội dung cần re-embed. |
+| `created_at` / `updated_at` | `TIMESTAMP` | `NOT NULL` | Thời gian khởi tạo / cập nhật vector. |
+
+---
+
+## 3. 💾 Cấu Trúc Bảng SQLite Staging DB (`crawler/data/staging.db`)
+
+Dùng làm vùng đệm cho Crawler trước khi ETL:
+
+```sql
+CREATE TABLE raw_listings (
+    listing_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    crawled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_processed INTEGER DEFAULT 0
+);
+
+CREATE INDEX idx_raw_unprocessed ON raw_listings(is_processed, source);
+CREATE INDEX idx_raw_source ON raw_listings(source);
+```
+
+* `is_processed = 0`: Bài đăng mới cào hoặc vừa cập nhật qua verify, chưa được nạp sang PostgreSQL.
+* `is_processed = 1`: Đã nạp thành công qua luồng ETL.
+
+---
+
+## 4. 🏷️ Danh Mục Tiện Ích Chuẩn Hóa (Canonical Taxonomy)
+
+Hệ thống quy chuẩn 17 trường tiện ích & an ninh dạng `snake_case` khớp 1-1 giữa Schema LLM, Database, Backend DTO và Frontend UI:
+
+### 4.1. Tiện ích cốt lõi (Core Amenities)
+1. `private_wc`: Vệ sinh riêng, khép kín.
+2. `aircon`: Máy lạnh, điều hòa.
+3. `mezzanine`: Gác lửng, gác xép.
+4. `kitchen`: Kệ bếp, khu nấu ăn riêng.
+5. `fridge`: Tủ lạnh.
+6. `washing_machine`: Máy giặt (riêng hoặc chung).
+7. `window_balcony`: Cửa sổ hoặc ban công thoáng gió.
+8. `furniture`: Nội thất đầy đủ (giường, tủ, bàn ghế).
+9. `parking`: Chỗ để xe trong nhà, hầm xe.
+10. `elevator`: Thang máy.
+
+### 4.2. Quy định & Lối sống (Rules & Lifestyle)
+11. `free_hours`: Giờ giấc tự do, không chung cổng giờ giới nghiêm.
+12. `no_shared_landlord`: Không chung chủ.
+13. `pet_allowed`: Cho phép nuôi thú cưng (chó, mèo).
+
+### 4.3. An toàn & An ninh (Safety)
+14. `fingerprint_lock`: Khóa cổng vân tay, thẻ từ thông minh.
+15. `camera`: Camera giám sát an ninh 24/7.
+16. `guard`: Bảo vệ trực cổng 24/7.
+17. `safe_area`: Khu vực an ninh, trật tự tốt.
+
+---
+
+## 5. 🤝 Khế Ước Dữ Liệu (API Data Contracts)
+
+### `GET /api/v1/listings/{id}` Response DTO:
+```json
+{
+  "success": true,
+  "status": 200,
+  "data": {
+    "id": "nhatot_135387045",
+    "title": "Phòng trọ cao cấp có ban công",
+    "price_vnd": 4200000.0,
+    "area_m2": 30.0,
+    "address_raw": "Đường Nguyễn Duy Trinh, Phường Long Trường, TP Thủ Đức",
+    "lat": 10.802091,
+    "lng": 106.812294,
+    "is_active": false,
+    "status": "expired_or_deleted",
+    "last_checked_at": "2026-11-05T03:07:59Z",
+    "is_expired": true,
+    "status_notice": "Bài đăng này đã hết hạn hoặc được người cho thuê gỡ bài trên nguồn gốc.",
+    "price_score": 0.373,
+    "safety_score": 0.7,
+    "concept_scores": {
+      "private_wc": 1.0,
+      "aircon": 1.0,
+      "kitchen": 1.0
+    }
+  }
+}
+```
+
