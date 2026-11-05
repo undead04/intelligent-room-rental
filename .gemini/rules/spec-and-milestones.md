@@ -8,8 +8,12 @@ Tài liệu này quy định các nguyên tắc bắt buộc dành cho AI Agent 
 
 Khi tiếp nhận yêu cầu tính năng mới hoặc đọc file `docs/xxx.md`:
 
-1. **Checklist Bắt Buộc:**
+1. **Checklist Bắt Buộc Để Theo Dõi Tiến Độ (Progress Tracking Checklist):**
    - Trong tài liệu Spec luôn phải có bảng phân công checklist công việc chi tiết dạng `[ ]` theo từng tầng kiến trúc (`backend`, `crawler`, `ai-agent`, `frontend`).
+   - **Cập nhật trạng thái liên tục:** Mỗi khi một đầu việc hoặc một mốc hoàn thành, Agent phải cập nhật chuyển `[ ]` thành `[x]` ngay trong tài liệu Spec để người dùng và các phiên làm việc sau nhìn vào là biết chính xác:
+     + Việc nào đã làm xong (`[x]`).
+     + Dự án đang làm tới đâu / tiến độ hiện tại.
+     + Còn lại những việc nào chưa làm (`[ ]`).
 2. **Quy Tắc Cổng Phê Duyệt (Milestone Gate):**
    - **TUYỆT ĐỐI CHƯA ĐƯỢC VIẾT CODE NGAY.**
    - Agent phải xuất bảng danh sách các **Mốc triển khai (Milestones) tuần tự** ra trước để người dùng xem xét và bấm duyệt.
@@ -52,3 +56,4 @@ Agent phải thực hiện theo đúng trình tự sau:
    - Mỗi bước nhỏ hoàn thành chỉ commit ở local: `git commit -m "feat/fix: ..."`.
    - Chạy test kiểm thử tự động pass 100%.
    - Dừng lại hỏi ý kiến người dùng trước khi push và mở Pull Request (Manual PR Gate).
+
