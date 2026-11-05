@@ -24,6 +24,7 @@ from crawler.config.paths import (
     PROCESSED_PARQUET_PATH,
     STAGING_DB_PATH,
     LLM_CHECKPOINT_PATH,
+    POI_LOCATIONS_PATH,
 )
 from crawler.schema.enums import ROOM_TYPE_CODE_TO_ID
 
@@ -128,54 +129,73 @@ ROOM_TYPE_FILTER_RULES: dict[int, dict[str, Tuple[float, float]]] = {
 # 3. DANH MỤC TRUNG TÂM ĐÔ THỊ & ĐẠI HỌC TRỌNG ĐIỂM TOÀN QUỐC (POI)
 # ==============================================================================
 
-# Danh mục trung tâm đô thị trọng điểm trên toàn quốc (City Hubs)
-NATIONAL_CITY_HUBS: list[tuple[float, float]] = [
-    # TP. Hồ Chí Minh
-    (10.7725, 106.6980),  # Quận 1 - Chợ Bến Thành
-    (10.8494, 106.7726),  # TP. Thủ Đức - Ngã tư Thủ Đức
-    # Hà Nội
-    (21.0285, 105.8542),  # Hoàn Kiếm - Trung tâm Hà Nội
-    (21.0333, 105.7833),  # Cầu Giấy
-    # Đà Nẵng
-    (16.0618, 108.2208),  # Hải Châu - Cầu Rồng
-    # Cần Thơ
-    (10.0342, 105.7876),  # Ninh Kiều - Bến Ninh Kiều
-    # Bình Dương
-    (10.9805, 106.6745),  # Thủ Dầu Một
-    (10.9067, 106.7719),  # Dĩ An
-    # Bà Rịa - Vũng Tàu
-    (10.3460, 107.0843),  # Bãi Trước Vũng Tàu
-    # Lâm Đồng
-    (11.9404, 108.4583),  # Đà Lạt - Hồ Xuân Hương
-    # Đồng Nai
-    (10.9574, 106.8427),  # Biên Hòa
-    # Đắk Lắk
-    (12.6667, 108.0500),  # Buôn Ma Thuột
-    # Thừa Thiên Huế
-    (16.4637, 107.5909),  # TP. Huế
-    # Khánh Hòa
-    (12.2388, 109.1967),  # Nha Trang
+# Danh mục mặc định dự phòng (Fallback nếu không tìm thấy poi_locations.json)
+DEFAULT_FALLBACK_CITY_HUBS: list[tuple[float, float]] = [
+    (10.7725, 106.6980),  # TP.HCM - Bến Thành (Quận 1)
+    (10.8494, 106.7726),  # TP.HCM - Ngã tư Thủ Đức
+    (21.0285, 105.8542),  # Hà Nội - Hồ Hoàn Kiếm
+    (21.0333, 105.7833),  # Hà Nội - Cầu Giấy
+    (16.0618, 108.2208),  # Đà Nẵng - Hải Châu
+    (10.0342, 105.7876),  # Cần Thơ - Bến Ninh Kiều
+    (10.9805, 106.6745),  # Bình Dương - Thủ Dầu Một
+    (10.9067, 106.7719),  # Bình Dương - Dĩ An
+    (10.3460, 107.0843),  # Bà Rịa - Vũng Tàu
+    (11.9404, 108.4583),  # Lâm Đồng - Đà Lạt
+    (10.9574, 106.8427),  # Đồng Nai - Biên Hòa
+    (12.6667, 108.0500),  # Đắk Lắk - Buôn Ma Thuột
+    (16.4637, 107.5909),  # Thừa Thiên Huế
+    (12.2388, 109.1967),  # Khánh Hòa - Nha Trang
+    (20.8600, 106.6800),  # Hải Phòng
+    (20.9505, 107.0734),  # Quảng Ninh - Hạ Long
 ]
 
-# Cụm trường Đại học / Cao đẳng lớn trên toàn quốc (University Hubs)
-NATIONAL_UNI_HUBS: list[tuple[float, float]] = [
-    # TP. Hồ Chí Minh
-    (10.8752, 106.8007),  # Khu Đô thị ĐHQG TP.HCM (Làng đại học Thủ Đức)
-    (10.7721, 106.6579),  # Cụm ĐH Bách Khoa TP.HCM (Quận 10)
-    (10.8016, 106.7114),  # Cụm ĐH HUTECH / UEF / Ngoại Thương CS2 (Bình Thạnh)
-    (10.7326, 106.7058),  # Cụm ĐH RMIT / Tôn Đức Thắng (Quận 7)
-    (10.8275, 106.6792),  # Cụm ĐH Công Nghiệp TP.HCM (Gò Vấp)
-    # Hà Nội
-    (21.0044, 105.8433),  # Cụm Bách Khoa - Kinh Tế Quốc Dân - Xây Dựng (Hai Bà Trưng)
-    (21.0371, 105.7816),  # Cụm ĐHQG Hà Nội - Sư Phạm (Cầu Giấy)
-    (20.9808, 105.7958),  # Cụm Kiến Trúc - Bưu Chính Viễn Thông - An Ninh (Hà Đông)
-    # Đà Nẵng
-    (16.0748, 108.1499),  # ĐH Bách Khoa Đà Nẵng (Liên Chiểu)
-    (16.0597, 108.2148),  # Cụm ĐH Kinh Tế - ĐH Đà Nẵng (Ngũ Hành Sơn / Hải Châu)
-    # Cần Thơ
-    (10.0312, 105.7690),  # ĐH Cần Thơ - Khu II
-    (10.0270, 105.7570),  # ĐH Y Dược Cần Thơ
+DEFAULT_FALLBACK_UNI_HUBS: list[tuple[float, float]] = [
+    (10.8752, 106.8007),  # TP.HCM - ĐHQG TP.HCM (Làng đại học Thủ Đức)
+    (10.7721, 106.6579),  # TP.HCM - Cụm ĐH Bách Khoa TP.HCM (Quận 10)
+    (10.8016, 106.7114),  # TP.HCM - Cụm ĐH HUTECH / UEF / Ngoại Thương CS2 (Bình Thạnh)
+    (10.7326, 106.7058),  # TP.HCM - Cụm ĐH RMIT / Tôn Đức Thắng (Quận 7)
+    (10.8275, 106.6792),  # TP.HCM - Cụm ĐH Công Nghiệp TP.HCM (Gò Vấp)
+    (21.0044, 105.8433),  # Hà Nội - Cụm Bách Khoa - Kinh Tế - Xây Dựng (Hai Bà Trưng)
+    (21.0371, 105.7816),  # Hà Nội - Cụm ĐHQG Hà Nội - Sư Phạm (Cầu Giấy)
+    (20.9808, 105.7958),  # Hà Nội - Cụm Kiến Trúc - Bưu Chính - An Ninh (Hà Đông)
+    (16.0748, 108.1499),  # Đà Nẵng - ĐH Bách Khoa Đà Nẵng (Liên Chiểu)
+    (16.0597, 108.2148),  # Đà Nẵng - Cụm ĐH Kinh Tế - ĐH Đà Nẵng
+    (10.0312, 105.7690),  # Cần Thơ - ĐH Cần Thơ (Khu II)
+    (10.0270, 105.7570),  # Cần Thơ - ĐH Y Dược Cần Thơ
+    (21.5833, 105.8167),  # Thái Nguyên - ĐH Thái Nguyên
+    (16.4600, 107.5900),  # Huế - ĐH Huế
 ]
+
+
+def load_poi_locations_from_config(
+    config_path: Path | str = POI_LOCATIONS_PATH,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """Nạp danh mục tọa độ trung tâm đô thị & đại học từ file config JSON (kèm fallback an toàn)."""
+    p = Path(config_path)
+    if p.exists():
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            cities = [
+                (float(item["lat"]), float(item["lng"]))
+                for item in data.get("city_hubs", [])
+                if "lat" in item and "lng" in item
+            ]
+            unis = [
+                (float(item["lat"]), float(item["lng"]))
+                for item in data.get("university_hubs", [])
+                if "lat" in item and "lng" in item
+            ]
+            if cities and unis:
+                return cities, unis
+        except Exception as e:
+            print(f"[POI] Cảnh báo lỗi đọc file {config_path}: {e}. Dùng danh mục mặc định.", flush=True)
+
+    return DEFAULT_FALLBACK_CITY_HUBS, DEFAULT_FALLBACK_UNI_HUBS
+
+
+# Tự động nạp từ file cấu hình độc lập crawler/config/poi_locations.json
+NATIONAL_CITY_HUBS, NATIONAL_UNI_HUBS = load_poi_locations_from_config()
 
 
 def compute_single_poi_distance(

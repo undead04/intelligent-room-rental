@@ -31,6 +31,7 @@ from crawler.model.ml.feature_extractor import (
     extract_features_from_record,
     filter_valid_dataframe,
     load_and_preprocess_dataset,
+    load_poi_locations_from_config,
 )
 
 
@@ -295,6 +296,31 @@ class TestFeatureExtractorPersistenceAndIntegration:
             if tmp_path.exists():
                 tmp_path.unlink()
 
+    def test_load_poi_locations_from_config_and_fallback(self):
+        """Kiểm tra nạp POI từ file config JSON và cơ chế fallback an toàn khi file lỗi hoặc không tồn tại."""
+        # 1. Nạp từ file chuẩn
+        cities, unis = load_poi_locations_from_config()
+        assert len(cities) >= 10
+        assert len(unis) >= 10
+        assert all(isinstance(c[0], float) and isinstance(c[1], float) for c in cities)
+
+        # 2. Fallback khi file không tồn tại
+        cities_fb, unis_fb = load_poi_locations_from_config("non_existent_poi_file.json")
+        assert len(cities_fb) >= 10
+        assert len(unis_fb) >= 10
+
+        # 3. Fallback khi file JSON rác/lỗi cú pháp
+        with tempfile.NamedTemporaryFile(suffix=".json", mode="w", encoding="utf-8", delete=False) as tmp:
+            tmp.write("{ invalid json")
+            bad_path = Path(tmp.name)
+        try:
+            cities_bad, unis_bad = load_poi_locations_from_config(bad_path)
+            assert len(cities_bad) >= 10
+            assert len(unis_bad) >= 10
+        finally:
+            if bad_path.exists():
+                bad_path.unlink()
+
     def test_load_and_preprocess_dataset_full_dataset(self):
         """Kiểm tra nạp dataset thực tế đạt đủ tiêu chí số lượng bản ghi >= 9.500 và 26 features."""
         X, y = load_and_preprocess_dataset(auto_build_cache=True)
@@ -344,3 +370,4 @@ class TestFeatureExtractorPersistenceAndIntegration:
         assert not X.isna().any().any(), "Tập đặc trưng X có chứa giá trị NaN!"
         assert not y.isna().any(), "Biến mục tiêu y có chứa giá trị NaN!"
         assert (y > 0).all(), "Có bản ghi giá thuê <= 0!"
+

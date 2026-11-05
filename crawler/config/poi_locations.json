@@ -1,0 +1,37 @@
+{
+  "_description": "Danh mục tọa độ các trung tâm đô thị (city_hubs) và cụm trường Đại học lớn (university_hubs) trên toàn quốc dùng để tính khoảng cách POI cho mô hình định giá Homigo ML.",
+  "city_hubs": [
+    {"name": "TP.HCM - Bến Thành (Quận 1)", "lat": 10.7725, "lng": 106.6980},
+    {"name": "TP.HCM - Ngã tư Thủ Đức", "lat": 10.8494, "lng": 106.7726},
+    {"name": "Hà Nội - Hồ Hoàn Kiếm", "lat": 21.0285, "lng": 105.8542},
+    {"name": "Hà Nội - Cầu Giấy", "lat": 21.0333, "lng": 105.7833},
+    {"name": "Đà Nẵng - Hải Châu (Cầu Rồng)", "lat": 16.0618, "lng": 108.2208},
+    {"name": "Cần Thơ - Bến Ninh Kiều", "lat": 10.0342, "lng": 105.7876},
+    {"name": "Bình Dương - Thủ Dầu Một", "lat": 10.9805, "lng": 106.6745},
+    {"name": "Bình Dương - Dĩ An", "lat": 10.9067, "lng": 106.7719},
+    {"name": "Bà Rịa - Vũng Tàu - Bãi Trước", "lat": 10.3460, "lng": 107.0843},
+    {"name": "Lâm Đồng - Đà Lạt (Hồ Xuân Hương)", "lat": 11.9404, "lng": 108.4583},
+    {"name": "Đồng Nai - Biên Hòa", "lat": 10.9574, "lng": 106.8427},
+    {"name": "Đắk Lắk - Buôn Ma Thuột", "lat": 12.6667, "lng": 108.0500},
+    {"name": "Thừa Thiên Huế - Trung tâm TP. Huế", "lat": 16.4637, "lng": 107.5909},
+    {"name": "Khánh Hòa - Nha Trang", "lat": 12.2388, "lng": 109.1967},
+    {"name": "Hải Phòng - Nhà hát lớn", "lat": 20.8600, "lng": 106.6800},
+    {"name": "Quảng Ninh - Hạ Long", "lat": 20.9505, "lng": 107.0734}
+  ],
+  "university_hubs": [
+    {"name": "TP.HCM - ĐHQG TP.HCM (Làng đại học Thủ Đức)", "lat": 10.8752, "lng": 106.8007},
+    {"name": "TP.HCM - Cụm ĐH Bách Khoa TP.HCM (Quận 10)", "lat": 10.7721, "lng": 106.6579},
+    {"name": "TP.HCM - Cụm ĐH HUTECH / UEF / Ngoại Thương CS2 (Bình Thạnh)", "lat": 10.8016, "lng": 106.7114},
+    {"name": "TP.HCM - Cụm ĐH RMIT / Tôn Đức Thắng (Quận 7)", "lat": 10.7326, "lng": 106.7058},
+    {"name": "TP.HCM - Cụm ĐH Công Nghiệp TP.HCM (Gò Vấp)", "lat": 10.8275, "lng": 106.6792},
+    {"name": "Hà Nội - Cụm Bách Khoa - Kinh Tế - Xây Dựng (Hai Bà Trưng)", "lat": 21.0044, "lng": 105.8433},
+    {"name": "Hà Nội - Cụm ĐHQG Hà Nội - Sư Phạm (Cầu Giấy)", "lat": 21.0371, "lng": 105.7816},
+    {"name": "Hà Nội - Cụm Kiến Trúc - Bưu Chính - An Ninh (Hà Đông)", "lat": 20.9808, "lng": 105.7958},
+    {"name": "Đà Nẵng - ĐH Bách Khoa Đà Nẵng (Liên Chiểu)", "lat": 16.0748, "lng": 108.1499},
+    {"name": "Đà Nẵng - Cụm ĐH Kinh Tế - ĐH Đà Nẵng (Ngũ Hành Sơn / Hải Châu)", "lat": 16.0597, "lng": 108.2148},
+    {"name": "Cần Thơ - ĐH Cần Thơ (Khu II)", "lat": 10.0312, "lng": 105.7690},
+    {"name": "Cần Thơ - ĐH Y Dược Cần Thơ", "lat": 10.0270, "lng": 105.7570},
+    {"name": "Thái Nguyên - ĐH Thái Nguyên", "lat": 21.5833, "lng": 105.8167},
+    {"name": "Huế - ĐH Huế", "lat": 16.4600, "lng": 107.5900}
+  ]
+}
