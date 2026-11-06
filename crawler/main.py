@@ -23,6 +23,61 @@ SPIDERS = {
     "phongtro123": PhongTro123Spider,
 }
 
+def run_crawl_job(
+    pages: int = 5,
+    region: str = "all",
+    mode: str = "resume",
+    full: bool = False,
+    no_clean: bool = False,
+    limit: int = 50,
+    source: str = "nhatot",
+) -> None:
+    """
+    Thực thi một chu kỳ cào dữ liệu và pipeline ETL tương ứng.
+    Hàm này có thể được gọi độc lập từ CLI hoặc từ Scheduler.
+    """
+    # Cấu hình tự động theo preset --full
+    extract_llm = full
+    eval_price = full   # <-- Kích hoạt Machine Learning PriceEvaluator tính price_score
+    embed = full        # <-- Kích hoạt E5 Embedding
+
+    if full:
+        print("[PRESET --full] Kích hoạt toàn bộ Pipeline:")
+        print("  1. Cào dữ liệu phòng trọ")
+        print("  2. Bóc tách thuộc tính LLM (Gemini)")
+        print("  3. Thẩm định giá Machine Learning (Price Score)")
+        print("  4. Sinh vector ngữ nghĩa Embedding (E5)")
+        print("  5. Nạp trực tiếp vào PostgreSQL (pgvector)")
+
+    active_spiders = []
+    if source == "all":
+        active_spiders = [cls() for cls in SPIDERS.values()]
+    else:
+        active_spiders = [SPIDERS[source]()]
+
+    for spider in active_spiders:
+        spider.run(
+            mode=mode,
+            pages=pages,
+            region=region,
+            limit=limit,
+            auto_clean=False # Chạy clean 1 lần duy nhất ở cuối
+        )
+
+    if mode == "verify":
+        print("\n>>> TỰ ĐỘNG ĐỒNG BỘ TRẠNG THÁI VÒNG ĐỜI TIN ĐĂNG SANG POSTGRESQL...", flush=True)
+        from crawler.staging_db import sync_status_to_postgres
+        sync_status_to_postgres()
+    elif not no_clean:
+        print("\n>>> TỔNG HỢP VÀ LÀM SẠCH TOÀN BỘ DỮ LIỆU ĐA NGUỒN (ETL)...", flush=True)
+        run_pipeline(
+            destinations=["db"],
+            unprocessed_only=True,
+            embed=embed,
+            extract_llm=extract_llm,
+            eval_price=eval_price,
+        )
+
 def main():
     parser = argparse.ArgumentParser(
         description="Homigo Crawler & ETL Pipeline Runner"
@@ -73,47 +128,15 @@ def main():
 
     args = parser.parse_args()
 
-    # Cấu hình tự động theo preset --full
-    extract_llm = args.full
-    eval_price = args.full   # <-- Kích hoạt Machine Learning PriceEvaluator tính price_score
-    embed = args.full        # <-- Kích hoạt E5 Embedding
-
-    if args.full:
-        print("[PRESET --full] Kích hoạt toàn bộ Pipeline:")
-        print("  1. Cào dữ liệu phòng trọ")
-        print("  2. Bóc tách thuộc tính LLM (Gemini)")
-        print("  3. Thẩm định giá Machine Learning (Price Score)")
-        print("  4. Sinh vector ngữ nghĩa Embedding (E5)")
-        print("  5. Nạp trực tiếp vào PostgreSQL (pgvector)")
-
-    active_spiders = []
-    if args.source == "all":
-        active_spiders = [cls() for cls in SPIDERS.values()]
-    else:
-        active_spiders = [SPIDERS[args.source]()]
-
-    for spider in active_spiders:
-        spider.run(
-            mode=args.mode,
-            pages=args.pages,
-            region=args.region,
-            limit=args.limit,
-            auto_clean=False # Chạy clean 1 lần duy nhất ở cuối
-        )
-
-    if args.mode == "verify":
-        print("\n>>> TỰ ĐỘNG ĐỒNG BỘ TRẠNG THÁI VÒNG ĐỜI TIN ĐĂNG SANG POSTGRESQL...", flush=True)
-        from crawler.staging_db import sync_status_to_postgres
-        sync_status_to_postgres()
-    elif not args.no_clean:
-        print("\n>>> TỔNG HỢP VÀ LÀM SẠCH TOÀN BỘ DỮ LIỆU ĐA NGUỒN (ETL)...", flush=True)
-        run_pipeline(
-            destinations=["db"],
-            unprocessed_only=True,
-            embed=embed,
-            extract_llm=extract_llm,
-            eval_price=eval_price,
-        )
+    run_crawl_job(
+        pages=args.pages,
+        region=args.region,
+        mode=args.mode,
+        full=args.full,
+        no_clean=args.no_clean,
+        limit=args.limit,
+        source=args.source,
+    )
 
 if __name__ == "__main__":
     main()

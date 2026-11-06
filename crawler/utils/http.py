@@ -1,7 +1,9 @@
-import requests
+import asyncio
 import random
 import time
-from crawler.config.settings import USER_AGENTS, TIMEOUT
+from typing import Any, Optional, Tuple
+import requests
+from crawler.config.settings import TIMEOUT, USER_AGENTS
 
 def get_random_headers():
     return {
@@ -27,9 +29,10 @@ def fetch_with_retry(url, params=None, max_retries=3, backoff_factor=2):
         except requests.RequestException as e:
             print(f"[Lỗi mạng] {e}", flush=True)
         
-        sleep_time = backoff_factor ** attempt
-        print(f"Thử lại sau {sleep_time}s (Lần {attempt + 1}/{max_retries})...", flush=True)
-        time.sleep(sleep_time)
+        if attempt < max_retries - 1:
+            sleep_time = backoff_factor ** attempt
+            print(f"Thử lại sau {sleep_time}s (Lần {attempt + 1}/{max_retries})...", flush=True)
+            time.sleep(sleep_time)
     
     return None
 
@@ -60,7 +63,58 @@ def fetch_with_status(url, params=None, max_retries=3, backoff_factor=2):
         except requests.RequestException as e:
             print(f"[Lỗi mạng] {e}", flush=True)
         
-        sleep_time = backoff_factor ** attempt
-        time.sleep(sleep_time)
+        if attempt < max_retries - 1:
+            sleep_time = backoff_factor ** attempt
+            time.sleep(sleep_time)
         
     return None, None
+
+async def async_fetch_with_status(
+    url: str,
+    params: Optional[dict] = None,
+    semaphore: Optional[asyncio.Semaphore] = None,
+    max_retries: int = 3,
+    backoff_factor: float = 2.0,
+) -> Tuple[Optional[int], Optional[Any]]:
+    """
+    Gọi HTTP GET bất đồng bộ non-blocking (dùng asyncio.to_thread bọc fetch_with_status).
+    Kiểm soát lưu lượng đồng thời nếu truyền semaphore.
+    """
+    async def _fetch():
+        return await asyncio.to_thread(
+            fetch_with_status,
+            url,
+            params=params,
+            max_retries=max_retries,
+            backoff_factor=backoff_factor,
+        )
+
+    if semaphore is not None:
+        async with semaphore:
+            return await _fetch()
+    return await _fetch()
+
+async def async_fetch_with_retry(
+    url: str,
+    params: Optional[dict] = None,
+    semaphore: Optional[asyncio.Semaphore] = None,
+    max_retries: int = 3,
+    backoff_factor: float = 2.0,
+) -> Optional[Any]:
+    """
+    Gọi HTTP GET bất đồng bộ non-blocking (dùng asyncio.to_thread bọc fetch_with_retry).
+    Kiểm soát lưu lượng đồng thời nếu truyền semaphore.
+    """
+    async def _fetch():
+        return await asyncio.to_thread(
+            fetch_with_retry,
+            url,
+            params=params,
+            max_retries=max_retries,
+            backoff_factor=backoff_factor,
+        )
+
+    if semaphore is not None:
+        async with semaphore:
+            return await _fetch()
+    return await _fetch()
