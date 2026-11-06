@@ -142,8 +142,6 @@ class NhaTotSpider(BaseSpider):
         # 1. Đọc dữ liệu từ SQLite Staging Database
         db_records = self.staging_db.get_raw_listings(source=self.name)
         for data in db_records:
-            if not isinstance(data, dict):
-                continue
             raw_id = str(data.get("list_id") or data.get("ad_id") or data.get("listing_id") or "")
             list_id = raw_id.replace(f"{self.name}_", "")
             if not list_id:
@@ -174,76 +172,53 @@ class NhaTotSpider(BaseSpider):
         lock = asyncio.Lock()
 
         async def _verify_single(item_info: dict):
-            list_id = item_info.get("list_id") if isinstance(item_info, dict) else None
-            item_data = item_info.get("data") if isinstance(item_info, dict) else {}
-            if not isinstance(item_data, dict):
-                item_data = {}
-
-            if not list_id:
-                async with lock:
-                    stats["error"] += 1
-                    stats["checked"] += 1
-                return
-
+            list_id = item_info["list_id"]
+            item_data = item_info["data"]
             detail_url = f"https://gateway.chotot.com/v1/public/ad-listing/{list_id}"
 
-            try:
-                async with sem:
-                    # Anti-ban jitter ngẫu nhiên (0.1s - 0.3s)
-                    await asyncio.sleep(random.uniform(0.1, 0.3))
-                    status_code, resp_data = await async_fetch_with_status(detail_url)
+            async with sem:
+                # Anti-ban jitter ngẫu nhiên (0.1s - 0.3s)
+                await asyncio.sleep(random.uniform(0.1, 0.3))
+                status_code, resp_data = await async_fetch_with_status(detail_url)
 
-                now_iso = datetime.now().isoformat()
-                item_data["last_checked_at"] = now_iso
-                if "list_id" not in item_data and "listing_id" not in item_data:
-                    item_data["list_id"] = list_id
+            now_iso = datetime.now().isoformat()
+            item_data["last_checked_at"] = now_iso
 
-                if status_code == 404:
-                    item_data["is_active"] = False
-                    item_data["status"] = "expired_or_deleted"
-                    status_key = "expired"
-                    msg = f"Tin {list_id}: ĐÃ HẾT HẠN (HTTP 404)"
-                elif status_code == 200 and isinstance(resp_data, dict):
-                    ad = resp_data.get("ad")
-                    if isinstance(ad, dict):
-                        ad_status = ad.get("status")
-                        ad_state = ad.get("state")
+            if status_code == 404:
+                item_data["is_active"] = False
+                item_data["status"] = "expired_or_deleted"
+                status_key = "expired"
+                msg = f"Tin {list_id}: ĐÃ HẾT HẠN (HTTP 404)"
+            elif status_code == 200 and resp_data:
+                ad = resp_data.get("ad", {})
+                ad_status = ad.get("status")
+                ad_state = ad.get("state")
 
-                        if ad_status == "active" and ad_state == "accepted":
-                            item_data["is_active"] = True
-                            item_data["status"] = "active"
-                            status_key = "active"
-                            msg = f"Tin {list_id}: CÒN HOẠT ĐỘNG (Active)"
-                        else:
-                            item_data["is_active"] = False
-                            item_data["status"] = ad_status or "inactive"
-                            status_key = "expired"
-                            msg = f"Tin {list_id}: ĐÃ ẨN/HẾT HẠN (Status: {ad_status})"
-                    else:
-                        item_data["is_active"] = False
-                        status_key = "error"
-                        msg = f"Tin {list_id}: Dữ liệu 'ad' không hợp lệ hoặc thiếu"
+                if ad_status == "active" and ad_state == "accepted":
+                    item_data["is_active"] = True
+                    item_data["status"] = "active"
+                    status_key = "active"
+                    msg = f"Tin {list_id}: CÒN HOẠT ĐỘNG (Active)"
                 else:
-                    status_key = "error"
-                    msg = f"Tin {list_id}: Lỗi kiểm tra (HTTP {status_code})"
+                    item_data["is_active"] = False
+                    item_data["status"] = ad_status or "inactive"
+                    status_key = "expired"
+                    msg = f"Tin {list_id}: ĐÃ ẨN/HẾT HẠN (Status: {ad_status})"
+            else:
+                status_key = "error"
+                msg = f"Tin {list_id}: Lỗi kiểm tra (HTTP {status_code})"
 
-                # Bảo vệ đồng bộ bằng Lock khi cập nhật stats và ghi vào SQLite
-                async with lock:
-                    stats[status_key] += 1
-                    stats["checked"] += 1
-                    current_checked = stats["checked"]
-                    try:
-                        await asyncio.to_thread(self.staging_db.save_listing, item_data, source=self.name)
-                    except Exception as e:
-                        self.log(f"Lỗi lưu trạng thái tin {list_id}: {e}")
+            # Bảo vệ đồng bộ bằng Lock khi cập nhật stats và ghi vào SQLite
+            async with lock:
+                stats[status_key] += 1
+                stats["checked"] += 1
+                current_checked = stats["checked"]
+                try:
+                    await asyncio.to_thread(self.staging_db.save_listing, item_data, source=self.name)
+                except Exception as e:
+                    self.log(f"Lỗi lưu trạng thái tin {list_id}: {e}")
 
-                self.log(f"[{current_checked}/{len(target_list)}] {msg}")
-
-            except Exception as e:
-                self.log(f"Lỗi ngoại lệ khi kiểm tra tin {list_id}: {e}")
-                async with lock:
-                    stats["error"] += 1
-                    stats["checked"] += 1
+            self.log(f"[{current_checked}/{len(target_list)}] {msg}")
 
         tasks = [_verify_single(item) for item in target_list]
         await asyncio.gather(*tasks, return_exceptions=True)
