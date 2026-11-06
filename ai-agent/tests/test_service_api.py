@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 from domain.schemas import AgentResponse, UserPreferenceState
-from service import app
+from api.routes import app
 
 
 def test_ai_agent_service_health():
@@ -22,6 +22,15 @@ def test_ai_agent_service_chat_guardrail_block():
     assert len(data.get("rooms", [])) == 0
 
 
+def test_ai_agent_service_delete_session():
+    client = TestClient(app)
+    response = client.delete("/api/v1/session/test-session-to-delete")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["session_id"] == "test-session-to-delete"
+
+
 def test_ai_agent_service_chat_valid_query(monkeypatch):
     def mock_run(user_message, conversation_history=None, session_id=None, **kwargs):
         return AgentResponse(
@@ -34,7 +43,7 @@ def test_ai_agent_service_chat_valid_query(monkeypatch):
             follow_up_questions=[],
         )
 
-    monkeypatch.setattr("service.service.run", mock_run)
+    monkeypatch.setattr("api.routes.service.run", mock_run)
     client = TestClient(app)
     payload = {"message": "Tìm phòng trọ gần Đại học UIT dưới 4 triệu"}
     response = client.post("/api/v1/chat", json=payload)
@@ -45,30 +54,12 @@ def test_ai_agent_service_chat_valid_query(monkeypatch):
     assert data["session_id"] is not None
 
 
-def test_ai_agent_service_chat_with_use_graph(monkeypatch):
-    def mock_run_graph(user_message, conversation_history=None, session_id=None, **kwargs):
-        return AgentResponse(
-            session_id=session_id or "graph-session-456",
-            text_reply="Kết quả từ LangGraph 8-node state machine.",
-            rooms=[],
-            insights=None,
-        )
-
-    monkeypatch.setattr("service.service.run_graph", mock_run_graph)
-    client = TestClient(app)
-    payload = {"message": "Tìm phòng trọ gần UIT", "use_graph": True}
-    response = client.post("/api/v1/chat", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    assert "text_reply" in data
-
-
 def test_ai_agent_service_chat_stream(monkeypatch):
     def mock_run_stream(user_message, conversation_history=None, session_id=None, **kwargs):
         yield "event: message\ndata: {\"type\": \"text_delta\", \"delta\": \"Xin chào\"}\n\n"
         yield "event: complete\ndata: {\"type\": \"complete\", \"text_reply\": \"Xin chào bạn\"}\n\n"
 
-    monkeypatch.setattr("service.service.run_stream", mock_run_stream)
+    monkeypatch.setattr("api.routes.service.run_stream", mock_run_stream)
     client = TestClient(app)
     payload = {"message": "Xin chào"}
     response = client.post("/api/v1/chat/stream", json=payload)

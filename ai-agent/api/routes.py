@@ -118,6 +118,23 @@ class HousingAgentService:
             **kwargs,
         )
 
+    def handle_message(
+        self,
+        session_id: str,
+        message: str,
+        user_id: Optional[str] = None,
+        conversation_history: Optional[list[dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> AgentResponse:
+        """Alias chuẩn hoá cho các runner đánh giá và tích hợp bên ngoài."""
+        return self.run(
+            user_message=message,
+            conversation_history=conversation_history,
+            session_id=session_id,
+            user_id=user_id,
+            **kwargs,
+        )
+
     def run_stream(
         self,
         user_message: str,

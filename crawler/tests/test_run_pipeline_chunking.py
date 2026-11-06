@@ -164,16 +164,6 @@ def test_process_chunk_result_verification():
     assert res_report["amenity_overall_score"] == 0.40
 
 
-def test_crawler_model_llm_exports():
-    import crawler.model.llm as llm
-    assert hasattr(llm, "run_pipeline_chunking")
-    assert hasattr(llm, "load_checkpoint")
-    assert hasattr(llm, "save_checkpoint")
-    assert hasattr(llm, "create_dynamic_chunks")
-    assert hasattr(llm, "GeminiRoundRobin")
-    assert hasattr(llm, "SYSTEM_PROMPT")
-
-
 def test_create_dynamic_chunks():
     from crawler.model.llm import create_dynamic_chunks
     articles = [

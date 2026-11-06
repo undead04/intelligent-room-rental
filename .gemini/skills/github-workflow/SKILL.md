@@ -139,11 +139,5 @@ Agent lập tức phản hồi và trình bày rõ 3 thông tin:
 ### 5.5. Thực Hiện Gỡ Conflict & Kiểm Thử Kiểm Chứng:
 Sau khi người dùng đồng ý phương án giải quyết:
 1. Agent tiến hành sửa file, loại bỏ toàn bộ conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
-2. **Bắt buộc chạy lại toàn bộ test suite** của microservice liên quan để đảm bảo không gãy logic sau khi gộp:
-   ```powershell
-   # Ví dụ:
-   .\backend\.venv\Scripts\pytest.exe backend/tests -q
-   .\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
-   .\crawler\.venv\Scripts\pytest.exe crawler/tests -q
-   ```
+2. **Bắt buộc chạy lại bộ lệnh kiểm thử / type-check / lint** của các module liên quan (tham chiếu bảng lệnh chuẩn tại Mục 6 của [`AGENTS.md`](../../../AGENTS.md)) để đảm bảo không gãy logic sau khi gộp.
 3. Báo cáo kết quả test pass 100% cho người dùng trước khi thực hiện commit merge hoàn tất.

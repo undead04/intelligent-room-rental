@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Callable
 
-from eval.baselines import old_verify_answer
 from eval.datasets.grounding import GroundingCase, generate
 from eval.metrics import rate
 from safety.grounding import verify_answer_grounding
@@ -11,7 +10,6 @@ from safety.grounding import verify_answer_grounding
 # trả True nếu câu trả lời BỊ GẮN CỜ (có lỗi)
 Checker = Callable[[GroundingCase], bool]
 SYSTEMS: dict[str, Checker] = {
-    "old": lambda c: not old_verify_answer(c.answer, c.rooms, c.pref)[0],                       # không nhận bằng chứng từ công cụ
     "new": lambda c: not verify_answer_grounding(c.answer, c.rooms, c.pref, extra_texts=c.evidence).is_grounded,
 }
 

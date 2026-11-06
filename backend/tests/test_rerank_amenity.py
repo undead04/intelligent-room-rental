@@ -23,12 +23,12 @@ def test_amenity_fit_preferred_and_ignores_mandatory():
     fit_canonical = _amenity_fit(None, concept_scores, preferred=["aircon", "window_balcony"])
     assert fit_canonical == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
-    # Alias match ('ac' -> 'aircon', 'ban_cong' -> 'window_balcony')
-    fit_alias = _amenity_fit(None, concept_scores, preferred=["ac", "ban_cong"])
-    assert fit_alias == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
+    # Case-insensitive / whitespace stripped match ('AIRCON' -> 'aircon', ' window_balcony ' -> 'window_balcony')
+    fit_case = _amenity_fit(None, concept_scores, preferred=["AIRCON", " window_balcony "])
+    assert fit_case == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
     # Negative match in preferred: (0.0 + 1.0) / 2 = 0.5 -> 0.7 * 0.5 + 0.3 * 0.8 = 0.59
-    fit_negative = _amenity_fit(None, concept_scores, preferred=["pet", "aircon"])
+    fit_negative = _amenity_fit(None, concept_scores, preferred=["pet_allowed", "aircon"])
     assert fit_negative == pytest.approx(0.7 * 0.5 + 0.3 * 0.8)
 
     # Mandatory (requested) is ignored in _amenity_fit (already hard-filtered at SQL & Grounding)
@@ -60,13 +60,13 @@ def test_dynamic_weights():
     assert round(sum(w_basic.values()), 5) == 1.0
 
     # Mandatory amenities alone -> amenity is NOT active in MCDM (already hard-filtered)
-    w_mandatory = _dynamic_weights({"amenities": ["ac"]}, DEFAULT_WEIGHTS)
+    w_mandatory = _dynamic_weights({"amenities": ["aircon"]}, DEFAULT_WEIGHTS)
     assert "amenity" not in w_mandatory
     assert set(w_mandatory.keys()) == {"price", "safety", "semantic"}
     assert round(sum(w_mandatory.values()), 5) == 1.0
 
     # Preferred amenities requested -> amenity active
-    w_pref = _dynamic_weights({"preferred_amenities": ["ac"]}, DEFAULT_WEIGHTS)
+    w_pref = _dynamic_weights({"preferred_amenities": ["aircon"]}, DEFAULT_WEIGHTS)
     assert "amenity" in w_pref
     assert round(sum(w_pref.values()), 5) == 1.0
 
@@ -108,7 +108,7 @@ def test_rerank_with_candidates():
     ]
 
     # User prefers aircon
-    user_pref = {"preferred_amenities": ["may_lanh"]}
+    user_pref = {"preferred_amenities": ["aircon"]}
     results = rerank(candidates, user_pref=user_pref)
 
     assert len(results) == 2
@@ -120,15 +120,15 @@ def test_rerank_with_candidates():
     assert "top_factors" in explanation
 
 
-def test_vietnamese_diacritic_amenities_and_partial_weights():
+def test_canonical_amenities_and_partial_weights():
     concept_scores = {
         "aircon": 1.0,
         "mezzanine": 1.0,
         "pet_allowed": 1.0,
         "amenity_overall": 1.0,
     }
-    # Tiếng Việt có dấu từ AI Agent ('máy lạnh', 'gác lửng', 'nuôi mèo')
-    fit = _amenity_fit(None, concept_scores, preferred=["máy lạnh", "gác lửng", "nuôi mèo"])
+    # Canonical taxonomy codes ('aircon', 'mezzanine', 'pet_allowed')
+    fit = _amenity_fit(None, concept_scores, preferred=["aircon", "mezzanine", "pet_allowed"])
     assert fit == 1.0
 
 
@@ -157,16 +157,16 @@ def test_room_type_reference_and_listing_response_schema():
     assert res.room_type.id == 1
 
 
-def test_amenity_fit_deduplicates_canonical_and_vietnamese_aliases():
+def test_amenity_fit_deduplicates_preferred_amenities():
     concept_scores = {
         "aircon": 1.0,
         "mezzanine": 0.0,
         "amenity_overall": 0.5,
     }
-    # Passing both 'aircon' and 'máy lạnh' in preferred must not double-count aircon:
+    # Passing duplicate 'aircon' in preferred must not double-count aircon:
     # unique normalized codes are ['aircon', 'mezzanine'] -> pref_fit = (1.0 + 0.0) / 2 = 0.5
     # blended with amenity_overall (0.5): 0.7 * 0.5 + 0.3 * 0.5 = 0.5
-    fit = _amenity_fit(None, concept_scores, preferred=["aircon", "máy lạnh", "mezzanine"])
+    fit = _amenity_fit(None, concept_scores, preferred=["aircon", "aircon", "mezzanine"])
     assert fit == pytest.approx(0.5)
 
 

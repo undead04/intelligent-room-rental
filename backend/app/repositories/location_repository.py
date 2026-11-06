@@ -98,11 +98,10 @@ class LocationRepository:
                 if rt_id is not None:
                     q = q.filter(Listing.room_type_id == rt_id)
             if amenities:
-                from app.services.reranker import _NORMALIZE_AMENITY
                 from sqlalchemy import Float, cast
 
                 for am in amenities:
-                    clean_code = _NORMALIZE_AMENITY(str(getattr(am, "value", am)))
+                    clean_code = str(getattr(am, "value", am)).strip().lower()
                     q = q.filter(
                         func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
                     )

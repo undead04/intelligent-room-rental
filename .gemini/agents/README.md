@@ -1,6 +1,6 @@
 # 🤖 ĐỘI NGŨ SUB-AGENTS (AI TEAMWORK)
 
-Hệ thống được trang bị 3 Sub-Agents chuyên biệt hóa cao để làm việc song song hiệu quả trong toàn bộ 4 microservices của Homigo:
+Hệ thống được trang bị 3 Sub-Agents chuyên biệt hóa cao, tự động đọc cấu hình dự án từ [`AGENTS.md`](../../AGENTS.md) và [`docs/architecture/`](../../docs/architecture/README.md) để phối hợp làm việc trên bất kỳ dự án phần mềm nào:
 
 ---
 
@@ -8,33 +8,35 @@ Hệ thống được trang bị 3 Sub-Agents chuyên biệt hóa cao để làm
 
 | Tên Sub-Agent | Vai Trò | Quyền Hạn | Trọng Tâm |
 | :--- | :--- | :--- | :--- |
-| **`codebase-researcher`** | Nghiên cứu & Khảo sát | **Read-only** (Không sửa code, có Context7) | Đọc codebase 4 microservices, tra cứu docs mới, tìm nguyên nhân lỗi, đề xuất giải pháp kiến trúc. |
-| **`core-developer`** | Lập trình viên chính | **Write Code** (Sửa file, chạy dev server) | Viết tính năng, fix bug, tuân thủ `AGENTS.md` (Next.js 16 App Router, FastAPI, LangGraph, Crawler). |
-| **`quality-tester`** | Tester khó tính (QA) | **Write Test & Run Test** (Viết test, chạy pytest) | Viết test độc lập theo SPEC, săn lỗi biên, test chống gian lận, bao phủ 4 nhóm test case. |
+| **`codebase-researcher`** | Nghiên cứu & Khảo sát | **Read-only** (Không sửa code, có Context7) | Đọc `AGENTS.md` & `docs/architecture/`, khảo sát codebase, tra cứu tài liệu thư viện mới, phân tích Root Cause và đề xuất giải pháp kiến trúc. |
+| **`core-developer`** | Lập trình viên chính | **Write Code** (Sửa file, chạy lệnh build/test) | Viết tính năng, fix bug tuân thủ nghiêm ngặt Tech Stack, Scope Control và Manual Commit Gate quy định trong `AGENTS.md`. |
+| **`quality-tester`** | Tester khó tính (QA) | **Write Test & Run Test** (Viết & chạy test) | Viết Black-box test độc lập theo SPEC/DTO, săn lỗi biên, chống gian lận test, bao phủ đủ 4 nhóm test case và chạy lệnh kiểm thử chuẩn trong `AGENTS.md`. |
 
 ---
 
 ## 2. Quy Trình Phối Hợp Tối Ưu (Optimal Workflow)
 
 ```text
-[ Người dùng giao Task ]
+[ Người dùng giao Task / Gõ /teamwork ]
            │
            ▼
 [ BƯỚC 1: Gọi codebase-researcher ]
-- Khảo sát các file bị ảnh hưởng trong 4 microservices
-- Tra cứu tài liệu thư viện mới qua Context7 MCP
-- Lập bản tóm tắt phương án & trích dẫn dòng code
+- Đọc AGENTS.md và docs/architecture/ để nắm bối cảnh dự án
+- Khảo sát các module/file bị ảnh hưởng trong codebase
+- Tra cứu tài liệu thư viện qua Context7 MCP (nếu cần)
+- Lập bản tóm tắt phương án & trích dẫn dòng code cụ thể
            │
            ▼
 [ BƯỚC 2: Gọi core-developer ]
 - Nhận bản tóm tắt từ researcher
-- Viết code chuẩn tech stack (Next.js 16, FastAPI, LangGraph, Python 3.11/3.13)
+- Viết code chuẩn theo Tech Stack quy định trong AGENTS.md
 - Tự đọc terminal log để tự sửa lỗi (Self-healing)
+- Đồng bộ docs/architecture/ nếu có thay đổi kiến trúc
            │
            ▼
 [ BƯỚC 3: Gọi quality-tester ]
-- Viết test độc lập theo SPEC (Black-box testing)
+- Viết test độc lập theo SPEC/Contract (Black-box testing)
 - Bao phủ đủ 4 nhóm test: Happy Path, Edge cases, Mutation, Persistence
-- Chạy pytest / test suite xác nhận pass 100%
-- Báo cáo kết quả và dừng lại chờ người dùng duyệt PR
+- Chạy lệnh test suite chuẩn trong AGENTS.md xác nhận pass 100%
+- Báo cáo kết quả và dừng lại ở Waiting Gate chờ người dùng nghiệm thu
 ```

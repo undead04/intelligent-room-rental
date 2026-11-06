@@ -31,20 +31,21 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
-from eval_common import (
-    FAIL,
-    PASS,
-    SKIP,
-    WARN,
-    contains_term,
-    ensure_project_root_on_path,
-    fold,
-    percentile,
-    setup_console,
-    status_from_rate,
-    validate_trace_events,
-    wilson_interval,
-)
+
+from eval.eval_common import (
+        FAIL,
+        PASS,
+        SKIP,
+        WARN,
+        contains_term,
+        ensure_project_root_on_path,
+        fold,
+        percentile,
+        setup_console,
+        status_from_rate,
+        validate_trace_events,
+        wilson_interval,
+    )
 
 ensure_project_root_on_path(__file__)
 
