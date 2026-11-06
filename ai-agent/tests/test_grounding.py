@@ -129,7 +129,7 @@ def test_context_ok_returns_valid_rooms_and_top_score():
 def test_context_empty_triggers_market_context():
     res = verify_context_grounding([], UserPreferenceState(max_price=3_000_000, location_text="Dĩ An"))
     assert not res.is_grounded and res.market_context
-    assert res.proposed_budget is None and res.proposed_budget_str is None
+    assert res.proposed_budget == 3_450_000 and res.proposed_budget_str == "3.45 triệu/tháng"
 
 
 def test_context_all_violating_also_triggers_market_context_with_dropped():
@@ -159,7 +159,7 @@ def test_never_invents_market_data_when_backend_has_none():
     for fetcher in (lambda **kw: None, None):
         p = build_market_context(pref, market_fetcher=fetcher)
         assert not p.is_market_gap and p.market_min_price is None and p.market_avg_price is None
-        assert p.proposed_budget is None and "thấp nhất ghi nhận" not in (p.message or "")
+        assert p.proposed_budget == 1_400_000 and "thấp nhất ghi nhận" not in (p.message or "")
 
 
 def test_no_city_means_no_market_call():

@@ -1,5 +1,5 @@
-import json
 import os
+import json
 import time
 from abc import ABC, abstractmethod
 from crawler.config.paths import RAW_DATA_DIR
@@ -78,22 +78,6 @@ class BaseSpider(ABC):
         Trả về: dict thống kê {'checked': int, 'active': int, 'expired': int}
         """
         pass
-
-    async def async_verify(self, limit: int = 100, max_concurrency: int = 5) -> dict:
-        """
-        Phương thức bất đồng bộ kiểm tra trạng thái tin đăng (non-blocking).
-        Mặc định fallback về phương thức verify() đồng bộ trong thread pool nếu spider con chưa ghi đè.
-        """
-        import asyncio
-        return await asyncio.to_thread(self.verify, limit=limit)
-
-    async def async_crawl(self, pages: int = 5, mode: str = "resume", region: str = "all") -> int:
-        """
-        Phương thức bất đồng bộ cào dữ liệu.
-        Mặc định fallback về crawl() đồng bộ trong thread pool nếu spider con chưa ghi đè.
-        """
-        import asyncio
-        return await asyncio.to_thread(self.crawl, pages=pages, mode=mode, region=region)
 
     def run(self, mode: str = "resume", pages: int = 5, region: str = "all", limit: int = 100, auto_clean: bool = True):
         """Hàm thực thi chuẩn cho spider"""

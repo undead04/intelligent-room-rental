@@ -25,26 +25,22 @@ def build_model(settings: "Settings", role: Role = "main") -> "ChatOpenAI":
 
     enable_thinking = bool(getattr(settings, "enable_main_thinking", True)) if role == "main" else False
 
-    extra_body: dict[str, Any] = {}
-    base_url = settings.base_url or ""
-
-    # Chỉ gửi thinking params cho LM Studio / local endpoint, tuyệt đối không gửi cho Google Gemini / OpenAI cloud API
-    is_local_endpoint = any(host in base_url.lower() for host in ("localhost", "127.0.0.1", "0.0.0.0"))
-    if is_local_endpoint:
-        extra_body["enable_thinking"] = enable_thinking
-        extra_body["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
-        if not enable_thinking:
-            extra_body["reasoning_effort"] = "none"
+    extra_body: dict[str, Any] = {
+        "enable_thinking": enable_thinking,
+        "chat_template_kwargs": {"enable_thinking": enable_thinking},
+    }
+    # Tắt triệt để thinking trên LM Studio / llama.cpp cho model Gemma-4 / DeepSeek
+    if not enable_thinking:
+        extra_body["reasoning_effort"] = "none"
 
     kwargs = {
-        "model": getattr(settings, "model_name"),
+        "model": getattr(settings,"model_name"),
         "api_key": settings.api_key,
         "timeout": getattr(settings, "llm_timeout"),
         "max_retries": getattr(settings, "llm_max_retries"),
         "temperature": 0 if role == "fast" else 0.3,
+        "extra_body": extra_body,
     }
-    if extra_body:
-        kwargs["extra_body"] = extra_body
     if settings.base_url:
         kwargs["base_url"] = settings.base_url
     return ChatOpenAI(**kwargs)

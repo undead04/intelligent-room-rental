@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Dual-import cho GroundTruthExpectation và evaluate_room_satisfaction
 from eval.ir_metrics import evaluate_room_satisfaction
+from eval.datasets.recommendation_benchmark import GroundTruthExpectation
 
 # Thử import verify_answer_grounding để kiểm tra tính trung thực số liệu
 from safety.grounding import verify_answer_grounding
@@ -104,13 +105,13 @@ class RecommendationJudgeReport(BaseModel):
 
 
 def get_judge_llm(
-    model_name: str = "gemini-3.5-flash-lite",
+    model_name: str = "gemini-2.5-flash-lite",
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
 ) -> Optional[Any]:
     """Khởi tạo mô hình LLM-as-a-Judge.
 
-    Ưu tiên sử dụng model dòng Flash-Lite: 'gemini-3.5-flash-lite'
+    Ưu tiên sử dụng model dòng Flash-Lite: 'gemini-2.5-flash-lite' (hoặc 'gemini-2.0-flash-lite')
     gọi qua OpenAI-compatible endpoint của Google:
     `https://generativelanguage.googleapis.com/v1beta/openai/`.
 
@@ -128,14 +129,10 @@ def get_judge_llm(
         logger.warning("get_judge_llm: Thư viện langchain_openai chưa được cài đặt.")
         return None
 
-    # Tìm API Key từ các biến môi trường phổ biến (hỗ trợ cả GEMINI_API_KEY và GEMINI_API_KEYS phân tách bằng phẩy)
-    gemini_keys_env = os.getenv("GEMINI_API_KEYS", "").strip()
-    first_gemini_key = gemini_keys_env.split(",")[0].strip() if gemini_keys_env else ""
-
+    # Tìm API Key từ các biến môi trường phổ biến
     resolved_key = (
         api_key
         or os.getenv("GEMINI_API_KEY")
-        or first_gemini_key
         or os.getenv("OPENAI_API_KEY")
         or os.getenv("GOOGLE_API_KEY")
     )
@@ -156,8 +153,8 @@ def get_judge_llm(
                 api_key=resolved_key,
                 base_url=resolved_base_url,
                 temperature=0.0,
-                timeout=60,
-                max_retries=3,
+                timeout=45,
+                max_retries=2,
             )
         except Exception as e:
             logger.warning("get_judge_llm: Không thể khởi tạo ChatOpenAI với key: %s", e)

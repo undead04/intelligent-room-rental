@@ -21,6 +21,8 @@ from typing import Any, Callable, Iterable, Optional
 
 from domain.enums import RoomType
 
+RELAX_FACTOR = 1.15            # nới ngân sách +15%
+TIGHTEN_FACTOR = 0.85          # hạ ngân sách -15%
 GAP_RATIO = 0.85               # ngân sách < 85% giá sàn => "thấp hơn mặt bằng"
 MIN_SAMPLE = 20                # ít hơn ngần này tin đăng thì không tin giá sàn
 DORM_THRESHOLD = 2_000_000.0   # ngân sách <= mức này thì gợi ý ký túc xá/sleepbox
@@ -33,6 +35,16 @@ DEFAULT_CITY_ID: Optional[int] = int(_env_city) if _env_city.isdigit() else None
 
 def round_up_step(v: float, step: float = ROUND_STEP) -> float:
     return float(math.ceil(v / step) * step)
+
+
+def relax_budget(user_max: float) -> float:
+    """Ngân sách sau khi nới nhẹ (+15%, làm tròn lên 50k)."""
+    return round_up_step(float(user_max) * RELAX_FACTOR)
+
+
+def tighten_budget(user_max: float) -> float:
+    """Ngân sách sau khi hạ xuống (-15%, làm tròn 50k)."""
+    return round_up_step(float(user_max) * TIGHTEN_FACTOR)
 
 
 # ---------------------------------------------------------------------------

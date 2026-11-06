@@ -34,10 +34,7 @@ _PATHS = {"city": "/locations/cities", "district": "/locations/districts", "ward
 
 def admin_lookup(level: str, name: str, city_id: Optional[int] = None, district_id: Optional[int] = None) -> list[dict[str, Any]]:
     """Tra bảng hành chính (server-side `search`). Lỗi -> []. Đây là `AdminLookup` của location_service."""
-    params: dict[str, Any] = {}
-    cleaned = (name or "").strip()
-    if cleaned:
-        params["search"] = cleaned
+    params: dict[str, Any] = {"search": name}
     if level == "district" and city_id is not None:
         params["city_id"] = city_id
     if level == "ward" and district_id is not None:
@@ -69,34 +66,11 @@ def expand_location_with_llm(query: str, hint: Optional[str] = None) -> str:
     return query
 
 
-_CROSS_REGION_LANDMARKS: dict[str, list[dict[str, str]]] = {
-    "bach khoa": [
-        {"name": "ĐH Bách Khoa Hà Nội (Hai Bà Trưng, Hà Nội)"},
-        {"name": "ĐH Bách Khoa TP.HCM - CS1 (Quận 10, TP.HCM)"},
-        {"name": "ĐH Bách Khoa TP.HCM - CS2 (Thủ Đức, TP.HCM)"},
-    ],
-    "dh bach khoa": [
-        {"name": "ĐH Bách Khoa Hà Nội (Hai Bà Trưng, Hà Nội)"},
-        {"name": "ĐH Bách Khoa TP.HCM - CS1 (Quận 10, TP.HCM)"},
-        {"name": "ĐH Bách Khoa TP.HCM - CS2 (Thủ Đức, TP.HCM)"},
-    ],
-    "dai hoc bach khoa": [
-        {"name": "ĐH Bách Khoa Hà Nội (Hai Bà Trưng, Hà Nội)"},
-        {"name": "ĐH Bách Khoa TP.HCM - CS1 (Quận 10, TP.HCM)"},
-        {"name": "ĐH Bách Khoa TP.HCM - CS2 (Thủ Đức, TP.HCM)"},
-    ],
-}
-
-
-def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, Any]]:
-    """Hàm lõi: tên địa điểm cụ thể -> {"lat","lng"} hoặc {"ambiguous": True, "candidates": [...]}. KHÔNG kiểm tra hành chính."""
+def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, float]]:
+    """Hàm lõi: tên địa điểm cụ thể -> {"lat","lng"} hoặc None. KHÔNG kiểm tra hành chính (caller đã biết là địa điểm cụ thể)."""
     q = (query or "").strip()
     if not q:
         return None
-    from utils.text import norm_key
-    norm_q = norm_key(q)
-    if not hint and norm_q in _CROSS_REGION_LANDMARKS:
-        return {"ambiguous": True, "candidates": list(_CROSS_REGION_LANDMARKS[norm_q])}
     attempts = [(q, hint)]
     tried: set[tuple[str, Optional[str]]] = set()
     while attempts:
@@ -357,8 +331,6 @@ def fetch_nearby_locations(
     amenities: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """Tra cứu các quận/phường lân cận từ Backend API (/locations/nearby) kèm khoảng cách và thống kê giá thực tế."""
-    if lat is None and lng is None and district_id is None and ward_id is None and city_id is None:
-        return []
     params: dict[str, Any] = {"radius_km": radius_km, "limit": limit}
     if lat is not None:
         params["lat"] = lat

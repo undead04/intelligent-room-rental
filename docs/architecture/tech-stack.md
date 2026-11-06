@@ -101,11 +101,5 @@ docker start homigo-postgres
 
 # 4. Khởi chạy Frontend UI (Port 3000)
 cd frontend; npm run dev
-
-# 5. Khởi chạy Crawler Cron Job Scheduler Daemon (Lập lịch cào hàng ngày & kiểm tra tin hàng tuần)
-.\crawler\.venv\Scripts\python.exe crawler/scheduler.py
-
-# (Tùy chọn) Kích hoạt chạy ngay Demo cào dữ liệu tức thì (không cần đợi đến giờ hẹn)
-.\crawler\.venv\Scripts\python.exe crawler/scheduler.py --run-now update --pages 1 --no-clean
 ```
 

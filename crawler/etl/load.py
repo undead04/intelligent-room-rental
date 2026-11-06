@@ -51,28 +51,6 @@ class DataLoader:
         Base.metadata.create_all(bind=engine)
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE room_types ADD COLUMN IF NOT EXISTS code VARCHAR(50);"))
-            # Đảm bảo cột vector có kích thước xác định (768 chiều) để pgvector hỗ trợ HNSW index
-            try:
-                conn.execute(text("ALTER TABLE listing_embeddings ALTER COLUMN vector TYPE vector(768);"))
-            except Exception:
-                pass
-            # Tối ưu hóa bộ nhớ tạm thời khi đánh chỉ mục
-            conn.execute(text("SET maintenance_work_mem = '256MB';"))
-            # Đảm bảo HNSW index cho pgvector cosine similarity
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_listing_embeddings_vector_hnsw 
-                ON listing_embeddings 
-                USING hnsw (vector vector_cosine_ops) 
-                WITH (m = 16, ef_construction = 64);
-            """))
-            # Đảm bảo GIN index cho Full-Text Search (title + address_raw + description)
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_listings_fts_full 
-                ON listings 
-                USING gin (
-                    to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(address_raw, '') || ' ' || coalesce(description, ''))
-                );
-            """))
             conn.commit()
 
         def _sync_sequence(table_name: str, id_col: str = "id"):

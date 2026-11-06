@@ -56,8 +56,6 @@ REGION_KEYWORDS: dict[str, tuple[str, ...]] = {
         "thu duc", "binh thanh", "go vap", "tan binh", "phu nhuan", "tan phu", "binh tan",
         "ho chi minh", "tp hcm", "tphcm", "sai gon", "saigon", "uit", "nha be", "hoc mon", "cu chi", "binh chanh",
         "quan 1", "quan 2", "quan 3", "quan 4", "quan 5", "quan 6", "quan 7", "quan 8", "quan 9", "quan 10", "quan 11", "quan 12",
-        "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12",
-        "cs1", "cs2", "co so 1", "co so 2", "ly thuong kiet", "dhqg", "lang dai hoc", "spkt", "hcmute", "ueh", "hutech",
     ),
     "Hà Nội": (
         "ha noi", "cau giay", "hai ba trung", "dong da", "ba dinh", "hoan kiem",
@@ -72,9 +70,9 @@ def infer_region_from_location_text(location_text: Optional[str]) -> Optional[st
     """Nhận diện tên tỉnh/thành tương ứng từ tên địa danh hoặc quận/huyện tự do."""
     if not location_text:
         return None
-    loc_k = f" {norm_key(location_text)} "
+    loc_k = norm_key(location_text)
     for region, keywords in REGION_KEYWORDS.items():
-        if any(f" {kw} " in loc_k for kw in keywords):
+        if any(kw in loc_k for kw in keywords):
             return region
     return None
 
@@ -281,7 +279,7 @@ def resolve_location(
             return res                       # NLU chắc chắn là hành chính mà DB không có -> "chưa có dữ liệu"
 
     # 'ĐH Bách Khoa, Hà Nội' -> geocode('ĐH Bách Khoa, Hà Nội', hint='Hà Nội') nếu chưa có hint
-    hint = region_hint or infer_region_from_location_text(text)
+    hint = region_hint
     if hint is None and "," in text:
         tail = text.rsplit(",", 1)[1].strip()
         if _lookup_exact("city", tail, admin_lookup):

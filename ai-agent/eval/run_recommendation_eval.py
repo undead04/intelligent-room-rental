@@ -27,16 +27,6 @@ _AI_AGENT_DIR = _CURRENT_DIR.parent
 if str(_AI_AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(_AI_AGENT_DIR))
 
-# Tự động nạp file .env từ ai-agent hoặc crawler (để lấy API key)
-try:
-    from dotenv import load_dotenv
-    _env_candidate = _AI_AGENT_DIR / ".env"
-    if _env_candidate.is_file():
-        load_dotenv(_env_candidate, override=False)
-
-except ImportError:
-    pass
-
 # Cấu hình logging
 logging.basicConfig(
     level=logging.INFO,
@@ -50,11 +40,10 @@ from eval.datasets.recommendation_benchmark import BENCHMARK_QUERIES, BenchmarkQ
 # Dual-import các hàm tính toán IR Metrics
 from eval.ir_metrics import (
     constraint_satisfaction_breakdown,
-    evaluate_room_satisfaction,
     ndcg_at_k,
     precision_at_k,
     reciprocal_rank,
-)
+    )
 # Dual-import module LLM Judge
 from eval.llm_judge import (
         RecommendationJudgeReport,
@@ -214,9 +203,11 @@ def generate_markdown_report(
             f"{ir.get('reciprocal_rank', 0.0):.2f}",
             f"{ir.get('ndcg_at_5', 0.0):.2f}",
             f"{cb.get('overall_csr', 0.0):.2f}",
+            f"{jd.get('relevance_score', 0.0):.1f}",
+            f"{jd.get('ranking_score', 0.0):.1f}",
+            f"{jd.get('faithfulness_score', 0.0):.1f}",
             f"**{jd.get('overall_score', 0.0):.2f}**",
             f"{q.get('latency_s', 0.0):.2f}s",
-            q.get("status_summary", "N/A"),
         ])
     md_lines.append(_md_table(
         [
@@ -228,77 +219,15 @@ def generate_markdown_report(
             "RR",
             "nDCG@5",
             "CSR",
-            "Judge",
+            "Rel",
+            "Rank",
+            "Faith",
+            "Overall",
             "Latency",
-            "Tóm tắt Trạng thái / Đánh giá",
         ],
         query_rows,
     ))
     md_lines.append("")
-
-    # 3.1. Phân rã chi tiết từng Ca kiểm thử
-    md_lines.append("### 3.1. 🔍 Phân Rã Chi Tiết Từng Ca Kiểm Thử (Detailed Test Cases)")
-    md_lines.append("")
-    for q in query_details:
-        qid = q.get("query_id", "")
-        grp = q.get("group", "")
-        qry = q.get("query", "")
-        status = q.get("status_summary", "")
-        lat = q.get("latency_s", 0.0)
-        exp = q.get("expectation_summary", {})
-        jd = q.get("judge_report", {})
-        rooms_d = q.get("returned_rooms_details", [])
-        text_rep = q.get("agent_text_reply", "").strip()
-
-        md_lines.append(f"#### 🔹 Ca `{qid}` ({grp}): \"{qry}\"")
-        md_lines.append(f"- **Trạng thái:** `{status}` | **Thời gian:** `{lat:.2f}s` | **Judge Score:** `{jd.get('overall_score', 0.0):.2f}/5.0`")
-
-        exp_parts = []
-        if exp.get("max_budget"):
-            exp_parts.append(f"Giá trần: {exp['max_budget']/1_000_000:.1f}tr")
-        if exp.get("min_budget"):
-            exp_parts.append(f"Giá sàn: {exp['min_budget']/1_000_000:.1f}tr")
-        if exp.get("landmark"):
-            dist_max = exp.get("max_distance_km", 5.0)
-            exp_parts.append(f"Mốc: {exp['landmark']} (<= {dist_max}km)")
-        if exp.get("required_amenities"):
-            exp_parts.append(f"Tiện ích: {', '.join(exp['required_amenities'])}")
-        if exp.get("allowed_room_types"):
-            exp_parts.append(f"Loại phòng: {', '.join(exp['allowed_room_types'])}")
-        md_lines.append(f"- **Ràng buộc kỳ vọng:** {'; '.join(exp_parts) if exp_parts else 'Không có ràng buộc cứng'}")
-
-        if jd.get("rationale"):
-            md_lines.append(f"- **Nhận xét của Judge:** {jd['rationale']}")
-
-        if rooms_d:
-            room_tbl_rows = []
-            for r in rooms_d[:5]:
-                chk = "✅" if r.get("is_fully_satisfied") else "⚠️"
-                dist_str = f"{r.get('actual_distance_km', 'N/A')} km" if r.get('actual_distance_km') is not None else "N/A"
-                price_str = r.get("price", "N/A")
-                amenity_str = ", ".join(r.get("matched_amenities", [])[:3]) or "N/A"
-                room_tbl_rows.append([
-                    f"`{r.get('id', '')}`",
-                    chk,
-                    r.get("title", "")[:35] + ("..." if len(r.get("title", "")) > 35 else ""),
-                    price_str,
-                    dist_str,
-                    amenity_str,
-                ])
-            md_lines.append("")
-            md_lines.append(_md_table(["Mã phòng", "Đạt", "Tiêu đề", "Giá", "Khoảng cách", "Tiện ích khớp"], room_tbl_rows))
-            md_lines.append("")
-        else:
-            md_lines.append("- *Không có phòng nào được trả về.*")
-            md_lines.append("")
-
-        if text_rep:
-            clean_reply = text_rep.replace("\n", " ").strip()
-            short_reply = clean_reply[:250] + ("..." if len(clean_reply) > 250 else "")
-            md_lines.append(f"> **Phản hồi Agent:** _{short_reply}_")
-        md_lines.append("")
-        md_lines.append("---")
-        md_lines.append("")
 
     # 4. Nhận xét & Đánh giá
     md_lines.append("## 4. 💡 Đánh Giá Chuyên Sâu & Khuyến Nghị Phát Triển")
@@ -322,15 +251,10 @@ _build_markdown_report = generate_markdown_report
 
 def save_evaluation_results(
     results_payload: dict[str, Any],
-    output_dir: str | Path | None = None,
+    output_dir: str | Path = "eval_results",
 ) -> tuple[Path, Path]:
     """Lưu kết quả đánh giá ra hai định dạng JSON và Markdown."""
-    if output_dir:
-        out_path = Path(output_dir)
-        if not out_path.is_absolute():
-            out_path = _AI_AGENT_DIR / out_path
-    else:
-        out_path = _AI_AGENT_DIR / "eval_results"
+    out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
     json_path = out_path / "recommendation_eval_results.json"
@@ -361,17 +285,12 @@ def run_evaluation(
     limit: Optional[int] = None,
     group_filter: Optional[str] = None,
     judge_mode: str = "auto",
-    judge_model_name: str = "gemini-3.5-flash-lite",
+    judge_model_name: str = "gemini-2.5-flash-lite",
     output_dir: str = "eval_results",
     budget_tolerance_pct: float = 0.0,
 ) -> dict[str, Any]:
     """Chạy toàn bộ quy trình đánh giá trên bộ Recommendation Benchmark."""
-    if output_dir:
-        out_path = Path(output_dir)
-        if not out_path.is_absolute():
-            out_path = _AI_AGENT_DIR / out_path
-    else:
-        out_path = _AI_AGENT_DIR / "eval_results"
+    out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
     # 1. Lọc queries
@@ -470,59 +389,6 @@ def run_evaluation(
             latency_s,
         )
 
-        # C. Đánh giá chi tiết từng phòng
-        rooms_detail = []
-        satisfied_count = 0
-        for r in rooms:
-            sat = evaluate_room_satisfaction(r, q.expectation, budget_tolerance_pct)
-            is_sat = sat.get("is_fully_satisfied", False)
-            if is_sat:
-                satisfied_count += 1
-            rooms_detail.append({
-                "id": str(getattr(r, "id", "")),
-                "title": str(getattr(r, "title", "")),
-                "price": str(getattr(r, "price", "")),
-                "price_num": float(getattr(r, "priceNum", 0.0) or 0.0),
-                "actual_distance_km": round(sat["distance_km"], 2) if sat.get("distance_km") is not None else None,
-                "room_type": str(getattr(r, "room_type", "") or ""),
-                "address": str(getattr(r, "address", "") or ""),
-                "tags": list(getattr(r, "tags", []) or []),
-                "matched_amenities": sat.get("matched_amenities", []),
-                "missing_amenities": sat.get("missing_amenities", []),
-                "price_ok": sat.get("price_ok", False),
-                "distance_ok": sat.get("distance_ok", False),
-                "room_type_ok": sat.get("room_type_ok", False),
-                "amenities_ok": sat.get("amenities_ok", False),
-                "is_fully_satisfied": is_sat,
-            })
-
-        # D. Tóm tắt trạng thái Pass/Fail minh bạch
-        if len(rooms) == 0:
-            if any(kw in text_reply.lower() for kw in ("bạn có thể", "khu vực nào", "ngân sách", "thông tin cụ thể", "làm rõ")):
-                status_summary = "FAIL (0 phòng): Agent kích hoạt hỏi lại (Clarify)"
-            else:
-                status_summary = "FAIL (0 phòng): Không tìm thấy phòng thỏa mãn trong DB"
-        else:
-            if satisfied_count == len(rooms):
-                status_summary = f"PASS ({satisfied_count}/{len(rooms)} phòng đạt 100% tiêu chí)"
-            else:
-                issues = []
-                price_fails = sum(1 for rd in rooms_detail if not rd["price_ok"])
-                dist_fails = sum(1 for rd in rooms_detail if not rd["distance_ok"])
-                type_fails = sum(1 for rd in rooms_detail if not rd["room_type_ok"])
-                amenity_fails = sum(1 for rd in rooms_detail if not rd["amenities_ok"])
-                if price_fails:
-                    issues.append(f"{price_fails} vượt giá")
-                if dist_fails:
-                    issues.append(f"{dist_fails} vượt bán kính")
-                if type_fails:
-                    issues.append(f"{type_fails} sai loại phòng")
-                if amenity_fails:
-                    issues.append(f"{amenity_fails} thiếu tiện ích")
-                issue_str = ", ".join(issues) if issues else "chưa hoàn hảo"
-                status_summary = f"PARTIAL ({satisfied_count}/{len(rooms)} phòng đạt | {issue_str})"
-
-        exp = q.expectation
         query_record = {
             "query_id": q.id,
             "group": q.group,
@@ -530,18 +396,6 @@ def run_evaluation(
             "query": q.query,
             "latency_s": round(latency_s, 3),
             "returned_rooms_count": len(rooms),
-            "status_summary": status_summary,
-            "agent_text_reply": text_reply,
-            "expectation_summary": {
-                "max_budget": exp.max_budget,
-                "min_budget": exp.min_budget,
-                "landmark": getattr(exp, "target_location_name", ""),
-                "max_distance_km": exp.max_distance_km,
-                "allowed_room_types": [str(rt) for rt in exp.allowed_room_types or []],
-                "forbidden_room_types": [str(rt) for rt in exp.forbidden_room_types or []],
-                "required_amenities": [str(a) for a in exp.required_amenities or []],
-            },
-            "returned_rooms_details": rooms_detail,
             "top_room_ids": [getattr(r, "id", "") for r in rooms[:5]],
             "ir_metrics": {
                 "precision_at_3": round(p3, 4),
@@ -705,8 +559,8 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default="gemini-3.5-flash-lite",
-        help="Tên mô hình LLM dùng làm Judge (mặc định: 'gemini-3.5-flash-lite').",
+        default="gemini-2.5-flash-lite",
+        help="Tên mô hình LLM dùng làm Judge (mặc định: 'gemini-2.5-flash-lite').",
     )
     parser.add_argument(
         "--out",
