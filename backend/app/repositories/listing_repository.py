@@ -304,10 +304,8 @@ class ListingRepository:
 
         # Lọc cứng tiện ích bắt buộc từ concept_scores
         if amenities:
-            from app.services.reranker import _NORMALIZE_AMENITY
-
             for am in amenities:
-                clean_code = _NORMALIZE_AMENITY(str(getattr(am, "value", am)))
+                clean_code = str(getattr(am, "value", am)).strip().lower()
                 query = query.filter(
                     func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
                 )

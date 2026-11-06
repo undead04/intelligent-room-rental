@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.schemas.listing import AmenityCode
 from app.schemas.location import CityResponse, DistrictResponse, NearbyLocationItem, WardResponse
 from app.schemas.response import ErrorDTO, ResponseDTO
 from app.services.location_service import LocationService
@@ -69,7 +70,7 @@ def get_nearby_locations(
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
     room_type: Optional[str] = Query(None),
-    amenities: Optional[list[str]] = Query(None),
+    amenities: Optional[list[AmenityCode]] = Query(None),
     service: LocationService = Depends(get_location_service),
 ):
     """Tra cứu các quận/phường lân cận kèm khoảng cách và thống kê giá phòng từ cơ sở dữ liệu thực tế."""

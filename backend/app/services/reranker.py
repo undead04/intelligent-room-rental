@@ -3,21 +3,19 @@
 Đánh giá và tái xếp hạng danh sách tin phòng từ Hybrid Search theo Multi-Criteria Decision Making (MCDM):
 1. Giá (price): Đánh giá mức độ hợp lý thông qua ML PriceEvaluator.
 2. Vị trí (location): Haversine distance tới tọa độ mong muốn của người dùng.
-3. Tiện nghi (amenity): Tỷ lệ đáp ứng các tiện ích bắt buộc / mong muốn (với alias mapping).
+3. Tiện nghi (amenity): Tỷ lệ đáp ứng các tiện ích ưu tiên mềm (canonical taxonomy 17 tiện ích).
 4. An ninh (safety): Điểm an ninh tổng hợp của khu trọ.
 5. Ngữ nghĩa (semantic): Điểm tương đồng ngữ nghĩa từ Dense pgvector Embedding.
 
 Public API:
     rerank(candidates, user_pref, limit, offset, base_weights) -> [(breakdown, listing)]
     explain_match(breakdown, top_n)                           -> dict giải thích cho AI
-    component_influence(listings, prefs, base_weights)        -> chẩn đoán trọng số
     DEFAULT_WEIGHTS                                           -> dict trọng số cơ sở 5 tiêu chí
 """
 from math import asin, cos, radians, sin, sqrt
-from statistics import mean, pstdev
 from typing import Mapping, Optional, Sequence
 
-__all__ = ["rerank", "explain_match", "component_influence", "DEFAULT_WEIGHTS"]
+__all__ = ["rerank", "explain_match", "DEFAULT_WEIGHTS"]
 
 # --- Constants ---
 UNKNOWN_SCORE: float = 0.0
@@ -70,79 +68,12 @@ def _location_fit(dist_km: float, near_km: float = 1.0, far_km: float = 10.0) ->
     return 1.0 - (dist_km - near_km) / (far_km - near_km)
 
 
-_ALIAS_MAP: dict[str, str] = {
-    "ac": "aircon",
-    "air_conditioner": "aircon",
-    "may_lanh": "aircon",
-    "máy lạnh": "aircon",
-    "dieu_hoa": "aircon",
-    "điều hòa": "aircon",
-    "wc": "private_wc",
-    "ve_sinh_rieng": "private_wc",
-    "wc riêng": "private_wc",
-    "vệ sinh riêng": "private_wc",
-    "gac": "mezzanine",
-    "có gác": "mezzanine",
-    "co gac": "mezzanine",
-    "gác": "mezzanine",
-    "gác lửng": "mezzanine",
-    "gác cao": "mezzanine",
-    "gác xép": "mezzanine",
-    "gác lưng": "mezzanine",
-    "gác lững": "mezzanine",
-    "gác đúc": "mezzanine",
-    "gác gỗ": "mezzanine",
-    "mezzanine": "mezzanine",
-    "bep": "kitchen",
-    "kitchen_shelf": "kitchen",
-    "kệ bếp": "kitchen",
-    "tu_lanh": "fridge",
-    "tủ lạnh": "fridge",
-    "may_giat": "washing_machine",
-    "máy giặt": "washing_machine",
-    "balcony": "window_balcony",
-    "window": "window_balcony",
-    "ban_cong": "window_balcony",
-    "ban công": "window_balcony",
-    "cua_so": "window_balcony",
-    "cửa sổ": "window_balcony",
-    "full_noi_that": "furniture",
-    "noi_that": "furniture",
-    "nội thất": "furniture",
-    "xe": "parking",
-    "ham_xe": "parking",
-    "chỗ để xe": "parking",
-    "pet": "pet_allowed",
-    "cho_nuoi_pet": "pet_allowed",
-    "thu_cung": "pet_allowed",
-    "thú cưng": "pet_allowed",
-    "nuôi mèo": "pet_allowed",
-    "nuôi chó": "pet_allowed",
-    "tu_do": "free_hours",
-    "gio_tu_do": "free_hours",
-    "free_time": "free_hours",
-    "giờ giấc tự do": "free_hours",
-    "khong_chung_chu": "no_shared_landlord",
-    "private_entrance": "no_shared_landlord",
-    "không chung chủ": "no_shared_landlord",
-    "van_tay": "fingerprint_lock",
-    "the_tu": "fingerprint_lock",
-    "khoa_van_tay": "fingerprint_lock",
-    "smart_lock": "fingerprint_lock",
-    "khoá vân tay": "fingerprint_lock",
-    "khóa vân tay": "fingerprint_lock",
-    "bao_ve": "guard",
-    "security": "guard",
-    "bảo vệ": "guard",
-}
-
-
 def _normalize_amenity(code: object) -> str:
+    """Chuẩn hoá mã tiện ích từ Enum hoặc chuỗi về canonical code chữ thường."""
     if not code:
         return ""
     val = getattr(code, "value", code)
-    c = str(val).strip().lower()
-    return _ALIAS_MAP.get(c, c)
+    return str(val).strip().lower()
 
 
 _NORMALIZE_AMENITY = _normalize_amenity
@@ -323,27 +254,3 @@ def explain_match(breakdown: dict[str, object], top_n: int = 5) -> dict[str, obj
         "weak_factors": [k for k, v in parts.items() if v < 0.4],
         "unknown": [k for k, v in parts.items() if v == UNKNOWN_SCORE],
     }
-
-
-def component_influence(
-    listings: Sequence[object],
-    prefs: Sequence[object],
-    base_weights: Mapping[str, float] = DEFAULT_WEIGHTS,
-) -> dict[str, object]:
-    """Chẩn đoán offline: ảnh hưởng thực của mỗi thành phần ~ trọng số x độ lệch chuẩn."""
-    if not listings or not prefs:
-        return {}
-    stds: dict[str, list[float]] = {}
-    ws: dict[str, list[float]] = {}
-    for pref in prefs:
-        computed_weights = _dynamic_weights(pref, base_weights)
-        bds = [_match_breakdown(l, pref, computed_weights) for l in listings]
-        for k in bds[0]["parts"]: # type: ignore
-            parts_dict: dict[str, float] = bds[0]["parts"] # type: ignore
-            stds.setdefault(k, []).append(pstdev(b["parts"][k] for b in bds)) # type: ignore
-            ws.setdefault(k, []).append(parts_dict[k])
-    out = {k: {"weight": mean(ws[k]), "std": mean(stds[k])} for k in stds}
-    total = sum(v["weight"] * v["std"] for v in out.values()) or 1.0
-    for v in out.values():
-        v["influence"] = v["weight"] * v["std"] / total
-    return out

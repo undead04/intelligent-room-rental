@@ -1,0 +1,113 @@
+{
+  "meta": {
+    "timestamp": "2026-11-06 17:31:31",
+    "total_queries": 2,
+    "judge_mode": "rule",
+    "judge_model": "gemini-2.5-flash-lite",
+    "budget_tolerance_pct": 0.0
+  },
+  "summary": {
+    "total_queries": 2,
+    "mean_precision_at_3": 0.0,
+    "mean_precision_at_5": 0.0,
+    "mrr": 0.0,
+    "mean_ndcg_at_5": 0.0,
+    "mean_csr": 0.0,
+    "mean_price_compliance_pct": 0.0,
+    "mean_distance_compliance_pct": 0.0,
+    "mean_room_type_compliance_pct": 0.0,
+    "mean_amenities_compliance_pct": 0.0,
+    "mean_relevance_score": 1.25,
+    "mean_ranking_score": 1.0,
+    "mean_faithfulness_score": 3.25,
+    "mean_overall_score": 1.77,
+    "latency_p50_s": 30.175,
+    "latency_p95_s": 31.573,
+    "latency_max_s": 31.573,
+    "latency_mean_s": 30.175
+  },
+  "group_breakdown": {
+    "G1_BUDGET": {
+      "count": 2,
+      "mean_p3": 0.0,
+      "mean_p5": 0.0,
+      "mean_mrr": 0.0,
+      "mean_ndcg5": 0.0,
+      "mean_csr": 0.0,
+      "mean_overall_score": 1.77,
+      "mean_latency_s": 30.175
+    }
+  },
+  "query_details": [
+    {
+      "query_id": "G1_01",
+      "group": "G1_BUDGET",
+      "persona_description": "Tân sinh viên ĐHQG TP.HCM, tài chính rất hạn hẹp, cần tiết kiệm tối đa chi phí nhưng cần có điều hòa.",
+      "query": "Em là sinh viên năm nhất ĐHQG TP.HCM, tài chính eo hẹp tầm 1.5 triệu quay đầu, muốn tìm giường KTX hoặc sleepbox gần trường có máy lạnh.",
+      "latency_s": 31.573,
+      "returned_rooms_count": 0,
+      "top_room_ids": [],
+      "ir_metrics": {
+        "precision_at_3": 0.0,
+        "precision_at_5": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_5": 0.0,
+        "constraint_breakdown": {
+          "price_compliance_pct": 0.0,
+          "distance_compliance_pct": 0.0,
+          "room_type_compliance_pct": 0.0,
+          "area_compliance_pct": 0.0,
+          "amenities_compliance_pct": 0.0,
+          "overall_csr": 0.0
+        }
+      },
+      "judge_report": {
+        "relevance_score": 1.0,
+        "ranking_score": 1.0,
+        "faithfulness_score": 2.0,
+        "overall_score": 1.3,
+        "strengths": [],
+        "weaknesses": [
+          "Hệ thống không trả về phòng trọ nào đáp ứng tiêu chí người dùng"
+        ],
+        "rationale": "Hệ thống trả về 0 phòng và không có lý giải thỏa đáng."
+      }
+    },
+    {
+      "query_id": "G1_02",
+      "group": "G1_BUDGET",
+      "persona_description": "Sinh viên ĐHQG hay làm thêm về muộn, cần giờ giấc tự do và giá dưới 2 triệu.",
+      "query": "Tìm phòng trọ hoặc sleepbox giá rẻ dưới 2 triệu gần làng đại học Thủ Đức, có giờ giấc tự do 24/7.",
+      "latency_s": 28.778,
+      "returned_rooms_count": 0,
+      "top_room_ids": [],
+      "ir_metrics": {
+        "precision_at_3": 0.0,
+        "precision_at_5": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_5": 0.0,
+        "constraint_breakdown": {
+          "price_compliance_pct": 0.0,
+          "distance_compliance_pct": 0.0,
+          "room_type_compliance_pct": 0.0,
+          "area_compliance_pct": 0.0,
+          "amenities_compliance_pct": 0.0,
+          "overall_csr": 0.0
+        }
+      },
+      "judge_report": {
+        "relevance_score": 1.5,
+        "ranking_score": 1.0,
+        "faithfulness_score": 4.5,
+        "overall_score": 2.25,
+        "strengths": [
+          "Phản hồi trung thực thông báo không tìm thấy phòng"
+        ],
+        "weaknesses": [
+          "Hệ thống không trả về phòng trọ nào đáp ứng tiêu chí người dùng"
+        ],
+        "rationale": "Hệ thống trả về danh sách 0 phòng. Câu trả lời có giải thích lý do "
+      }
+    }
+  ]
+}

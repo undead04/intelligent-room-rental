@@ -3,13 +3,11 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Callable
 
-from eval.baselines import old_guardrail
 from eval.datasets.guardrail import build
 from eval.metrics import rate
 from safety.guardrails import check_guardrails
 
 SYSTEMS: dict[str, Callable[[str], bool]] = {          # trả True nếu ĐƯỢC PHÉP đi tiếp
-    "old": lambda t: old_guardrail(t)[0],
     "new": lambda t: check_guardrails(t).allowed,
 }
 
