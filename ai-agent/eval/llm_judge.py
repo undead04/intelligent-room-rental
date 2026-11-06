@@ -546,56 +546,65 @@ def evaluate_recommendation_quality(
         f"<agent_insights>\n{insights_text}\n</agent_insights>"
     )
 
-    try:
-        judge_chain = model.with_structured_output(RecommendationJudgeReport)
-        report = judge_chain.invoke([
-            ("system", system_prompt),
-            ("human", human_prompt),
-        ])
+    import time as _time
+    for attempt in range(3):
+        try:
+            judge_chain = model.with_structured_output(RecommendationJudgeReport)
+            report = judge_chain.invoke([
+                ("system", system_prompt),
+                ("human", human_prompt),
+            ])
 
-        if isinstance(report, RecommendationJudgeReport):
-            # Tính lại overall_score để đảm bảo trọng số chuẩn xác 0.4 / 0.3 / 0.3
-            computed_overall = round(
-                0.4 * report.relevance_score + 0.3 * report.ranking_score + 0.3 * report.faithfulness_score,
-                2,
+            if isinstance(report, RecommendationJudgeReport):
+                # Tính lại overall_score để đảm bảo trọng số chuẩn xác 0.4 / 0.3 / 0.3
+                computed_overall = round(
+                    0.4 * report.relevance_score + 0.3 * report.ranking_score + 0.3 * report.faithfulness_score,
+                    2,
+                )
+                report.overall_score = max(1.0, min(5.0, computed_overall))
+                return report
+
+            if isinstance(report, dict):
+                rel = float(report.get("relevance_score", 3.0))
+                rk = float(report.get("ranking_score", 3.0))
+                ft = float(report.get("faithfulness_score", 3.0))
+                ov = round(0.4 * rel + 0.3 * rk + 0.3 * ft, 2)
+                return RecommendationJudgeReport(
+                    relevance_score=max(1.0, min(5.0, rel)),
+                    ranking_score=max(1.0, min(5.0, rk)),
+                    faithfulness_score=max(1.0, min(5.0, ft)),
+                    overall_score=max(1.0, min(5.0, ov)),
+                    strengths=[str(s) for s in report.get("strengths", []) if str(s).strip()],
+                    weaknesses=[str(w) for w in report.get("weaknesses", []) if str(w).strip()],
+                    rationale=str(report.get("rationale", "")),
+                )
+
+            return _rule_based_recommendation_judge(
+                user_query=user_query,
+                expectation=expectation,
+                rooms=rooms,
+                text_reply=text_reply,
+                insights=insights,
+                budget_tolerance_pct=budget_tolerance_pct,
             )
-            report.overall_score = max(1.0, min(5.0, computed_overall))
-            return report
 
-        if isinstance(report, dict):
-            rel = float(report.get("relevance_score", 3.0))
-            rk = float(report.get("ranking_score", 3.0))
-            ft = float(report.get("faithfulness_score", 3.0))
-            ov = round(0.4 * rel + 0.3 * rk + 0.3 * ft, 2)
-            return RecommendationJudgeReport(
-                relevance_score=max(1.0, min(5.0, rel)),
-                ranking_score=max(1.0, min(5.0, rk)),
-                faithfulness_score=max(1.0, min(5.0, ft)),
-                overall_score=max(1.0, min(5.0, ov)),
-                strengths=[str(s) for s in report.get("strengths", []) if str(s).strip()],
-                weaknesses=[str(w) for w in report.get("weaknesses", []) if str(w).strip()],
-                rationale=str(report.get("rationale", "")),
+        except Exception as e:
+            err_msg = str(e).lower()
+            is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "resource_exhausted", "quota", "too many requests"))
+            if is_rate_limit and attempt < 2:
+                wait_sec = 15.0 * (attempt + 1)
+                logger.warning("evaluate_recommendation_quality chạm rate limit (429), chờ %.1fs rồi thử lại lần %d...", wait_sec, attempt + 1)
+                _time.sleep(wait_sec)
+                continue
+            logger.warning("evaluate_recommendation_quality: Lỗi khi gọi LLM Judge, fallback rule-based: %s", e)
+            return _rule_based_recommendation_judge(
+                user_query=user_query,
+                expectation=expectation,
+                rooms=rooms,
+                text_reply=text_reply,
+                insights=insights,
+                budget_tolerance_pct=budget_tolerance_pct,
             )
-
-        return _rule_based_recommendation_judge(
-            user_query=user_query,
-            expectation=expectation,
-            rooms=rooms,
-            text_reply=text_reply,
-            insights=insights,
-            budget_tolerance_pct=budget_tolerance_pct,
-        )
-
-    except Exception as e:
-        logger.warning("evaluate_recommendation_quality: Lỗi khi gọi LLM Judge, fallback rule-based: %s", e)
-        return _rule_based_recommendation_judge(
-            user_query=user_query,
-            expectation=expectation,
-            rooms=rooms,
-            text_reply=text_reply,
-            insights=insights,
-            budget_tolerance_pct=budget_tolerance_pct,
-        )
 
 
 compute_overall_score = RecommendationJudgeReport.compute_overall_score

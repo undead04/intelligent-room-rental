@@ -160,6 +160,12 @@ Nhằm tối ưu hóa trải nghiệm người dùng và giảm thiểu lượt 
    - *Khi dùng Google Gemini / Cloud OpenAI:* Tự động xóa bỏ các trường thinking khỏi body JSON để triệt tiêu lỗi `400 Bad Request: Unknown name "enable_thinking"`.
 2. **HTTP Auto-Retry:** Decorator tại [`ai-agent/tools/http.py`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/ai-agent/tools/http.py) tự động thử lại tối đa 3 lần với exponential backoff (`0.5s` $\rightarrow$ `1.0s` $\rightarrow$ `2.0s`) khi gặp `httpx.ConnectError`, `httpx.TimeoutException`, hoặc mã lỗi `502, 503, 504`, bảo vệ đồ thị LangGraph không bị gãy trạng thái khi server Backend chập chờn.
 
+### 5.3. Pre-Expansion Geocoding & Rate Limit Resilience Guard:
+1. **Pre-Expansion Geocoding Tổng Quát:** Tại [`ai-agent/tools/housing_tools.py`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/ai-agent/tools/housing_tools.py), trước khi gửi truy vấn sang OpenStreetMap Nominatim, hàm `geocode_point` tự động kích hoạt `expand_location_with_llm` để mở rộng các tên viết tắt (như *ĐHQG TP.HCM*, *Làng Đại học*, *Bách Khoa CS2*, *UIT*...) thành tên chuẩn tự nhiên của cơ sở chính. Cơ chế ưu tiên thử `(expanded, hint)` và `(expanded, None)` trước khi fallback sang chuỗi gốc, loại bỏ hoàn toàn nhu cầu hardcode bảng từ điển hay overfit prompt NLU.
+2. **Rate Limit Pacing & 429 Adaptive Backoff:**
+   - Trong `intelligence/nlu.py` và `eval/llm_judge.py`: Tự động nhận diện lỗi 429 (`Resource Exhausted`, `Quota Exceeded`) và thực hiện adaptive backoff (`12s` - `36s`), ngăn ngừa trạng thái suy sụp (cascading failure).
+   - Trong `eval/run_recommendation_eval.py`: Tích hợp bộ đệm pacing 3.0s giữa các query để bảo vệ hạn ngạch 15 RPM / 500 RPD của các nhà cung cấp LLM Free Tier.
+
 ---
 
 ## 6. 🛡️ Cơ Chế Chống Ảo Giác Hai Tầng (Anti-Hallucination)

@@ -32,7 +32,7 @@ class Settings(BaseModel):
     )
     search_room_timeout: float = Field(default=20.0, description="Timeout HTTP gọi Backend (giây)")
     llm_timeout: float = Field(default=60.0, description="Timeout gọi LLM (giây)")
-    llm_max_retries: int = Field(default=1, description="Số lần retry khi gọi LLM gặp sự cố")
+    llm_max_retries: int = Field(default=3, description="Số lần retry khi gọi LLM gặp sự cố")
     host: str = Field(default="127.0.0.1", description="Host khởi chạy Uvicorn")
     port: int = Field(default=8001, description="Port khởi chạy Uvicorn")
     env: str = Field(default="development", description="Môi trường vận hành")

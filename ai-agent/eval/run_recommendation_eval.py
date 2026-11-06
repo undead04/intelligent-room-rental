@@ -337,21 +337,32 @@ def run_evaluation(
         logger.info("[%d/%d] Chạy Query ID: %s (%s) | \"%s\"", idx, total_queries, q.id, q.group, q.query[:60])
 
         t0 = time.perf_counter()
-        try:
-            # Gọi Agent Service
-            if hasattr(agent, "handle_message"):
-                resp = agent.handle_message(session_id=session_id, message=q.query)
-            else:
-                resp = agent.run(user_message=q.query, session_id=session_id)
-        except Exception as e:
-            logger.error("Lỗi khi thực thi Agent cho query %s: %s", q.id, e, exc_info=True)
-            # Khởi tạo response rỗng dự phòng khi agent gặp lỗi
-            from domain.schemas import AgentResponse
-            resp = AgentResponse(
-                session_id=session_id,
-                text_reply=f"Lỗi hệ thống khi tìm phòng: {e}",
-                rooms=[],
-            )
+        resp = None
+        for attempt in range(3):
+            try:
+                # Gọi Agent Service
+                if hasattr(agent, "handle_message"):
+                    resp = agent.handle_message(session_id=session_id, message=q.query)
+                else:
+                    resp = agent.run(user_message=q.query, session_id=session_id)
+                break
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "resource_exhausted", "quota", "too many requests"))
+                if is_rate_limit and attempt < 2:
+                    wait_sec = 15.0 * (attempt + 1)
+                    logger.warning("Agent gặp Rate Limit (429) ở query %s, chờ %.1fs rồi thử lại lần %d...", q.id, wait_sec, attempt + 1)
+                    time.sleep(wait_sec)
+                    continue
+                logger.error("Lỗi khi thực thi Agent cho query %s: %s", q.id, e, exc_info=True)
+                # Khởi tạo response rỗng dự phòng khi agent gặp lỗi
+                from domain.schemas import AgentResponse
+                resp = AgentResponse(
+                    session_id=session_id,
+                    text_reply=f"Lỗi hệ thống khi tìm phòng: {e}",
+                    rooms=[],
+                )
+                break
 
         latency_s = time.perf_counter() - t0
 
@@ -415,6 +426,7 @@ def run_evaluation(
             },
         }
         query_details.append(query_record)
+        time.sleep(3.0)  # Thư giãn nhẹ tránh chạm trần RPM của LLM API
 
     # 5. Tổng hợp số liệu toàn cục
     latencies = sorted(q["latency_s"] for q in query_details)

@@ -506,6 +506,12 @@ def analyze_turn(
             break
         except Exception as exc:
             err_msg = str(exc).lower()
+            is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "resource_exhausted", "quota", "too many requests"))
+            if is_rate_limit and attempt < 3:
+                wait_sec = 12.0 * (attempt + 1)
+                logger.warning("analyze_turn chạm rate limit (429), chờ %.1fs rồi thử lại lần %d...", wait_sec, attempt + 1)
+                _time.sleep(wait_sec)
+                continue
             is_transient = any(t in err_msg for t in ("model unloaded", "model reloaded", "failed to load model", "connection", "timeout"))
             if is_transient and attempt < 2:
                 _time.sleep(1.0)
