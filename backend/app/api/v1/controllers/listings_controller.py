@@ -100,11 +100,12 @@ def get_price_stats(
     district_id: Optional[int] = Query(None, ge=1, description="ID Quận/Huyện"),
     room_type_id: Optional[int] = Query(None, ge=1, description="ID loại phòng (dạng số nguyên)"),
     room_type: Optional[int] = Query(None, ge=1, description="ID loại phòng dạng số (alias của room_type_id)"),
+    last_d: Optional[int] = Query(None, ge=1, description="Số ngày gần nhất cần thống kê (vd: 30), mặc định None = toàn thời gian"),
     service: ListingService = Depends(get_listing_service),
 ) -> ResponseDTO[PriceStatsResponse]:
     eff_room_type_id = room_type_id if room_type_id is not None else room_type
     return ResponseDTO[PriceStatsResponse](
-        data=service.get_price_stats(city_id, district_id, eff_room_type_id),
+        data=service.get_price_stats(city_id, district_id, eff_room_type_id, last_d=last_d),
     )
 
 

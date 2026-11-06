@@ -1,8 +1,8 @@
 from app.schemas.listing import AmenityCode
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequestException, NotFoundException
@@ -71,9 +71,12 @@ class ListingService:
         self,
         city_id: int,
         district_id: Optional[int],
-        room_type_id: Optional[int]
+        room_type_id: Optional[int],
+        last_d: Optional[int] = None,
     ) -> PriceStatsResponse:
-        current_month, prev_month = month_boundaries()
+        now = datetime.now()
+        current_month, prev_month = month_boundaries(now)
+        since_date = (now - timedelta(days=last_d)) if (last_d is not None and last_d > 0) else None
 
         base_filters = [
             Listing.region_id == city_id,
@@ -86,8 +89,11 @@ class ListingService:
         if room_type_id is not None:
             base_filters.append(Listing.room_type_id == room_type_id)
 
-        total_count, overall_avg, overall_min, overall_max = self.repository.price_aggregates(base_filters)
+        # 1. Thống kê tổng quan: nếu có last_d thì lọc theo N ngày gần nhất, ngược lại lấy tất cả
+        eff_filters = list(base_filters) + ([Listing.posted_date >= since_date] if since_date else [])
+        total_count, overall_avg, overall_min, overall_max = self.repository.price_aggregates(eff_filters)
 
+        # 2. Thống kê biến động giá & tăng trưởng tin theo chu kỳ tháng
         cur_filters = list(base_filters) + [Listing.posted_date >= current_month]
         prev_filters = list(base_filters) + [Listing.posted_date >= prev_month, Listing.posted_date < current_month]
         _, cur_avg = self.repository.count_and_average(cur_filters)
@@ -98,85 +104,137 @@ class ListingService:
                 return None
             return round(((cur - prev) / prev) * 100, 2)
 
-        effective_avg = cur_avg if (cur_avg and cur_avg > 0) else overall_avg
+        by_area_records: list[PriceStatsByArea] = []
+        area_hotspot: Optional[str] = None
+        hotspot_posting_growth: Optional[float] = None
 
-        general = PriceStatsGeneral(
-            total_listings=total_count,
-            average_price_vnd=round(effective_avg, 2) if effective_avg else None,
-            minimum_price_vnd=round(overall_min, 2) if overall_min else None,
-            maximum_price_vnd=round(overall_max, 2) if overall_max else None,
-            price_fluctuation_month=_calc_growth(cur_avg, prev_avg),
-        )
+        if since_date:
+            total_col = func.count(case((Listing.posted_date >= since_date, Listing.id)))
+            avg_col = func.avg(case((Listing.posted_date >= since_date, Listing.price_vnd)))
+            min_col = func.min(case((Listing.posted_date >= since_date, Listing.price_vnd)))
+            max_col = func.max(case((Listing.posted_date >= since_date, Listing.price_vnd)))
+            area_filters = list(base_filters) + [Listing.posted_date >= prev_month]
+        else:
+            total_col = func.count(Listing.id)
+            avg_col = func.avg(Listing.price_vnd)
+            min_col = func.min(Listing.price_vnd)
+            max_col = func.max(Listing.price_vnd)
+            area_filters = list(base_filters)
 
-        by_area_records = []
         if district_id is not None:
             query = (
                 self.db.query(
                     Ward.id,
                     Ward.name,
-                    func.count(Listing.id).label("total_listings"),
-                    func.avg(Listing.price_vnd).label("average_price_vnd"),
-                    func.min(Listing.price_vnd).label("minimum_price_vnd"),
-                    func.max(Listing.price_vnd).label("maximum_price_vnd"),
+                    total_col.label("total_listings"),
+                    avg_col.label("average_price_vnd"),
+                    min_col.label("minimum_price_vnd"),
+                    max_col.label("maximum_price_vnd"),
+                    func.avg(case((Listing.posted_date >= current_month, Listing.price_vnd))).label("current_average"),
+                    func.avg(case(((Listing.posted_date >= prev_month) & (Listing.posted_date < current_month), Listing.price_vnd))).label("previous_average"),
+                    func.count(case((Listing.posted_date >= current_month, Listing.id))).label("current_count"),
+                    func.count(case(((Listing.posted_date >= prev_month) & (Listing.posted_date < current_month), Listing.id))).label("previous_count"),
                 )
                 .join(Listing, Listing.ward_id == Ward.id)
-                .filter(
-                    Listing.district_id == district_id,
-                    Listing.price_vnd.isnot(None),
-                    Listing.price_vnd > 0,
-                    Listing.is_active == True,
-                )
+                .filter(*area_filters)
                 .group_by(Ward.id, Ward.name)
             )
             if room_type_id is not None:
                 query = query.filter(Listing.room_type_id == room_type_id)
+            if since_date:
+                query = query.having(total_col > 0)
+            query = query.order_by(total_col.desc())
 
             rows = query.all()
             for r in rows:
+                cur_avg_area = getattr(r, "current_average", None)
+                prev_avg_area = getattr(r, "previous_average", None)
+                fluctuation = _calc_growth(
+                    float(cur_avg_area) if cur_avg_area is not None else None,
+                    float(prev_avg_area) if prev_avg_area is not None else None,
+                )
                 by_area_records.append(
                     PriceStatsByArea(
                         area_id=r.id,
-                        area=r.name,
-                        total_listings=r.total_listings,
-                        average_price_vnd=round(r.average_price_vnd, 2) if r.average_price_vnd else 0.0,
-                        minimum_price_vnd=round(r.minimum_price_vnd, 2) if r.minimum_price_vnd else None,
-                        maximum_price_vnd=round(r.maximum_price_vnd, 2) if r.maximum_price_vnd else None,
+                        area=str(r.name),
+                        total_listings=int(r.total_listings),
+                        fluctuation_month=fluctuation,
+                        average_price_vnd=round(float(r.average_price_vnd), 2) if r.average_price_vnd else 0.0,
+                        minimum_price_vnd=round(float(r.minimum_price_vnd), 2) if r.minimum_price_vnd else None,
+                        maximum_price_vnd=round(float(r.maximum_price_vnd), 2) if r.maximum_price_vnd else None,
                     )
+                )
+
+            if rows:
+                area_hotspot = str(rows[0].name) if rows[0].name is not None else None
+                cur_c = getattr(rows[0], "current_count", None)
+                prev_c = getattr(rows[0], "previous_count", None)
+                hotspot_posting_growth = _calc_growth(
+                    float(cur_c) if cur_c is not None else None,
+                    float(prev_c) if prev_c is not None else None,
                 )
         else:
             query = (
                 self.db.query(
                     District.id,
                     District.name,
-                    func.count(Listing.id).label("total_listings"),
-                    func.avg(Listing.price_vnd).label("average_price_vnd"),
-                    func.min(Listing.price_vnd).label("minimum_price_vnd"),
-                    func.max(Listing.price_vnd).label("maximum_price_vnd"),
+                    total_col.label("total_listings"),
+                    avg_col.label("average_price_vnd"),
+                    min_col.label("minimum_price_vnd"),
+                    max_col.label("maximum_price_vnd"),
+                    func.avg(case((Listing.posted_date >= current_month, Listing.price_vnd))).label("current_average"),
+                    func.avg(case(((Listing.posted_date >= prev_month) & (Listing.posted_date < current_month), Listing.price_vnd))).label("previous_average"),
+                    func.count(case((Listing.posted_date >= current_month, Listing.id))).label("current_count"),
+                    func.count(case(((Listing.posted_date >= prev_month) & (Listing.posted_date < current_month), Listing.id))).label("previous_count"),
                 )
                 .join(Listing, Listing.district_id == District.id)
-                .filter(
-                    Listing.region_id == city_id,
-                    Listing.price_vnd.isnot(None),
-                    Listing.price_vnd > 0,
-                    Listing.is_active == True,
-                )
+                .filter(*area_filters)
                 .group_by(District.id, District.name)
             )
             if room_type_id is not None:
                 query = query.filter(Listing.room_type_id == room_type_id)
+            if since_date:
+                query = query.having(total_col > 0)
+            query = query.order_by(total_col.desc())
 
             rows = query.all()
             for r in rows:
+                cur_avg_area = getattr(r, "current_average", None)
+                prev_avg_area = getattr(r, "previous_average", None)
+                fluctuation = _calc_growth(
+                    float(cur_avg_area) if cur_avg_area is not None else None,
+                    float(prev_avg_area) if prev_avg_area is not None else None,
+                )
                 by_area_records.append(
                     PriceStatsByArea(
                         area_id=r.id,
-                        area=r.name,
-                        total_listings=r.total_listings,
-                        average_price_vnd=round(r.average_price_vnd, 2) if r.average_price_vnd else 0.0,
-                        minimum_price_vnd=round(r.minimum_price_vnd, 2) if r.minimum_price_vnd else None,
-                        maximum_price_vnd=round(r.maximum_price_vnd, 2) if r.maximum_price_vnd else None,
+                        area=str(r.name),
+                        total_listings=int(r.total_listings),
+                        fluctuation_month=fluctuation,
+                        average_price_vnd=round(float(r.average_price_vnd), 2) if r.average_price_vnd else 0.0,
+                        minimum_price_vnd=round(float(r.minimum_price_vnd), 2) if r.minimum_price_vnd else None,
+                        maximum_price_vnd=round(float(r.maximum_price_vnd), 2) if r.maximum_price_vnd else None,
                     )
                 )
+
+            if rows:
+                area_hotspot = str(rows[0].name) if rows[0].name is not None else None
+                cur_c = getattr(rows[0], "current_count", None)
+                prev_c = getattr(rows[0], "previous_count", None)
+                hotspot_posting_growth = _calc_growth(
+                    float(cur_c) if cur_c is not None else None,
+                    float(prev_c) if prev_c is not None else None,
+                )
+
+        general = PriceStatsGeneral(
+            total_listings=total_count,
+            average_price_vnd=round(overall_avg, 2) if overall_avg else None,
+            minimum_price_vnd=round(overall_min, 2) if overall_min else None,
+            maximum_price_vnd=round(overall_max, 2) if overall_max else None,
+            price_fluctuation_month=_calc_growth(cur_avg, prev_avg),
+            area_hotspot=area_hotspot,
+            hotspot_posting_growth_month=hotspot_posting_growth,
+        )
 
         return PriceStatsResponse(
             price_stats_general=general,
