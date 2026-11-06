@@ -51,7 +51,7 @@ export function usePriceStats() {
     let cancelled = false;
 
     priceStatsApi
-      .get({ city_id: cityId, district_id: districtId, room_type_id: roomTypeId })
+      .get({ city_id: cityId, district_id: districtId, room_type_id: roomTypeId, last_d: 30 })
       .then((stats) => !cancelled && setStatsSnapshot({ queryKey: statsQueryKey, stats, apiError: null }))
       .catch(() =>
         !cancelled &&
