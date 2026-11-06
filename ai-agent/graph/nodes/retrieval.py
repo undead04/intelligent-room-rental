@@ -145,7 +145,7 @@ def make_retrieval_node(deps: Deps):
                 "max_area": pref.max_area,
                 "amenities": [a.value for a in pref.amenities] or None,
                 "preferred_amenities": [a.value for a in pref.preferred_amenities] or None,
-                "max_distance_km": 8.0 if pref.has_point else None,
+                "max_distance_km": 5.0 if pref.has_point else None,
                 "weights": weights or None,
                 "limit": OVERFETCH_LIMIT if pref.excluded_room_types else RESULT_LIMIT,
             }

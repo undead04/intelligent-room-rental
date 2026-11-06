@@ -1,0 +1,162 @@
+{
+  "summary": {
+    "total_scenarios": 3,
+    "successful_scenarios": 3,
+    "multi_turn_success_rate": 1.0,
+    "total_checks": 26,
+    "passed_checks": 26,
+    "context_retention_rate": 1.0,
+    "timestamp": "2026-11-06 20:56:16"
+  },
+  "scenarios": [
+    {
+      "scenario_id": "MT_01_REFINEMENT",
+      "name": "Tinh chỉnh Ràng buộc & Tích lũy Tiện ích (Preference Refinement)",
+      "description": "Người dùng thêm tiện ích máy giặt và giờ tự do, sau đó nới ngân sách mà không nhắc lại địa điểm.",
+      "all_passed": true,
+      "turns": [
+        {
+          "turn": 1,
+          "input": "Tìm phòng trọ gần ĐHQG Thủ Đức giá dưới 2 triệu có máy lạnh",
+          "latency_s": 9.338,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "has_rooms": true,
+            "location_retention": true,
+            "budget_retention": true,
+            "amenity_retention": true
+          },
+          "issues": [],
+          "reply_preview": "Homigo đã tìm được 5 phòng phù hợp nhất với nhu cầu của bạn:\n\n1. **KTX RED HOME ƯU ĐÃI 1TR/THÁNG **\n   - Giá thuê: 1 triệu/tháng\n   - Địa chỉ: Đường Số 2, Phường Linh Xuân (Quận Thủ Đức cũ), Thành phố"
+        },
+        {
+          "turn": 2,
+          "input": "Thêm cho mình máy giặt với giờ tự do nữa nhé",
+          "latency_s": 9.14,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "has_rooms": true,
+            "location_retention": true,
+            "budget_retention": true,
+            "amenity_retention": true
+          },
+          "issues": [],
+          "reply_preview": "Homigo đã tìm được 5 phòng phù hợp nhất với nhu cầu của bạn:\n\n1. **Ký túc xá Lê Văn Việt Quận 9 (Thủ Đức)**\n   - Giá thuê: 1 triệu/tháng\n   - Địa chỉ: Đường 447, Phường Tăng Nhơn Phú A (Quận 9 cũ), Th"
+        },
+        {
+          "turn": 3,
+          "input": "Nới ngân sách lên tối đa 2.5 triệu xem có thêm phòng không bạn",
+          "latency_s": 8.585,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "has_rooms": true,
+            "location_retention": true,
+            "budget_retention": true,
+            "amenity_retention": true
+          },
+          "issues": [],
+          "reply_preview": "Homigo đã tìm được 5 phòng phù hợp nhất với nhu cầu của bạn:\n\n1. **Ký túc xá Lê Văn Việt Quận 9 (Thủ Đức)**\n   - Giá thuê: 1 triệu/tháng\n   - Địa chỉ: Đường 447, Phường Tăng Nhơn Phú A (Quận 9 cũ), Th"
+        }
+      ]
+    },
+    {
+      "scenario_id": "MT_02_ROLLBACK",
+      "name": "Chuyển Đổi Khu Vực & Khôi Phục Snapshot (Context Switching & Rollback)",
+      "description": "Người dùng đổi khu vực tìm kiếm sang quận khác, sau đó yêu cầu quay lại tìm ở quận cũ.",
+      "all_passed": true,
+      "turns": [
+        {
+          "turn": 1,
+          "input": "Tìm phòng trọ ở Quận 10 tầm 3 triệu",
+          "latency_s": 5.656,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "has_rooms": true,
+            "location_retention": true,
+            "budget_retention": true
+          },
+          "issues": [],
+          "reply_preview": "Chào bạn, mình đã tìm hiểu các lựa chọn phòng trọ tại khu vực trung tâm theo đúng mức tài chính bạn mong muốn.\n\n1. **PHÒNG TRỌ KTX 900K/THÁNG GIÁ RẺ QUẬN 10**\n   - Giá thuê: 900,000 đ/tháng\n   - Địa c"
+        },
+        {
+          "turn": 2,
+          "input": "Thôi đổi qua tìm ở Bình Thạnh giá tầm 3.5 triệu giúp mình",
+          "latency_s": 3.175,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "has_rooms": true,
+            "location_retention": true,
+            "budget_retention": true
+          },
+          "issues": [],
+          "reply_preview": "Chào bạn, mình đã tìm được một số lựa chọn phù hợp với khu vực và ngân sách tại Bình Thạnh mà bạn mong muốn.\n\n1. **Phòng đẹp, máy lạnh, giá rất rẻ Bình Thạnh**\n   - Giá thuê: 1.8 triệu/tháng\n   - Địa "
+        },
+        {
+          "turn": 3,
+          "input": "Thôi quay lại tìm ở Quận 10 như lúc nãy đi bạn",
+          "latency_s": 3.313,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "has_rooms": true,
+            "location_retention": true
+          },
+          "issues": [],
+          "reply_preview": "Chào bạn, mình đã lọc lại danh sách các lựa chọn phù hợp tại khu vực bạn yêu cầu với mức chi phí rất tiết kiệm.\n\n1. **PHÒNG TRỌ KTX 900K/THÁNG GIÁ RẺ QUẬN 10**\n   - Giá thuê: 900,000 đ/tháng\n   - Địa "
+        }
+      ]
+    },
+    {
+      "scenario_id": "MT_03_FOLLOWUP_QA",
+      "name": "Hỏi Đáp Ngữ Cảnh Phòng & Chi Phí (In-Context Reference)",
+      "description": "Người dùng hỏi sâu về phòng trong danh sách kết quả (nuôi thú cưng, tiền cọc, khoảng cách).",
+      "all_passed": true,
+      "turns": [
+        {
+          "turn": 1,
+          "input": "Tìm phòng trọ gần ĐH Bách Khoa CS1 Q10 dưới 3.5 triệu",
+          "latency_s": 3.761,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "has_rooms": true,
+            "location_retention": true
+          },
+          "issues": [],
+          "reply_preview": "Chào bạn, mình đã tìm được một số lựa chọn phù hợp với nhu cầu học tập gần trường Bách Khoa và nằm trong ngân sách của bạn.\n\n1. **cho thuê phòng trọ, sleep box quận 10 giá rẻ**\n   - Giá thuê: 1.8 triệ"
+        },
+        {
+          "turn": 2,
+          "input": "Phòng đầu tiên có cho nuôi mèo không bạn?",
+          "latency_s": 3.166,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "reply_relevance": true,
+            "no_template_dump": true
+          },
+          "issues": [],
+          "reply_preview": "Chào bạn, dựa trên thông tin chi tiết của phòng đầu tiên (Sleep box đường Sư Vạn Hạnh), chủ trọ quy định không cho phép nuôi thú cưng (`pet_allowed: false`). \n\nBù lại, phòng có mức giá 1.8 triệu/tháng"
+        },
+        {
+          "turn": 3,
+          "input": "Còn phòng số 2 thì giá thuê và cọc bao nhiêu vậy?",
+          "latency_s": 2.739,
+          "passed": true,
+          "rooms_count": 5,
+          "checks": {
+            "reply_relevance": true,
+            "no_template_dump": true
+          },
+          "issues": [],
+          "reply_preview": "Chào bạn, với phòng trọ mini Sư Vạn Hạnh (Top 2), giá thuê là 1.2 triệu/tháng và tiền cọc cũng tương đương 1.2 triệu/tháng (đúng bằng 1 tháng tiền nhà). \n\nPhòng này có diện tích 10 m², nằm cách trường"
+        }
+      ]
+    }
+  ]
+}

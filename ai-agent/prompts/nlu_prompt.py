@@ -50,9 +50,9 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
    - Yêu cầu giảm nhẹ ("ưu tiên", "càng tốt", "có thì tốt") -> preferred_amenities_add; bỏ tiện ích -> amenities_remove.
    - CHỈ điền room_types_exclude khi có từ phủ định rõ ràng ("không lấy KTX", "trừ sleepbox"). Chỉ nói "tìm phòng"/"tìm phòng trọ" thì room_types_exclude=[].
 3. ĐỊA DANH (location_kind, location_is_vague):
-   - location_kind="admin": MỌI tên Tỉnh/Thành phố, Quận/Huyện, Thị xã, Phường/Xã, kể cả khi KHÔNG ghi từ "Tỉnh/Quận/Phường" (vd: "Quảng Ngãi", "Dĩ An", "Thủ Đức", "Cầu Giấy Hà Nội", "Linh Trung Thủ Đức", "Quận 7").
-   - location_kind="place": CHỈ cho điểm mốc cụ thể có tên riêng như trường đại học, KTX, chợ, bến xe, KCN có tên riêng, toà nhà, con đường (vd: "UIT", "ĐH Bách Khoa", "chợ Thủ Đức", "KCN VSIP 1").
-   - Danh từ chung chưa có tên riêng ("gần trường đại học", "gần khu công nghiệp ở Bình Dương") -> location_is_vague=true, location_text=null, BẮT BUỘC điền loại địa điểm vào vague_category (vd: "khu công nghiệp", "trường") và tỉnh/thành vào location_region (vd: "Bình Dương") nếu có.
+   - location_kind="admin": MỌI tên Tỉnh/Thành phố, Quận/Huyện, Thị xã, Phường/Xã, kể cả khi KHÔNG ghi từ "Tỉnh/Quận/Phường" (vd: "Quảng Ngãi", "Dĩ An", "Thủ Đức", "Cầu Giấy Hà Nội", "Linh Trung Thủ Đức", "Quận 1", "Quận 7"). Tuyệt đối KHÔNG coi "Quận 1" hay các quận là mơ hồ/trùng tên. location_is_vague=false.
+   - location_kind="place": CHỈ cho điểm mốc cụ thể có tên riêng như trường đại học, KTX, chợ, bến xe, KCN có tên riêng, toà nhà, con đường (vd: "UIT", "ĐH Bách Khoa", "Bách Khoa CS1 Q10", "ĐHQG", "ĐHQG TP.HCM", "Làng Đại học", "Làng Đại học Thủ Đức", "SPKT", "SPKT HCMUTE", "chợ Bến Thành", "chợ Thủ Đức", "KCN VSIP 1"). location_is_vague=false.
+   - CHỈ đặt location_is_vague=true khi là danh từ chung chung chưa có tên riêng ("gần trường đại học", "gần khu công nghiệp ở Bình Dương", "gần chỗ làm") -> location_text=null, BẮT BUỘC điền loại địa điểm vào vague_category (vd: "khu công nghiệp", "trường") và tỉnh/thành vào location_region (vd: "Bình Dương") nếu có.
 4. NGÂN SÁCH (đơn vị VNĐ, điền số nguyên):
    - Quy đổi: "3tr" = 3000000; "3tr5" = "3 triệu rưỡi" = "3 củ rưỡi" = 3500000; "800k" = 800000; "4 củ" = 4000000.
    - Người dùng nêu MỘT mức giá ("dưới 3tr", "khoảng 3 triệu", "tầm 3tr5", "loanh quanh 3 củ rưỡi", "phòng 4 củ") -> CHỈ điền max_price, BẮT BUỘC min_price=null.

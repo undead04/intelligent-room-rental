@@ -142,6 +142,18 @@ Lưu trữ vector ngữ nghĩa phục vụ Dense Retrieval trong Hybrid Search:
 | `content_hash`| `VARCHAR(64)` | `NULLABLE, INDEX` | Hash SHA-256 để phát hiện thay đổi nội dung cần re-embed. |
 | `created_at` / `updated_at` | `TIMESTAMP` | `NOT NULL` | Thời gian khởi tạo / cập nhật vector. |
 
+### 2.3. Các Chỉ Mục Tối Ưu Truy Vấn & Hybrid Search (PostgreSQL Indexes)
+Để đảm bảo hiệu năng cao cho Hybrid Search 70/30 và bộ lọc đa chiều trên tập dữ liệu hàng chục nghìn bài đăng, PostgreSQL được cấu hình các chỉ mục chuyên dụng:
+
+| Tên Chỉ Mục | Bảng | Kiểu Index | Cột / Biểu Thức Index | Mục Đích Tối Ưu Hóa |
+| :--- | :--- | :--- | :--- | :--- |
+| `idx_listing_embeddings_vector_hnsw` | `listing_embeddings` | **HNSW** (`vector_cosine_ops`, $m=16, ef=64$) | `vector` (`VECTOR(768)`) | Tối ưu hóa cực đại tốc độ Dense Vector Search bằng khoảng cách Cosine `<=>`. |
+| `idx_listings_fts_full` | `listings` | **GIN** | `to_tsvector('simple', coalesce(title, '') \|\| ' ' \|\| coalesce(address_raw, '') \|\| ' ' \|\| coalesce(description, ''))` | Tối ưu hóa tốc độ Sparse Full-Text Search đa trường với toán tử immutable `\|\|`. |
+| `idx_listings_is_active` | `listings` | **B-tree** | `is_active` | Lọc nhanh các bài đăng còn hiệu lực (`is_active = TRUE`). |
+| `idx_listings_active_composite` | `listings` | **B-tree** (Partial) | `(region_id, district_id, room_type_id) WHERE is_active = TRUE` | Tăng tốc truy vấn kết hợp vùng địa lý và loại phòng khi lọc. |
+
+> *Ghi chú: File migration khởi tạo và kiểm tra các chỉ mục trên được quản lý tập trung tại [`backend/migrations/001_add_hnsw_and_gin_indexes.sql`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/backend/migrations/001_add_hnsw_and_gin_indexes.sql) và thực thi qua [`backend/migrations/run_migration.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/backend/migrations/run_migration.py).*
+
 ---
 
 ## 3. 💾 Cấu Trúc Bảng SQLite Staging DB (`crawler/data/staging.db`)

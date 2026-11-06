@@ -26,7 +26,6 @@ from domain.budget import (
     MarketFetcher,
     fetch_market_stats,
     propose_budget,
-    relax_budget,
 )
 from domain.enums import normalize_room_type
 from domain.filters import renumber
@@ -142,7 +141,7 @@ def _explanation(bp: BudgetProposal, proposed: Optional[float] = None) -> str:
     if bp.is_market_gap and bp.market:
         avg = f" (trung bình ~{format_vnd_million(bp.market.avg_price)})" if bp.market.avg_price else ""
         return f"Tại {area}, giá phòng thấp nhất ghi nhận từ {format_vnd_million(bp.market.min_price)}{avg}. Ngân sách {user} hiện chưa đủ để tiếp cận phòng tại đây."
-    return f"Có thể cân nhắc nới ngân sách lên khoảng {prop} (+15%) để tiếp cận thêm các lựa chọn tốt."
+    return "Có thể cân nhắc điều chỉnh nới nhẹ ngân sách hoặc mở rộng sang các khu vực lân cận để tiếp cận thêm các lựa chọn tốt."
 
 
 def build_market_context(
@@ -162,11 +161,7 @@ def build_market_context(
         excluded_room_types=pref.excluded_room_types,
     )
     m = bp.market if bp else None
-    proposed = (
-        bp.proposed_budget
-        if (bp and bp.is_market_gap)
-        else (relax_budget(bp.user_budget) if bp and bp.user_budget else None)
-    )
+    proposed = bp.proposed_budget if (bp and bp.is_market_gap) else None
     return MarketContext(
         area_name=bp.area_name if bp else (area_name or pref.location_text),
         user_budget=bp.user_budget if bp else None,
