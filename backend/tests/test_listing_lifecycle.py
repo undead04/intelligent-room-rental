@@ -35,32 +35,40 @@ def db_session():
 @pytest.fixture(scope="module")
 def setup_lifecycle_data(db_session):
     """Tạo dữ liệu thử nghiệm có cả tin active và tin expired trong DB."""
-    # Đảm bảo có location cơ bản
-    city = db_session.query(City).filter(City.id == 1).first()
-    if not city:
-        city = City(id=1, name="Hồ Chí Minh")
-        db_session.add(city)
-        db_session.commit()
-
-    district = db_session.query(District).filter(District.id == 1).first()
-    if not district:
-        district = District(id=1, city_id=1, name="Quận 1")
-        db_session.add(district)
-        db_session.commit()
-
-    ward = db_session.query(Ward).filter(Ward.id == 1).first()
-    if not ward:
-        ward = Ward(id=1, district_id=1, name="Bến Nghé")
-        db_session.add(ward)
-        db_session.commit()
-
+    # Dọn dẹp dữ liệu test cũ nếu còn sót lại từ lần chạy trước
     active_id = "test_lifecycle_active_9999"
     expired_id = "test_lifecycle_expired_8888"
-
-    # Xóa dữ liệu cũ nếu có
     db_session.query(ListingEmbedding).filter(ListingEmbedding.listing_id.in_([active_id, expired_id])).delete(synchronize_session=False)
     db_session.query(Listing).filter(Listing.id.in_([active_id, expired_id])).delete(synchronize_session=False)
+    old_wards = db_session.query(Ward).filter(Ward.name == "__TEST_LIFECYCLE_WARD__").all()
+    for w in old_wards:
+        db_session.delete(w)
+    old_dists = db_session.query(District).filter(District.name == "__TEST_LIFECYCLE_DISTRICT__").all()
+    for d in old_dists:
+        db_session.delete(d)
     db_session.commit()
+
+    # Lấy city có sẵn (ưu tiên TP Hồ Chí Minh)
+    city = db_session.query(City).filter(City.name.ilike("%Hồ Chí Minh%")).first()
+    if not city:
+        city = db_session.query(City).first()
+
+    # Tạo district và ward RIÊNG BIỆT cho bài test để cô lập hoàn toàn với dữ liệu production
+    test_dist = District(city_id=city.id, name="__TEST_LIFECYCLE_DISTRICT__")
+    db_session.add(test_dist)
+    db_session.flush()
+
+    test_ward = Ward(district_id=test_dist.id, name="__TEST_LIFECYCLE_WARD__")
+    db_session.add(test_ward)
+    db_session.flush()
+    db_session.commit()
+
+    city_id = city.id
+    district_id = test_dist.id
+    ward_id = test_ward.id
+
+    active_addr = f"123 Lê Lợi, {test_ward.name}, {test_dist.name}"
+    expired_addr = f"456 Hai Bà Trưng, {test_ward.name}, {test_dist.name}"
 
     # Tạo tin active
     active_listing = Listing(
@@ -68,12 +76,12 @@ def setup_lifecycle_data(db_session):
         title="Phòng trọ cao cấp test active",
         price_vnd=4500000.0,
         area_m2=25.0,
-        address_raw="123 Lê Lợi, Bến Nghé, Quận 1",
+        address_raw=active_addr,
         lat=10.776,
         lng=106.700,
-        region_id=1,
-        district_id=1,
-        ward_id=1,
+        region_id=city_id,
+        district_id=district_id,
+        ward_id=ward_id,
         is_active=True,
         status="active",
         last_checked_at=datetime.now(),
@@ -85,12 +93,12 @@ def setup_lifecycle_data(db_session):
         title="Phòng trọ giá rẻ test expired",
         price_vnd=3000000.0,
         area_m2=20.0,
-        address_raw="456 Hai Bà Trưng, Bến Nghé, Quận 1",
+        address_raw=expired_addr,
         lat=10.780,
         lng=106.695,
-        region_id=1,
-        district_id=1,
-        ward_id=1,
+        region_id=city_id,
+        district_id=district_id,
+        ward_id=ward_id,
         is_active=False,
         status="expired_or_deleted",
         last_checked_at=datetime.now(),
@@ -106,11 +114,21 @@ def setup_lifecycle_data(db_session):
     db_session.add_all([emb1, emb2])
     db_session.commit()
 
-    yield {"active_id": active_id, "expired_id": expired_id}
+    yield {
+        "active_id": active_id,
+        "expired_id": expired_id,
+        "city_id": city_id,
+        "district_id": district_id,
+        "ward_id": ward_id,
+        "active_address_raw": active_addr,
+        "expired_address_raw": expired_addr,
+    }
 
     # Cleanup sau khi test
     db_session.query(ListingEmbedding).filter(ListingEmbedding.listing_id.in_([active_id, expired_id])).delete(synchronize_session=False)
     db_session.query(Listing).filter(Listing.id.in_([active_id, expired_id])).delete(synchronize_session=False)
+    db_session.delete(test_ward)
+    db_session.delete(test_dist)
     db_session.commit()
 
 
@@ -126,8 +144,8 @@ def test_search_excludes_expired_listings(db_session, setup_lifecycle_data):
 
     results = repo.search(
         search="test",
-        city_id=1,
-        district_id=1,
+        city_id=setup_lifecycle_data["city_id"],
+        district_id=setup_lifecycle_data["district_id"],
         ward_id=None,
         room_type_id=None,
         min_price=None,
@@ -155,8 +173,8 @@ def test_vector_search_excludes_expired_listings(db_session, setup_lifecycle_dat
     results = repo.vector_search(
         query_vector=dummy_query_vector,
         query_text="phòng trọ test",
-        city_id=1,
-        district_id=1,
+        city_id=setup_lifecycle_data["city_id"],
+        district_id=setup_lifecycle_data["district_id"],
         limit=20,
     )
 
@@ -168,14 +186,23 @@ def test_vector_search_excludes_expired_listings(db_session, setup_lifecycle_dat
 def test_nearby_locations_excludes_expired_listings(db_session, setup_lifecycle_data):
     """Nhóm 1: Xác minh gợi ý địa điểm lân cận chỉ tính toán dựa trên các tin active."""
     loc_repo = LocationRepository(db_session)
-    nearby = loc_repo.nearby_locations(lat=10.776, lng=106.700, district_id=1, radius_km=5.0)
+    nearby = loc_repo.nearby_locations(
+        lat=10.776,
+        lng=106.700,
+        district_id=setup_lifecycle_data["district_id"],
+        radius_km=5.0,
+    )
     assert isinstance(nearby, list)
 
 
 def test_price_aggregates_and_stats_excludes_expired_listings(db_session, setup_lifecycle_data):
     """Nhóm 1: Xác minh thống kê giá phòng (price_aggregates & get_price_stats) loại trừ hoàn toàn tin expired."""
     service = ListingService(db_session)
-    stats_res = service.get_price_stats(city_id=1, district_id=1, room_type_id=None)
+    stats_res = service.get_price_stats(
+        city_id=setup_lifecycle_data["city_id"],
+        district_id=setup_lifecycle_data["district_id"],
+        room_type_id=None,
+    )
 
     # Thống kê chung
     assert stats_res.price_stats_general is not None
@@ -187,7 +214,7 @@ def test_price_aggregates_and_stats_excludes_expired_listings(db_session, setup_
     # Thống kê theo khu vực (phường)
     if stats_res.price_stats_by_area:
         for area_stat in stats_res.price_stats_by_area:
-            if area_stat.area_id == 1:
+            if area_stat.area_id == setup_lifecycle_data["ward_id"]:
                 assert area_stat.minimum_price_vnd is not None
                 assert area_stat.minimum_price_vnd >= 4500000.0
 
@@ -293,13 +320,13 @@ def test_schema_edge_cases_null_timestamp_and_unusual_status():
     assert dto4.status_notice is None
 
 
-def test_boundary_whitespace_search_query(db_session):
+def test_boundary_whitespace_search_query(db_session, setup_lifecycle_data):
     """Nhóm 2: Boundary - Chuỗi tìm kiếm chỉ có khoảng trắng không gây crash và xử lý an toàn."""
     repo = ListingRepository(db_session)
     results = repo.search(
         search="   ",
-        city_id=1,
-        district_id=1,
+        city_id=setup_lifecycle_data["city_id"],
+        district_id=setup_lifecycle_data["district_id"],
         ward_id=None,
         room_type_id=None,
         min_price=None,
@@ -353,7 +380,7 @@ def test_immutability_core_fields_intact(db_session, setup_lifecycle_data):
     assert listing.area_m2 == 20.0
     assert listing.lat == 10.780
     assert listing.lng == 106.695
-    assert listing.address_raw == "456 Hai Bà Trưng, Bến Nghé, Quận 1"
+    assert listing.address_raw == setup_lifecycle_data["expired_address_raw"]
 
 
 # ==============================================================================
@@ -396,8 +423,11 @@ def test_http_api_endpoints_for_lifecycle(setup_lifecycle_data):
     active_id = setup_lifecycle_data["active_id"]
     expired_id = setup_lifecycle_data["expired_id"]
 
+    cid = setup_lifecycle_data["city_id"]
+    did = setup_lifecycle_data["district_id"]
+
     # 1. Search endpoint
-    res_search = client.get("/api/v1/listings/?search=test&city_id=1&district_id=1")
+    res_search = client.get(f"/api/v1/listings/?search=test&city_id={cid}&district_id={did}")
     assert res_search.status_code == 200
     search_data = res_search.json().get("data", [])
     returned_ids = [item["id"] for item in search_data]
