@@ -223,11 +223,12 @@ class ListingRepository:
         ).label("distance")
 
         clean_query = (query_text or "").strip()
-        text_content = func.concat_ws(
-            " ",
-            func.coalesce(Listing.title, ""),
-            func.coalesce(Listing.address_raw, ""),
-            func.coalesce(Listing.description, ""),
+        text_content = (
+            func.coalesce(Listing.title, "")
+            + " "
+            + func.coalesce(Listing.address_raw, "")
+            + " "
+            + func.coalesce(Listing.description, "")
         )
         ts_vector = func.to_tsvector("simple", text_content)
         or_query_str = _build_or_tsquery_string(clean_query)
