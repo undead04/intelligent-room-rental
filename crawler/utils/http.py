@@ -29,9 +29,10 @@ def fetch_with_retry(url, params=None, max_retries=3, backoff_factor=2):
         except requests.RequestException as e:
             print(f"[Lỗi mạng] {e}", flush=True)
         
-        sleep_time = backoff_factor ** attempt
-        print(f"Thử lại sau {sleep_time}s (Lần {attempt + 1}/{max_retries})...", flush=True)
-        time.sleep(sleep_time)
+        if attempt < max_retries - 1:
+            sleep_time = backoff_factor ** attempt
+            print(f"Thử lại sau {sleep_time}s (Lần {attempt + 1}/{max_retries})...", flush=True)
+            time.sleep(sleep_time)
     
     return None
 
@@ -62,8 +63,9 @@ def fetch_with_status(url, params=None, max_retries=3, backoff_factor=2):
         except requests.RequestException as e:
             print(f"[Lỗi mạng] {e}", flush=True)
         
-        sleep_time = backoff_factor ** attempt
-        time.sleep(sleep_time)
+        if attempt < max_retries - 1:
+            sleep_time = backoff_factor ** attempt
+            time.sleep(sleep_time)
         
     return None, None
 
