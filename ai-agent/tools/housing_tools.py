@@ -47,7 +47,7 @@ def admin_lookup(level: str, name: str, city_id: Optional[int] = None, district_
 # Định vị điểm
 # =============================================================================
 def expand_location_with_llm(query: str, hint: Optional[str] = None) -> str:
-    """Đường dự phòng khi /geocode 404: nhờ LLM đổi viết tắt/tên lóng thành tên đầy đủ. Lỗi -> giữ nguyên."""
+    """Pre-expansion tổng quát: nhờ LLM mở rộng viết tắt/tên lóng/cơ sở thành tên chuẩn OpenStreetMap. Lỗi -> giữ nguyên."""
     try:
         from core.llm import get_llm
 
@@ -55,8 +55,14 @@ def expand_location_with_llm(query: str, hint: Optional[str] = None) -> str:
         if model is None:
             return query
         where = f" tại khu vực {hint}" if hint else " tại Việt Nam"
-        res = model.invoke([("system", "Bạn chuẩn hoá địa danh bản đồ Việt Nam. Chỉ trả về MỘT dòng: tên địa điểm đầy đủ kèm quận/thành phố, không giải thích."),
-                            ("human", f"Chuẩn hoá để tra OpenStreetMap{where}: \"{query}\"")])
+        prompt = (
+            "Bạn là chuyên gia địa lý Việt Nam. Hãy mở rộng tên viết tắt, tên thông tục hoặc cơ sở của địa điểm thành tên gọi chuẩn xác, tự nhiên nhất để tìm kiếm trên bản đồ OpenStreetMap (Ví dụ: 'ĐHQG TP.HCM' -> 'Khu đô thị Đại học Quốc gia TP.HCM', 'Bách Khoa CS2' -> 'Đại học Bách Khoa cơ sở 2', 'SPKT' -> 'Đại học Sư phạm Kỹ thuật TP.HCM'). "
+            "Chỉ trả về DUY NHẤT một dòng tên địa điểm, không giải thích."
+        )
+        res = model.invoke([
+            ("system", prompt),
+            ("human", f"Mở rộng địa điểm{where}: \"{query}\"")
+        ])
         text = getattr(res, "content", res)
         expanded = str(text).strip().strip("\"'")
         if 3 < len(expanded) < 120 and not expanded.lower().startswith(("tôi", "xin lỗi")):
@@ -67,11 +73,27 @@ def expand_location_with_llm(query: str, hint: Optional[str] = None) -> str:
 
 
 def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, float]]:
-    """Hàm lõi: tên địa điểm cụ thể -> {"lat","lng"} hoặc None. KHÔNG kiểm tra hành chính (caller đã biết là địa điểm cụ thể)."""
+    """Hàm lõi: tên địa điểm cụ thể -> {"lat","lng"} hoặc None.
+    Sử dụng Pre-Expansion Geocoding thông minh để ưu tiên chuẩn hóa tên viết tắt/cơ sở trước khi tra OpenStreetMap.
+    """
     q = (query or "").strip()
     if not q:
         return None
-    attempts = [(q, hint)]
+
+    attempts: list[tuple[str, Optional[str]]] = []
+
+    # 1. Pre-expansion bằng LLM (chuẩn hóa tên viết tắt / cơ sở chính trước khi gọi OpenStreetMap)
+    expanded = expand_location_with_llm(q, hint)
+    if expanded and expanded != q:
+        attempts.append((expanded, hint))
+        if hint:
+            attempts.append((expanded, None))
+
+    # 2. Dự phòng: Thử truy vấn gốc
+    attempts.append((q, hint))
+    if hint:
+        attempts.append((q, None))
+
     tried: set[tuple[str, Optional[str]]] = set()
     while attempts:
         text, h = attempts.pop(0)
@@ -84,12 +106,6 @@ def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, 
             lng = data.get("lon", data.get("lng"))
             if lng is not None:
                 return {"lat": float(data["lat"]), "lng": float(lng)}
-        if res.get("status") == 404 and len(tried) == 1:           # lần đầu 404: thử mở rộng bằng LLM, rồi bỏ hint
-            expanded = expand_location_with_llm(q, hint)
-            if expanded != q:
-                attempts.append((expanded, hint))
-                if hint:
-                    attempts.append((expanded, None))
     return None
 
 
