@@ -122,6 +122,15 @@ def interpret_turn(
         recent_user_turns=recent_user_turns,
     )
 
+    if analysis is not None and getattr(analysis.patch, "location_is_vague", False):
+        loc_str = strip_accents(str(analysis.patch.location_text or user_text)).lower()
+        specific_landmarks = (
+            "dhqg", "lang dai hoc", "spkt", "hcmute", "bach khoa", "ueh", "hutech",
+            "quan 1", "quan 7", "quan 10", "q1", "q7", "q10", "ben thanh", "phu my hung",
+        )
+        if any(kw in loc_str for kw in specific_landmarks):
+            analysis.patch.location_is_vague = False
+
     if analysis is None:
         # Không có model hoặc LLM lỗi: không dùng regex đoán mò, yêu cầu làm rõ an toàn
         empty_analysis = TurnAnalysis(intent="smalltalk")

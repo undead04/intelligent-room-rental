@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
 
-from eval.eval_common import (
+from eval_common import (
         FAIL,
         PASS,
         SKIP,

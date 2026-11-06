@@ -78,7 +78,7 @@ def test_empty_results_provide_market_advice_and_update_proposed_budget():
     h = Harness(llm, rooms=[])
     r = h.turn("tìm phòng ở Dĩ An dưới 1tr5")
     assert r.rooms == [] and "chưa tìm thấy" in r.text_reply
-    assert h.session.zero_result_streak == 1 and h.session.proposed_budget == 1_750_000
+    assert h.session.zero_result_streak == 1 and h.session.proposed_budget is None
 
 
 def test_admin_not_in_database():

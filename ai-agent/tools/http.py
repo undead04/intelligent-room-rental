@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
+import time
 from typing import Any, Optional
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 API_BASE = os.environ.get("SEARCH_ROOM_API_BASE", "http://localhost:8000/api/v1").rstrip("/")
 TIMEOUT = float(os.environ.get("SEARCH_ROOM_TIMEOUT", "20.0"))
+MAX_RETRIES = int(os.environ.get("TOOL_HTTP_MAX_RETRIES", "3"))
+BACKOFF_BASE = float(os.environ.get("TOOL_HTTP_BACKOFF_BASE", "0.5"))
+RETRYABLE_STATUS_CODES = {502, 503, 504}
 
 _client: Optional[httpx.Client] = None
 _lock = threading.Lock()
@@ -50,9 +57,31 @@ def unwrap_response(resp: httpx.Response) -> dict[str, Any]:
 
 
 def request(method: str, path: str, *, params: Optional[dict] = None, json: Optional[dict] = None) -> dict[str, Any]:
-    """Gọi API, KHÔNG BAO GIỜ ném lỗi: lỗi mạng -> {"ok": False, "error": ...}."""
-    try:
-        resp = get_client().request(method, path, params=params, json=json)
-    except httpx.HTTPError as e:
-        return {"ok": False, "error": f"Không thể kết nối đến {API_BASE}{path}: {e}"}
-    return unwrap_response(resp)
+    """Gọi API với cơ chế Retry tự động cho lỗi mạng và lỗi tạm thời 502/503/504."""
+    last_err: Optional[Exception] = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = get_client().request(method, path, params=params, json=json)
+            if resp.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES:
+                sleep_s = BACKOFF_BASE * (2 ** (attempt - 1))
+                logger.warning(
+                    "API %s %s trả về HTTP %d (thử lại lần %d/%d sau %.1fs)",
+                    method, path, resp.status_code, attempt, MAX_RETRIES, sleep_s
+                )
+                time.sleep(sleep_s)
+                continue
+            return unwrap_response(resp)
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
+            last_err = e
+            if attempt < MAX_RETRIES:
+                sleep_s = BACKOFF_BASE * (2 ** (attempt - 1))
+                logger.warning(
+                    "Lỗi kết nối %s %s: %s (thử lại lần %d/%d sau %.1fs)",
+                    method, path, e, attempt, MAX_RETRIES, sleep_s
+                )
+                time.sleep(sleep_s)
+                continue
+        except httpx.HTTPError as e:
+            return {"ok": False, "error": f"Không thể kết nối đến {API_BASE}{path}: {e}"}
+
+    return {"ok": False, "error": f"Không thể kết nối đến {API_BASE}{path} sau {MAX_RETRIES} lần thử: {last_err}"}
