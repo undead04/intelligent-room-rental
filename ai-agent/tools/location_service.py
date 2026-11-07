@@ -293,9 +293,17 @@ def resolve_admin(text: str, admin_lookup: AdminLookup, region_hint: Optional[st
                 return _row_to_resolution("ward", w[0], d[0].get("city_id") or region_city, d[0].get("id"))
         c = _lookup_exact("city", parts[1], admin_lookup)
         if len(c) == 1:
-            dd = _lookup_exact("district", parts[0], admin_lookup, city_id=c[0].get("id"))
+            city_id = c[0].get("id")
+            dd = _lookup_exact("district", parts[0], admin_lookup, city_id=city_id)
             if len(dd) == 1:
-                return _row_to_resolution("district", dd[0], c[0].get("id"))
+                return _row_to_resolution("district", dd[0], city_id)
+            if len(dd) > 1:
+                return LocationResolution("ambiguous", level="district", candidates=_enrich_admin_candidates("district", dd, admin_lookup, city_id))
+            ww = _lookup_exact("ward", parts[0], admin_lookup, city_id=city_id)
+            if len(ww) == 1:
+                return _row_to_resolution("ward", ww[0], city_id, ww[0].get("district_id"))
+            if len(ww) > 1:
+                return LocationResolution("ambiguous", level="ward", candidates=_enrich_admin_candidates("ward", ww, admin_lookup, city_id))
         return LocationResolution("admin_not_found")
 
     # --- một thành phần
@@ -343,7 +351,7 @@ def resolve_location(
     hint = region_hint
     if hint is None and "," in text:
         tail = text.rsplit(",", 1)[1].strip()
-        if _lookup_exact("city", tail, admin_lookup):
+        if _lookup_exact("city", tail, admin_lookup) or _lookup_exact("district", tail, admin_lookup):
             hint = tail
     try:
         geo = geocode(text, hint)

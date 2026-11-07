@@ -1,11 +1,17 @@
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.listing import Listing
 from app.models.location import City, District, Ward
 from app.models.room_type import RoomType
+
+
+def _active_listing_filter():
+    """Bộ lọc tin đăng công khai còn hiệu lực (active và chưa bị gỡ)."""
+    return (Listing.is_active == True) & (Listing.status.is_(None) | (func.lower(Listing.status) == "active"))
+
 
 
 class LocationRepository:
@@ -59,15 +65,15 @@ class LocationRepository:
         """
         target_lat, target_lng = lat, lng
         if (target_lat is None or target_lng is None) and ward_id:
-            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.ward_id == ward_id, Listing.is_active == True).first()
+            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.ward_id == ward_id, _active_listing_filter()).first()
             if c and c[0] is not None:
                 target_lat, target_lng = float(c[0]), float(c[1])
         if (target_lat is None or target_lng is None) and district_id:
-            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.district_id == district_id, Listing.is_active == True).first()
+            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.district_id == district_id, _active_listing_filter()).first()
             if c and c[0] is not None:
                 target_lat, target_lng = float(c[0]), float(c[1])
         if (target_lat is None or target_lng is None) and city_id:
-            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.region_id == city_id, Listing.is_active == True).first()
+            c = self.db.query(func.avg(Listing.lat), func.avg(Listing.lng)).filter(Listing.region_id == city_id, _active_listing_filter()).first()
             if c and c[0] is not None:
                 target_lat, target_lng = float(c[0]), float(c[1])
 
@@ -93,18 +99,32 @@ class LocationRepository:
                 q = q.filter(Listing.price_vnd <= max_price)
             if room_type:
                 clean = room_type.value if hasattr(room_type, "value") else str(room_type).strip().upper()
+                if clean == "BOARDING_HOUSE":
+                    clean = "ROOM"
                 clean_map = {"ROOM": 1, "STUDIO": 2, "APARTMENT": 3, "SLEEPBOX": 4, "WHOLE_HOUSE": 5}
                 rt_id = clean_map.get(clean) if clean in clean_map else (int(clean) if clean.isdigit() else None)
                 if rt_id is not None:
                     q = q.filter(Listing.room_type_id == rt_id)
             if amenities:
-                from sqlalchemy import Float, cast
+                from sqlalchemy import Float, cast, or_
 
                 for am in amenities:
                     clean_code = str(getattr(am, "value", am)).strip().lower()
-                    q = q.filter(
-                        func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
-                    )
+                    if clean_code == "safe_area":
+                        c_safe = func.coalesce(cast(Listing.concept_scores.op("->>")("safe_area"), Float), 0.0) >= 0.5
+                        c_cam = func.coalesce(cast(Listing.concept_scores.op("->>")("camera"), Float), 0.0) >= 0.5
+                        c_lock = func.coalesce(cast(Listing.concept_scores.op("->>")("fingerprint_lock"), Float), 0.0) >= 0.5
+                        c_guard = func.coalesce(cast(Listing.concept_scores.op("->>")("guard"), Float), 0.0) >= 0.5
+                        c_score = func.coalesce(Listing.safety_score, 0.0) >= 0.7
+                        q = q.filter(or_(c_safe, c_cam, c_lock, c_guard, c_score))
+                    elif clean_code == "furniture":
+                        c_furn = func.coalesce(cast(Listing.concept_scores.op("->>")("furniture"), Float), 0.0) >= 0.5
+                        c_code = Listing.furnishing_code.in_([1, 2])
+                        q = q.filter(or_(c_furn, c_code))
+                    else:
+                        q = q.filter(
+                            func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
+                        )
             return q
 
         results: list[dict] = []
@@ -126,7 +146,7 @@ class LocationRepository:
                     )
                     .join(District, Ward.district_id == District.id)
                     .join(Listing, Listing.ward_id == Ward.id)
-                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None), Listing.is_active == True)
+                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None), _active_listing_filter())
                 )
                 if ward_id:
                     wq = wq.filter(Ward.id != ward_id)
@@ -176,7 +196,7 @@ class LocationRepository:
                     )
                     .join(City, District.city_id == City.id)
                     .join(Listing, Listing.district_id == District.id)
-                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None), Listing.is_active == True)
+                    .filter(Listing.lat.isnot(None), Listing.lng.isnot(None), _active_listing_filter())
                 )
                 if district_id:
                     dq = dq.filter(District.id != district_id)

@@ -207,9 +207,70 @@ Hệ thống quy chuẩn 17 trường tiện ích & an ninh dạng `snake_case` 
 
 ---
 
-## 5. 🤝 Khế Ước Dữ Liệu (API Data Contracts)
+## 5. 🤝 Khế Ước Dữ Liệu & Schemas (API Data Contracts & DTOs)
 
-### `GET /api/v1/listings/{id}` Response DTO:
+### 5.1. `POST /api/v1/listings/vector-search` Request Body (`VectorSearchBody`):
+Schema Pydantic đại diện payload truy vấn Hybrid Search từ AI Agent sang Backend:
+```python
+class VectorSearchBody(BaseModel):
+    query: Optional[str] = None                     # Câu truy vấn ngữ nghĩa
+    lat: Optional[float] = None                      # Vĩ độ điểm mốc tìm kiếm
+    lng: Optional[float] = None                      # Kinh độ điểm mốc tìm kiếm
+    min_price: Optional[float] = None                # Giá tối thiểu (VNĐ)
+    max_price: Optional[float] = None                # Giá trần tối đa (VNĐ)
+    min_area: Optional[float] = None                 # Diện tích tối thiểu (m2)
+    max_area: Optional[float] = None                 # Diện tích tối đa (m2)
+    amenities: Optional[list[str]] = None            # Tiện ích bắt buộc lọc cứng (AND)
+    city_id: Optional[int] = None                    # ID Tỉnh/Thành phố
+    district_id: Optional[int] = None                # ID Quận/Huyện
+    ward_id: Optional[int] = None                    # ID Phường/Xã
+    room_type: Optional[str | int] = None            # Loại phòng đơn lẻ (ROOM, STUDIO...)
+    room_types: Optional[list[str | int]] = None     # Tập nhiều loại phòng được phép (IN)
+    excluded_room_types: Optional[list[str | int]] = None # Loại phòng loại trừ (NOT IN)
+    preferred_amenities: Optional[list[str]] = None  # Tiện ích ưu tiên mềm để Reranker chấm điểm
+    max_distance_km: Optional[float] = None          # Bán kính lọc Haversine chính xác (km)
+    limit: int = 10                                  # Số lượng kết quả cần lấy
+    alpha: float = 0.7                               # Tỷ trọng Hybrid Search (Dense / Sparse)
+    weights: Optional[dict[str, float]] = None       # Trọng số động MCDM 5 tiêu chí
+    explain: bool = False                            # Bật giải thích phân rã điểm số Reranking
+```
+
+### 5.2. AI Agent Core Schemas (`UserPreferenceState` & `RoomItem`):
+Các đối tượng trạng thái cốt lõi trao đổi giữa LangGraph State Machine, Backend và Frontend Next.js:
+
+* **`UserPreferenceState` (Trạng thái tiêu chí người dùng tích lũy qua các lượt chat):**
+  - `allowed_room_types: list[RoomType]`: Danh sách các loại phòng người dùng chấp nhận (khi chấp nhận nhiều loại hình, ví dụ `['ROOM', 'STUDIO']`). Chuẩn hóa tự động qua `normalize_room_types`.
+  - `excluded_room_types: list[RoomType]`: Danh sách loại phòng bị loại trừ (ví dụ cấm `SLEEPBOX`).
+  - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động tính toán mã định danh số (1..5) từ `room_type` để serialize gửi sang Frontend, tương thích ngược an toàn với `model_validate`.
+* **`RoomItem` (Thực thể phòng trọ chuẩn hóa trả về cho Frontend UI):**
+  - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động suy ra mã ID loại phòng phục vụ render Badge / Icon trực tiếp trên Next.js.
+  - `concept_scores: dict[str, float]`: Điểm số xác thực cho đủ 17 nhãn tiện ích chuẩn hóa.
+  - `tags: list[str]`: Danh sách nhãn hiển thị trực quan tiếng Việt sinh động từ `_CONCEPT_TAGS`.
+
+### 5.3. Bảng Ánh Xạ Nhãn Tiện Ích Chuẩn Hóa (`_CONCEPT_TAGS` - 17 Nhãn):
+Bảng quy đổi 17 nhãn tiếng Việt chuẩn mực giữa mã kỹ thuật `snake_case` và văn bản hiển thị:
+
+| Mã Tiện Ích (`amenity_key`) | Nhãn Tiếng Việt Chuẩn Hóa (`_CONCEPT_TAGS`) | Nhóm Phân Loại |
+| :--- | :--- | :--- |
+| `private_wc` | WC riêng | Tiện ích cốt lõi |
+| `aircon` | Có máy lạnh | Tiện ích cốt lõi |
+| `mezzanine` | Có gác lửng | Tiện ích cốt lõi |
+| `kitchen` | Khu bếp | Tiện ích cốt lõi |
+| `fridge` | Tủ lạnh | Tiện ích cốt lõi |
+| `window_balcony` | Cửa sổ/ban công | Tiện ích cốt lõi |
+| `furniture` | Nội thất | Tiện ích cốt lõi |
+| `parking` | Chỗ để xe | Tiện ích cốt lõi |
+| `elevator` | Thang máy | Tiện ích cốt lõi |
+| `washing_machine` | Có máy giặt | Tiện ích cốt lõi |
+| `free_hours` | Giờ tự do | Quy định & Lối sống |
+| `no_shared_landlord` | Không chung chủ | Quy định & Lối sống |
+| `pet_allowed` | Cho nuôi thú cưng | Quy định & Lối sống |
+| `fingerprint_lock` | Khóa vân tay | An toàn & An ninh |
+| `camera` | Camera an ninh | An toàn & An ninh |
+| `guard` | Bảo vệ 24/7 | An toàn & An ninh |
+| `safe_area` | Khu an ninh | An toàn & An ninh |
+
+### 5.4. `GET /api/v1/listings/{id}` Response DTO:
 ```json
 {
   "success": true,

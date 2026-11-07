@@ -192,12 +192,17 @@ def make_retrieval_node(deps: Deps):
                 "preferred_amenities": [a.value for a in pref.preferred_amenities] or None,
                 "max_distance_km": base_radius if pref.has_point else None,
                 "weights": weights or None,
-                "limit": OVERFETCH_LIMIT if pref.excluded_room_types else RESULT_LIMIT,
+                "limit": OVERFETCH_LIMIT if (pref.excluded_room_types or pref.allowed_room_types) else RESULT_LIMIT,
             }
             for key in ("city_id", "district_id", "ward_id"):
                 if getattr(pref, key) is not None:
                     search_args[key] = getattr(pref, key)
-            if pref.room_type is not None:
+            if pref.allowed_room_types:
+                if len(pref.allowed_room_types) == 1:
+                    search_args["room_type"] = pref.allowed_room_types[0].value
+                else:
+                    search_args["room_types"] = [r.value for r in pref.allowed_room_types]
+            elif pref.room_type is not None:
                 search_args["room_type"] = pref.room_type.value
             if pref.excluded_room_types:
                 search_args["excluded_room_types"] = [r.value for r in pref.excluded_room_types]
@@ -219,9 +224,10 @@ def make_retrieval_node(deps: Deps):
                         valid_rooms_before=len(ctx.valid_rooms),
                         reason=f"Số phòng hợp lệ ({len(ctx.valid_rooms)}) < 3, tự động mở rộng bán kính tìm kiếm lên {next_radius}km",
                     )
-                    search_args["max_distance_km"] = next_radius
-                    new_rooms, new_err, new_ctx = _execute_search_and_ground(search_args)
+                    candidate_args = {**search_args, "max_distance_km": next_radius}
+                    new_rooms, new_err, new_ctx = _execute_search_and_ground(candidate_args)
                     if not new_err:
+                        search_args = candidate_args
                         rooms, search_error, ctx = new_rooms, new_err, new_ctx
 
         session.preferences = pref

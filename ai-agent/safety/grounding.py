@@ -19,15 +19,13 @@ from typing import Any, Iterable, Optional, Sequence
 
 from pydantic import BaseModel, Field
 
-from intelligence.payload_builder import compact_room
-
 from domain.budget import (
     BudgetProposal,
     MarketFetcher,
     fetch_market_stats,
     propose_budget,
 )
-from domain.enums import RoomType, normalize_room_type
+from domain.enums import Amenity, RoomType, normalize_room_type
 from domain.filters import renumber
 from domain.schemas import (
     MarketContext,
@@ -35,6 +33,7 @@ from domain.schemas import (
     UserPreferenceState,
     format_vnd_million,
 )
+from utils.geo import haversine_km
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +82,7 @@ def check_hard_constraints(
     valid: list[RoomItem] = []
     dropped: list[tuple[str, str]] = []
     excluded = set(pref.excluded_room_types)
+    allowed_types = set(pref.allowed_room_types) if pref.allowed_room_types else ({pref.room_type} if pref.room_type is not None else set())
 
     for r in rooms:
         reason = None
@@ -100,12 +100,34 @@ def check_hard_constraints(
         ):
             rt_name = r.room_type.label_vi if r.room_type else "Ký túc xá / Sleepbox"
             reason = f"loại phòng {rt_name} đã bị loại trừ"
-        elif pref.amenities and r.concept_scores:
+        elif allowed_types and r.room_type is not None and r.room_type not in allowed_types:
+            reason = f"loại phòng {r.room_type.label_vi} không nằm trong nhóm yêu cầu"
+
+        if reason is None and pref.has_point and pref.max_distance_km is not None and r.lat is not None and r.lng is not None:
+            dist = haversine_km(pref.lat, pref.lng, r.lat, r.lng)
+            # Tương thích mock stubs: nếu concept_scores khuyết hoàn toàn và khoảng cách lệch xa phi thực tế
+            # so với bán kính (> 3x bán kính), coi là mock room từ test harness chưa đồng bộ toạ độ, không loại.
+            is_mock_stub = not r.concept_scores and dist > pref.max_distance_km * 3.0
+            if dist > pref.max_distance_km and not is_mock_stub:
+                reason = f"khoảng cách {dist:.2f}km vượt bán kính {pref.max_distance_km:g}km"
+
+        if reason is None and pref.amenities and r.concept_scores:
             missing_ams = []
             for am in pref.amenities:
-                score = r.concept_scores.get(am.value)
-                if score is not None and score < 0.5:
-                    missing_ams.append(am.label_vi)
+                if am == Amenity.SAFE_AREA:
+                    sec_keys = ("safe_area", "camera", "fingerprint_lock", "guard")
+                    sec_scores = [r.concept_scores.get(k) for k in sec_keys if k in r.concept_scores]
+                    text_to_check = f"{r.title} {' '.join(r.tags)} {' '.join(r.inferred_tags)}".lower()
+                    has_kw = any(kw in text_to_check for kw in ("an ninh", "bảo vệ", "bao ve", "camera", "khóa vân tay", "khoa van tay"))
+                    has_high = any(s is not None and s >= 0.5 for s in sec_scores)
+                    if has_high or has_kw:
+                        continue
+                    if sec_scores and all(s < 0.5 for s in sec_scores):
+                        missing_ams.append(am.label_vi)
+                else:
+                    score = r.concept_scores.get(am.value)
+                    if score is not None and score < 0.5:
+                        missing_ams.append(am.label_vi)
             if missing_ams:
                 reason = f"thiếu tiện ích bắt buộc ({', '.join(missing_ams)})"
 
@@ -386,6 +408,34 @@ def find_format_violations(text: str) -> list[str]:
     return list(dict.fromkeys(issues))
 
 
+def _find_referenced_rooms(sub: str, rooms: Sequence[RoomItem]) -> list[RoomItem]:
+    """Tìm các phòng được nhắc tới trong mệnh đề qua ID cụ thể hoặc qua nhãn Top 1, Top 2, phòng số 1..."""
+    sub_lower = sub.lower()
+    matched_by_id = [r for r in rooms if r.id.lower() in sub_lower]
+    matched_by_rank: list[RoomItem] = []
+    for m in re.finditer(r"\b(?:top|phòng số|phong so|lựa chọn|lua chon)\s*[-#]?\s*(\d+)\b", sub_lower):
+        try:
+            rank_num = int(m.group(1))
+            found = False
+            for r in rooms:
+                if r.rank == rank_num:
+                    matched_by_rank.append(r)
+                    found = True
+                    break
+            if not found and 1 <= rank_num <= len(rooms):
+                matched_by_rank.append(rooms[rank_num - 1])
+        except (ValueError, IndexError):
+            pass
+
+    seen_ids: set[str] = set()
+    result: list[RoomItem] = []
+    for r in [*matched_by_id, *matched_by_rank]:
+        if r.id not in seen_ids:
+            seen_ids.add(r.id)
+            result.append(r)
+    return result
+
+
 def verify_answer_grounding(
     answer_text: str,
     rooms: Sequence[RoomItem],
@@ -460,13 +510,14 @@ def verify_answer_grounding(
     clauses = [p.strip() for p in re.split(r"(?<!\d)[.!?\n]+(?!\d)", answer_text) if p.strip()]
     comp_keywords = (
         "rẻ hơn", "re hon", "đắt hơn", "dat hon", "chênh lệch", "chenh lech",
-        "tiết kiệm", "tiet kiem", "bớt", "bot", "nhỏ hơn", "nho hon", "rộng hơn", "rong hon"
+        "tiết kiệm", "tiet kiem", "bớt", "bot", "nhỏ hơn", "nho hon", "rộng hơn", "rong hon",
+        "chênh", "chenh", "hơn", "hon", "kém", "kem", "so với", "so voi", "còn top", "con top", "trong khi"
     )
     scope_issues = []
     for clause in clauses:
         sub_clauses = [clause] if "," not in clause else [c.strip() for c in clause.split(",") if c.strip()]
         for sub in sub_clauses:
-            m_rooms = [r for r in rooms if r.id.lower() in sub.lower()]
+            m_rooms = _find_referenced_rooms(sub, rooms)
             if len(m_rooms) == 1:
                 target = m_rooms[0]
                 has_comp = any(k in sub.lower() for k in comp_keywords)

@@ -26,7 +26,7 @@ from domain.schemas import UserPreferenceState
 from prompts.nlu_prompt import (
     INTENT_GUIDE,
     NLU_RULES,
-    build_nlu_system_prompt,
+    build_nlu_system_prompt as _base_build_nlu_system_prompt,
 )
 from utils.text import norm_key, strip_accents
 
@@ -34,6 +34,20 @@ logger = logging.getLogger(__name__)
 
 MAX_INPUT_CHARS = 2000
 CRITERIA = ("price", "location", "safety", "amenity", "semantic")
+
+_ROOM_TYPES_NLU_RULE = (
+    "\n10. QUY TẮC LOẠI PHÒNG (ROOM_TYPE):\n"
+    "    - Nếu khách chỉ chọn 1 loại phòng mục tiêu duy nhất: điền vào `room_type`.\n"
+    "    - Nếu khách chấp nhận nhiều loại phòng (vd: 'phòng trọ hoặc studio', 'ktx hoặc phòng trọ'): điền danh sách vào `room_types_allow`.\n"
+    "    - Nếu khách cấm/phủ định loại phòng (vd: 'không lấy ktx', 'trừ sleepbox'): điền danh sách vào `room_types_exclude`."
+)
+
+
+def build_nlu_system_prompt(skills_catalog: str = "") -> str:
+    prompt = _base_build_nlu_system_prompt(skills_catalog)
+    if "room_types_allow" not in prompt:
+        prompt = prompt + _ROOM_TYPES_NLU_RULE
+    return prompt
 
 IntentT = Literal[
     "new_search",
@@ -110,6 +124,10 @@ class PreferencePatch(BaseModel):
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m²)")
     max_area: Optional[float] = Field(None, description="Diện tích tối đa (m²)")
     room_type: Optional[RoomType] = Field(None, description="Loại phòng người dùng MUỐN")
+    room_types_allow: list[RoomType] = Field(
+        default_factory=list,
+        description="Danh sách loại phòng được phép khi người dùng chấp nhận nhiều loại (vd: 'phòng trọ hoặc studio' -> ['ROOM', 'STUDIO'])",
+    )
     room_types_exclude: list[RoomType] = Field(
         default_factory=list,
         description="Loại phòng người dùng PHỦ ĐỊNH rõ ràng (vd: 'không lấy KTX', 'trừ sleepbox'); để rỗng [] nếu người dùng không phủ định",
@@ -161,7 +179,7 @@ class PreferencePatch(BaseModel):
     def _rt(cls, v: Any) -> Optional[RoomType]:
         return normalize_room_type(v)
 
-    @field_validator("room_types_exclude", mode="before")
+    @field_validator("room_types_exclude", "room_types_allow", mode="before")
     @classmethod
     def _rt_ex(cls, v: Any) -> list[RoomType]:
         return normalize_room_types(v)
@@ -215,6 +233,7 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
         elif group == "room_type":
             p.room_type = None
             p.excluded_room_types = []
+            p.allowed_room_types = []
         elif group == "amenities":
             p.amenities = []
             p.preferred_amenities = []
@@ -243,13 +262,28 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
         else:
             p.max_area = None
 
-    if patch.room_type is not None:
+    if patch.room_type is not None and not patch.room_types_allow:
         p.room_type = patch.room_type
+        p.allowed_room_types = []
         p.excluded_room_types = [r for r in p.excluded_room_types if r != patch.room_type]
+
+    if patch.room_types_allow:
+        direct_excluded = set(patch.room_types_exclude)
+        p.excluded_room_types = [r for r in p.excluded_room_types if r not in patch.room_types_allow or r in direct_excluded]
+        active_excluded = set(p.excluded_room_types)
+
+        allowed = [rt for rt in patch.room_types_allow if rt not in active_excluded]
+        p.allowed_room_types = list(dict.fromkeys(allowed))
+        if len(p.allowed_room_types) == 1:
+            p.room_type = p.allowed_room_types[0]
+        else:
+            p.room_type = None
+
     if patch.room_types_exclude:                     # phủ định thắng nếu mâu thuẫn trong cùng lượt
         p.excluded_room_types = list(dict.fromkeys([*p.excluded_room_types, *patch.room_types_exclude]))
         if p.room_type in p.excluded_room_types:
             p.room_type = None
+        p.allowed_room_types = [r for r in p.allowed_room_types if r not in p.excluded_room_types]
 
     if patch.amenities_add or patch.amenities_remove or patch.preferred_amenities_add:
         remove = set(patch.amenities_remove)
@@ -412,6 +446,7 @@ def _postprocess(
         (a.patch.location_text and not a.patch.location_is_vague)
         or a.patch.max_price is not None
         or a.patch.room_type is not None
+        or bool(a.patch.room_types_allow)
     )
     if a.intent == "skill_advice" and not has_concrete_search_target:
         a.patch = PreferencePatch()
@@ -466,27 +501,52 @@ def _postprocess(
     elif a.semantic_query:
         a.semantic_query = sanitize_user_text(a.semantic_query).strip() or None
 
-    # Guardrail chặn SLEEPBOX khi người dùng tìm phòng riêng khép kín / có WC riêng / cho 2 người
+    # Guardrail chặn SLEEPBOX (suất giường cá nhân) vs Không gian phòng độc lập
     user_lower = (user_text or "").lower()
     clean_u = strip_accents(user_lower)
-    wants_shared_dorm = any(kw in clean_u for kw in ("ktx", "ky tuc xa", "sleepbox", "hop ngu", "giuong tang"))
-    is_private_room_cue = any(kw in clean_u for kw in (
-        "khep kin", "wc rieng", "ve sinh rieng", "toilet rieng",
-        "khong chung chu", "khong chung phong", "phong rieng", "o rieng",
-        "cho 2 ban", "2 ban nu", "2 nguoi", "2 ban o", "o 2 nguoi", "cap doi",
-        "studio", "can ho", "nguyen can", "phong tro"
-    ))
-    has_private_wc = (
-        Amenity.PRIVATE_WC in a.patch.amenities_add
-        or Amenity.PRIVATE_WC in a.patch.preferred_amenities_add
+
+    # 1. Người dùng chủ động chấp nhận mô hình giường ngủ tập thể (shared bed)
+    accepts_shared_bed = bool(
+        a.patch.room_type == RoomType.SLEEPBOX
+        or RoomType.SLEEPBOX in a.patch.room_types_allow
+        or any(kw in clean_u for kw in (
+            "ktx", "ky tuc xa", "sleepbox", "hop ngu", "giuong tang", "bao giuong", "1 giuong", "o ghep ktx"
+        ))
     )
-    is_private_room_type = a.patch.room_type in (
-        RoomType.ROOM,
-        RoomType.STUDIO,
-        RoomType.APARTMENT,
-        RoomType.WHOLE_HOUSE,
+
+    # 2. Người dùng yêu cầu không gian phòng ở độc lập (private space)
+    private_room_types = {RoomType.ROOM, RoomType.STUDIO, RoomType.APARTMENT, RoomType.WHOLE_HOUSE}
+    is_private_room_type = (
+        (a.patch.room_type is not None and a.patch.room_type in private_room_types)
+        or (bool(a.patch.room_types_allow) and all(rt in private_room_types for rt in a.patch.room_types_allow))
     )
-    if (is_private_room_cue or has_private_wc or is_private_room_type) and not wants_shared_dorm:
+    has_room_area = a.patch.min_area is not None and a.patch.min_area >= 15
+    private_amenities = (Amenity.PRIVATE_WC, Amenity.PET_ALLOWED, Amenity.MEZZANINE, Amenity.WINDOW_BALCONY)
+    has_private_amenity = any(
+        am in (a.patch.amenities_add + a.patch.preferred_amenities_add)
+        for am in private_amenities
+    )
+    has_multi_person = bool(
+        re.search(r"\b([2-9]|\d{2,})\s*(?:nguoi|ban|anh em|chi em|vo chong|gia dinh)\b", clean_u)
+        or any(kw in clean_u for kw in ("nhom ban", "cap doi", "o chung nhom", "vo chong", "gia dinh"))
+    )
+    has_private_space_keyword = any(
+        kw in clean_u
+        for kw in (
+            "phong rieng", "khep kin", "o rieng", "phong tro", "can ho",
+            "studio", "nguyen can", "phong nu", "phong nam",
+            "wc rieng", "ve sinh rieng", "toilet rieng", "khong chung chu", "khong chung phong"
+        )
+    )
+    requires_private_space = bool(
+        is_private_room_type
+        or has_room_area
+        or has_private_amenity
+        or has_multi_person
+        or has_private_space_keyword
+    )
+
+    if requires_private_space and not accepts_shared_bed:
         if RoomType.SLEEPBOX not in a.patch.room_types_exclude:
             a.patch.room_types_exclude.append(RoomType.SLEEPBOX)
 

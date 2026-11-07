@@ -16,9 +16,8 @@ from pydantic import BaseModel, Field
 from api.sse import stream_graph_events
 from core.paths import DEFAULT_DB_PATH
 from core.session_store import PersistentSessionStore
-from domain.schemas import AgentResponse, DecisionInsight, RoomItem
+from domain.schemas import AgentResponse
 from graph import build_housing_graph, default_deps, run_turn
-from intelligence.insights import build_decision_insights
 from tools.http import set_client
 
 logger = logging.getLogger(__name__)
@@ -80,13 +79,6 @@ class HousingAgentService:
 
     def __init__(self, settings: Any = None):
         self.settings = settings
-
-    def _build_decision_insights(
-        self,
-        rooms: list[RoomItem],
-        weight_explanations: Optional[list[str]] = None,
-    ) -> Optional[DecisionInsight]:
-        return build_decision_insights(rooms, weight_explanations)
 
     def run_graph(
         self,

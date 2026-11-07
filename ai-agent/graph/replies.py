@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from domain.budget import GAP_RATIO
 from domain.enums import amenity_label
 from domain.schemas import UserPreferenceState, format_vnd_million
 
@@ -126,7 +127,7 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
 
     # CASE B: NGÂN SÁCH QUÁ THẤP (Under-budget / Market Gap)
     is_under_budget = bool(market and market.is_market_gap) or (
-        user_max is not None and min_p_val is not None and user_max < min_p_val * 0.95
+        user_max is not None and min_p_val is not None and user_max < min_p_val * GAP_RATIO
     )
     if is_under_budget and min_p_str:
         avg_line = f"\n  - **Mức giá phổ biến (trung bình):** khoảng **{avg_p_str}**" if avg_p_str else ""

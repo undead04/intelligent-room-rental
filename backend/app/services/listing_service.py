@@ -1,5 +1,5 @@
 from app.schemas.listing import AmenityCode
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import case, func
@@ -12,14 +12,18 @@ from app.repositories.listing_repository import ListingRepository
 from app.schemas.analytics import PriceStatsByArea, PriceStatsGeneral, PriceStatsResponse
 from app.schemas.listing import ListingResponse, VectorSearchResult
 from app.schemas.room_type import ROOM_TYPE_CODE_TO_ID
-from app.services.reranker import explain_match, rerank
+from app.services.reranker import _haversine_km, explain_match, rerank
 from app.services.embedding import EmbeddingModel
 
 
 def month_boundaries(reference: Optional[datetime] = None) -> tuple[datetime, datetime]:
-    current = reference or datetime.now()
-    current_start = datetime(current.year, current.month, 1)
-    previous_start = datetime(current.year - 1, 12, 1) if current.month == 1 else datetime(current.year, current.month - 1, 1)
+    current = reference or datetime.now(timezone.utc)
+    current_start = datetime(current.year, current.month, 1, tzinfo=current.tzinfo)
+    previous_start = (
+        datetime(current.year - 1, 12, 1, tzinfo=current.tzinfo)
+        if current.month == 1
+        else datetime(current.year, current.month - 1, 1, tzinfo=current.tzinfo)
+    )
     return current_start, previous_start
 
 
@@ -74,7 +78,7 @@ class ListingService:
         room_type_id: Optional[int],
         last_d: Optional[int] = None,
     ) -> PriceStatsResponse:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         current_month, prev_month = month_boundaries(now)
         since_date = (now - timedelta(days=last_d)) if (last_d is not None and last_d > 0) else None
 
@@ -264,6 +268,7 @@ class ListingService:
         ward_id: Optional[int] = None,
         room_type_id: Optional[int] = None,
         room_type: Optional[str] = None,
+        room_types: Optional[list[str | int]] = None,
         excluded_room_types: Optional[list[Any]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
@@ -281,6 +286,8 @@ class ListingService:
         if resolved_room_type_id is None and room_type:
             resolved_room_type_id = ROOM_TYPE_CODE_TO_ID.get(room_type.strip().upper())
 
+        candidate_limit = max(limit * 4, 100) if (lat is not None and lng is not None) else max(limit * 2, 50)
+
         repo_kwargs: dict[str, object] = {
             "query_vector": query_vector,
             "query_text": query,
@@ -288,6 +295,8 @@ class ListingService:
             "district_id": district_id,
             "ward_id": ward_id,
             "room_type_id": resolved_room_type_id,
+            "room_type": room_type,
+            "room_types": room_types,
             "min_price": min_price,
             "max_price": max_price,
             "min_area": min_area,
@@ -297,12 +306,35 @@ class ListingService:
             "max_distance_km": max_distance_km,
             "amenities": amenities,
             "excluded_room_types": excluded_room_types,
-            "limit": 50,
+            "limit": candidate_limit,
         }
         model_name = model_embedding.model_name.strip()
         repo_kwargs["model_name"] = model_name
 
         candidates = self.repository.vector_search(**repo_kwargs) # type: ignore
+
+        if not candidates:
+            return []
+
+        # Kiểm chứng kép an toàn: loại bỏ triệt để các ứng viên vượt max_distance_km
+        if lat is not None and lng is not None and max_distance_km:
+            valid_candidates = []
+            for cand in candidates:
+                cand_obj = cand.get("listing", cand) if isinstance(cand, dict) else cand
+                c_lat = getattr(cand_obj, "lat", None)
+                c_lng = getattr(cand_obj, "lng", None)
+                if c_lat is None and isinstance(cand_obj, dict):
+                    c_lat = cand_obj.get("lat")
+                if c_lng is None and isinstance(cand_obj, dict):
+                    c_lng = cand_obj.get("lng")
+                try:
+                    if c_lat is not None and c_lng is not None:
+                        d_km = _haversine_km(lat, lng, float(c_lat), float(c_lng))
+                        if d_km <= float(max_distance_km):
+                            valid_candidates.append(cand)
+                except (ValueError, TypeError):
+                    continue
+            candidates = valid_candidates
 
         if not candidates:
             return []
@@ -318,6 +350,7 @@ class ListingService:
             "query": query,
             "room_type_id": resolved_room_type_id,
             "room_type": room_type,
+            "room_types": room_types,
         }
 
         reranked = rerank(

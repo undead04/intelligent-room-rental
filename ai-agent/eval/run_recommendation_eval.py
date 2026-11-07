@@ -56,7 +56,7 @@ from service import HousingAgentService
 from domain.enums import normalize_amenities, normalize_room_types
 from domain.schemas import AgentResponse, RoomItem, UserPreferenceState
 from intelligence.nlu import LLMQuotaExceededError, is_daily_quota_exhausted
-from intelligence.understand import compute_normalized_weights
+from intelligence.intent_weights import compute_normalized_weights
 from safety.grounding import check_hard_constraints
 from tools.housing_tools import search_rooms_api
 
@@ -289,6 +289,8 @@ def _execute_offline_nlu_search(
         rts = normalize_room_types(exp.allowed_room_types)
         if len(rts) == 1:
             pref.room_type = rts[0]
+        elif len(rts) >= 2:
+            pref.allowed_room_types = rts
     if exp.forbidden_room_types:
         pref.excluded_room_types = normalize_room_types(exp.forbidden_room_types)
 
@@ -317,9 +319,11 @@ def _execute_offline_nlu_search(
         "amenities": [a.value for a in pref.amenities] or None,
         "max_distance_km": base_radius if pref.has_point else None,
         "weights": weights or None,
-        "limit": 15 if pref.excluded_room_types else 10,
+        "limit": 15 if (pref.excluded_room_types or pref.allowed_room_types) else 10,
     }
-    if pref.room_type is not None:
+    if pref.allowed_room_types:
+        search_args["room_types"] = [r.value for r in pref.allowed_room_types]
+    elif pref.room_type is not None:
         search_args["room_type"] = pref.room_type.value
     if pref.excluded_room_types:
         search_args["excluded_room_types"] = [r.value for r in pref.excluded_room_types]
@@ -343,15 +347,16 @@ def _execute_offline_nlu_search(
         for next_radius in (3.5, 5.0):
             if len(valid_rooms) >= 3:
                 break
-            search_args["max_distance_km"] = next_radius
-            new_rooms, new_valid = _search_and_ground(search_args)
+            candidate_args = {**search_args, "max_distance_km": next_radius}
+            new_rooms, new_valid = _search_and_ground(candidate_args)
             if len(new_valid) > len(valid_rooms):
+                search_args = candidate_args
                 rooms, valid_rooms = new_rooms, new_valid
 
     return AgentResponse(
         session_id=session_id,
         text_reply=f"Đã tìm thấy {len(valid_rooms)} phòng phù hợp theo Offline NLU Benchmark.",
-        rooms=rooms[:5],
+        rooms=valid_rooms[:5],
     )
 
 

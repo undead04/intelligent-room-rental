@@ -77,9 +77,6 @@ def _normalize_amenity(code: object) -> str:
     return str(val).strip().lower()
 
 
-_NORMALIZE_AMENITY = _normalize_amenity
-
-
 def _amenity_fit(
     requested: Optional[Sequence[object]] = None,
     concept_scores: Optional[Mapping[str, float]] = None,

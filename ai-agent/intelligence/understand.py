@@ -1,8 +1,8 @@
 """Node "hiểu lượt chat": điều phối phân tích NLU, cập nhật trạng thái tiêu chí tích lũy, và tính trọng số MCDM.
 
-  interpret_turn(...)       hàm THUẦN: (câu, session, model) -> TurnPlan. Không ghi session.
-  understand_turn_node(...) wrapper LangGraph: là NƠI DUY NHẤT ghi session.preferences / session.multipliers.
-  route_after_understand    định tuyến sau bước hiểu nhu cầu.
+  interpret_turn(...)         hàm THUẦN: (câu, session, model) -> TurnPlan. Không ghi session.
+  compute_normalized_weights  re-export từ intelligence.intent_weights để tính trọng số MCDM.
+  route_after_understand      re-export từ graph.routing định tuyến sau bước hiểu nhu cầu.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from domain.enums import Amenity
 from domain.schemas import UserPreferenceState
 from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import (
@@ -95,6 +96,60 @@ def _build_multi_intent_reply(
         "Để mình giải đáp sâu và chi tiết từng phần, bạn nhắn cho Homigo biết bạn muốn xem thông tin chi tiết của "
         f"{rank_str} trước hay tư vấn {skill_desc.lower()} trước nhé!"
     )
+
+
+def _has_unnegated_keyword(text: str, keywords: tuple[str, ...], negation_window: int = 15) -> bool:
+    """Kiểm tra từ khóa có xuất hiện trong văn bản mà không bị cụm từ phủ định đi kèm phía trước."""
+    negations = ("khong can", "ko can", "dung", "khong phai", "ko phai", "chua can", "khong muon", "ko muon")
+    for kw in keywords:
+        start = 0
+        while True:
+            idx = text.find(kw, start)
+            if idx == -1:
+                break
+            prefix = text[max(0, idx - negation_window):idx]
+            is_negated = any(neg in prefix for neg in negations)
+            if not is_negated:
+                return True
+            start = idx + len(kw)
+    return False
+
+
+def _build_revert_preferences(
+    base_pref: UserPreferenceState,
+    analysis: TurnAnalysis,
+    clean_user_text: str,
+    current_pref: UserPreferenceState,
+) -> UserPreferenceState:
+    """Tái tạo tiêu chí khi người dùng yêu cầu quay lại lượt chat trước hoặc ban đầu."""
+    incremental_patch = analysis.patch.model_copy(deep=True)
+    incremental_patch.clear = []
+
+    # Nếu người dùng không nhắc đến ngân sách/giá trong lượt rollback thì không ghi đè giá mới
+    if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
+        incremental_patch.min_price = None
+        incremental_patch.max_price = None
+
+    # Giữ lại các tiện ích mới thêm nếu thực sự được người dùng nhắc tới trong câu này (so sánh không dấu)
+    kept_amenities = []
+    for am in incremental_patch.amenities_add:
+        kw_candidates = {am.value.lower(), strip_accents(am.label_vi).lower()}
+        if am == Amenity.PET_ALLOWED:
+            kw_candidates.update({"pet", "thu cung", "cho", "meo", "boss"})
+        if any(w in clean_user_text for w in kw_candidates):
+            kept_amenities.append(am)
+    incremental_patch.amenities_add = kept_amenities
+
+    pref = apply_patch(base_pref, incremental_patch)
+
+    # Dọn dẹp semantic_query nếu có địa danh của lượt hiện tại không còn nằm trong base
+    if analysis.semantic_query and current_pref.location_text:
+        cur_loc = current_pref.location_text.lower()
+        base_loc = (base_pref.location_text or "").lower()
+        if cur_loc in analysis.semantic_query.lower() and cur_loc not in base_loc:
+            analysis.semantic_query = None
+
+    return pref
 
 
 def interpret_turn(
@@ -241,19 +296,7 @@ def interpret_turn(
     turn_snaps = getattr(session, "turn_snapshots", []) or []
     if is_revert_explicit_turn and target_turn_num and 1 <= target_turn_num <= len(turn_snaps):
         base_pref = turn_snaps[target_turn_num - 1].model_copy(deep=True)
-        incremental_patch = analysis.patch.model_copy(deep=True)
-        incremental_patch.clear = []
-        if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
-            incremental_patch.min_price = None
-            incremental_patch.max_price = None
-        incremental_patch.amenities_add = [
-            am for am in incremental_patch.amenities_add
-            if any(w in clean_user_text for w in (am.value, am.label_vi.lower(), "pet", "thú cưng", "thu cung"))
-        ]
-        pref = apply_patch(base_pref, incremental_patch)
-        if analysis.semantic_query and pref0.location_text:
-            if pref0.location_text.lower() in analysis.semantic_query.lower() and pref0.location_text.lower() not in (base_pref.location_text or "").lower():
-                analysis.semantic_query = None
+        pref = _build_revert_preferences(base_pref, analysis, clean_user_text, pref0)
         mult = {k: 1.0 for k in CRITERIA}
         explanations.append(f"đã quay lại tiêu chí của lượt chat thứ {target_turn_num} theo yêu cầu")
     elif is_revert_explicit_turn and target_turn_num and target_turn_num > len(turn_snaps):
@@ -271,37 +314,13 @@ def interpret_turn(
             if getattr(session, "initial_preference", None)
             else history_snapshots[0].model_copy(deep=True)
         )
-        incremental_patch = analysis.patch.model_copy(deep=True)
-        incremental_patch.clear = []
-        if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
-            incremental_patch.min_price = None
-            incremental_patch.max_price = None
-        incremental_patch.amenities_add = [
-            am for am in incremental_patch.amenities_add
-            if any(w in clean_user_text for w in (am.value, am.label_vi.lower(), "pet", "thú cưng", "thu cung"))
-        ]
-        pref = apply_patch(base_pref, incremental_patch)
-        if analysis.semantic_query and pref0.location_text:
-            if pref0.location_text.lower() in analysis.semantic_query.lower() and pref0.location_text.lower() not in (base_pref.location_text or "").lower():
-                analysis.semantic_query = None
+        pref = _build_revert_preferences(base_pref, analysis, clean_user_text, pref0)
         mult = {k: 1.0 for k in CRITERIA}
         explanations.append("đã quay lại tiêu chí ban đầu theo yêu cầu")
     elif is_revert_previous and history_snapshots:
         target = history_snapshots[-2] if len(history_snapshots) >= 2 else history_snapshots[0]
         base_pref = target.model_copy(deep=True)
-        incremental_patch = analysis.patch.model_copy(deep=True)
-        incremental_patch.clear = []
-        if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
-            incremental_patch.min_price = None
-            incremental_patch.max_price = None
-        incremental_patch.amenities_add = [
-            am for am in incremental_patch.amenities_add
-            if any(w in clean_user_text for w in (am.value, am.label_vi.lower(), "pet", "thú cưng", "thu cung"))
-        ]
-        pref = apply_patch(base_pref, incremental_patch)
-        if analysis.semantic_query and pref0.location_text:
-            if pref0.location_text.lower() in analysis.semantic_query.lower() and pref0.location_text.lower() not in (base_pref.location_text or "").lower():
-                analysis.semantic_query = None
+        pref = _build_revert_preferences(base_pref, analysis, clean_user_text, pref0)
         explanations.append("đã quay lại tiêu chí trước đó theo yêu cầu")
     else:
         pref = apply_patch(base_pref, analysis.patch)
@@ -309,13 +328,18 @@ def interpret_turn(
     explanations.extend([r for r in analysis.priority_reasons if r][:3])
 
     # Xử lý ưu tiên giá rẻ ("rẻ hơn", "hạ giá") khi người dùng không nêu con số cụ thể
-    is_asking_cheaper = any(kw in clean_user_text for kw in ("re hon", "re nua", "ha gia", "giam gia", "bot tien", "tiet kiem hon", "thap hon"))
+    cheaper_kws = ("re hon", "re nua", "ha gia", "giam gia", "bot tien", "tiet kiem hon", "thap hon")
+    is_asking_cheaper = _has_unnegated_keyword(clean_user_text, cheaper_kws)
     if is_asking_cheaper and analysis.patch.max_price is None:
         mult["price"] = max(mult.get("price", 1.0), 2.0)
         explanations.append("ưu tiên tìm các phòng có giá rẻ nhất trong ngân sách đã đặt")
 
     # Xử lý ưu tiên phòng tiện nghi hơn ("đắt hơn", "mắc hơn", "phòng xịn hơn") khi người dùng không nêu con số cụ thể
-    is_asking_higher = any(kw in clean_user_text for kw in ("dat hon", "mac hon", "noi gia", "tang ngan sach", "tang gia", "cao hon", "phong xin hon", "phong dep hon", "phong cao cap hon"))
+    higher_kws = (
+        "dat hon", "mac hon", "noi gia", "tang ngan sach", "tang gia", "cao hon",
+        "phong xin hon", "phong dep hon", "phong cao cap hon"
+    )
+    is_asking_higher = _has_unnegated_keyword(clean_user_text, higher_kws)
     if is_asking_higher and analysis.patch.max_price is None:
         mult["amenity"] = max(mult.get("amenity", 1.0), 1.8)
         explanations.append("ưu tiên tìm các phòng có độ tiện nghi cao nhất trong ngân sách")
@@ -345,16 +369,12 @@ def interpret_turn(
     )
 
 
-def route_after_understand(state: dict) -> str:
-    g = state.get("guardrail_result")
-    if g is not None and not g.allowed:
-        return "formatter_node"
-    if state.get("direct_reply"):
-        return "formatter_node"
-    if state.get("is_followup"):
-        return "decision_node"
-    if state.get("matched_skill"):
-        return "advisory_node"
-    if state.get("needs_clarification"):
-        return "clarification_node"
-    return "retrieval_node"
+from graph.routing import route_after_understand
+
+__all__ = [
+    "SAFE_TEXT",
+    "TurnPlan",
+    "compute_normalized_weights",
+    "interpret_turn",
+    "route_after_understand",
+]

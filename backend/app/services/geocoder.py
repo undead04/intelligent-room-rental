@@ -1,5 +1,5 @@
+from functools import lru_cache
 import re
-import unicodedata
 from typing import Optional
 import requests
 from app.schemas.geocode import GeocodeResponse
@@ -14,38 +14,50 @@ PREFIX_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-def _strip_accents(text: str) -> str:
-    text = unicodedata.normalize("NFC", text or "").strip().lower()
-    text = text.replace("đ", "d")
-    nfkd = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
+# Tái sử dụng HTTP connection pool qua Session cho geocoding requests
+_session = requests.Session()
 
 
-def geocode_nominatim(query: str) -> Optional[GeocodeResponse]:
+@lru_cache(maxsize=256)
+def _lookup_nominatim_cached(query_lower: str) -> tuple[float, float, str, str]:
+    """Tra cứu toạ độ từ OpenStreetMap Nominatim và cache kết quả dạng tuple immutable (chỉ cache khi thành công)."""
     url = "https://nominatim.openstreetmap.org/search"
     params = {
-        "q": query,
+        "q": query_lower,
         "format": "json",
         "limit": 3,
         "countrycodes": "vn",
         "accept-language": "vi",
     }
     headers = {"User-Agent": "SmartHousingPlatform/1.0 (contact@housing.internal)"}
+    res = _session.get(url, params=params, headers=headers, timeout=3)
+    if res.status_code == 200:
+        data = res.json()
+        for item in data or []:
+            return (
+                float(item["lat"]),
+                float(item["lon"]),
+                str(item.get("display_name", query_lower)),
+                "Nominatim OSM",
+            )
+    raise ValueError(f"Nominatim not found for: {query_lower}")
+
+
+def geocode_nominatim(query: str) -> Optional[GeocodeResponse]:
+    clean = (query or "").strip().lower()
+    if not clean:
+        return None
     try:
-        res = requests.get(url, params=params, headers=headers, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            for item in data or []:
-                return GeocodeResponse(
-                    query=query,
-                    lat=float(item["lat"]),
-                    lon=float(item["lon"]),
-                    formatted_address=item.get("display_name", query),
-                    provider="Nominatim OSM",
-                )
+        lat, lon, display_name, provider = _lookup_nominatim_cached(clean)
+        return GeocodeResponse(
+            query=query,
+            lat=lat,
+            lon=lon,
+            formatted_address=display_name,
+            provider=provider,
+        )
     except Exception:
-        pass
-    return None
+        return None
 
 
 def geocode_photon(query: str) -> Optional[GeocodeResponse]:
@@ -53,7 +65,7 @@ def geocode_photon(query: str) -> Optional[GeocodeResponse]:
     params = {"q": query, "limit": 5, "bbox": VN_BBOX}
     headers = {"User-Agent": "SmartHousingPlatform/1.0 (contact@housing.internal)"}
     try:
-        res = requests.get(url, params=params, headers=headers, timeout=3)
+        res = _session.get(url, params=params, headers=headers, timeout=3)
         if res.status_code == 200:
             for f in res.json().get("features", []):
                 props = f.get("properties", {})
@@ -113,4 +125,3 @@ def resolve_location(user_input: str, hint: Optional[str] = None) -> Optional[Ge
             return res
 
     return None
-
