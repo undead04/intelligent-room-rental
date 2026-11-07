@@ -51,8 +51,14 @@ from eval.llm_judge import (
         get_judge_llm,
     )
 
-# Import HousingAgentService
+# Import HousingAgentService & Domain/Safety Tools
 from service import HousingAgentService
+from domain.enums import normalize_amenities, normalize_room_types
+from domain.schemas import AgentResponse, RoomItem, UserPreferenceState
+from intelligence.nlu import LLMQuotaExceededError, is_daily_quota_exhausted
+from intelligence.understand import compute_normalized_weights
+from safety.grounding import check_hard_constraints
+from tools.housing_tools import search_rooms_api
 
 
 # ============================================================================
@@ -249,12 +255,116 @@ def generate_markdown_report(
 _build_markdown_report = generate_markdown_report
 
 
+def _execute_offline_nlu_search(
+    q: BenchmarkQuery,
+    session_id: str,
+) -> AgentResponse:
+    """Thực thi tìm kiếm trực tiếp dựa trên GroundTruthExpectation (Offline NLU Mode).
+
+    Bypass hoàn toàn tầng NLU (LLM) để thẩm định độc lập hiệu năng của:
+    - Thuật toán Bán kính Thích ứng (Adaptive Radius).
+    - MCDM Multi-Criteria Reranker (5 tiêu chí).
+    - Bộ lọc Hard Constraints (giá, loại phòng, khoảng cách, tiện ích).
+    """
+    exp = q.expectation
+    pref = UserPreferenceState()
+
+    if exp.max_budget is not None:
+        pref.max_price = float(exp.max_budget)
+    if exp.min_budget is not None:
+        pref.min_price = float(exp.min_budget)
+    if exp.target_lat is not None and exp.target_lng is not None:
+        pref.lat = float(exp.target_lat)
+        pref.lng = float(exp.target_lng)
+        pref.location_kind = "place"
+    if exp.target_location_name:
+        pref.location_text = str(exp.target_location_name)
+    if exp.max_distance_km is not None:
+        pref.max_distance_km = float(exp.max_distance_km)
+    if exp.min_area_m2 is not None:
+        pref.min_area = float(exp.min_area_m2)
+    if exp.required_amenities:
+        pref.amenities = normalize_amenities(exp.required_amenities)
+    if exp.allowed_room_types:
+        rts = normalize_room_types(exp.allowed_room_types)
+        if len(rts) == 1:
+            pref.room_type = rts[0]
+    if exp.forbidden_room_types:
+        pref.excluded_room_types = normalize_room_types(exp.forbidden_room_types)
+
+    # Multipliers từ ideal_priorities
+    multipliers: dict[str, float] = {}
+    for k, v in (exp.ideal_priorities or {}).items():
+        if str(v).lower() in ("high", "top", "very_high"):
+            if k == "price":
+                multipliers["price"] = 2.0
+            elif k in ("distance", "location"):
+                multipliers["location"] = 1.8
+            elif k == "amenity":
+                multipliers["amenity"] = 1.8
+            elif k == "safety":
+                multipliers["safety"] = 1.8
+    weights = compute_normalized_weights(pref, multipliers)
+
+    base_radius = pref.max_distance_km or 2.5
+    search_args: dict[str, Any] = {
+        "query": q.query,
+        "lat": pref.lat,
+        "lng": pref.lng,
+        "min_price": pref.min_price,
+        "max_price": pref.max_price,
+        "min_area": pref.min_area,
+        "amenities": [a.value for a in pref.amenities] or None,
+        "max_distance_km": base_radius if pref.has_point else None,
+        "weights": weights or None,
+        "limit": 15 if pref.excluded_room_types else 10,
+    }
+    if pref.room_type is not None:
+        search_args["room_type"] = pref.room_type.value
+    if pref.excluded_room_types:
+        search_args["excluded_room_types"] = [r.value for r in pref.excluded_room_types]
+
+    def _search_and_ground(args: dict[str, Any]) -> tuple[list[RoomItem], list[RoomItem]]:
+        call_args = dict(args)
+        data = search_rooms_api(call_args)
+        raw_items = data.get("data") or []
+        items = [
+            RoomItem.from_backend_result(raw, rank=i, target_lat=pref.lat, target_lng=pref.lng)
+            for i, raw in enumerate(raw_items, 1)
+        ]
+        # Lọc tin vi phạm hard constraints
+        valid, _ = check_hard_constraints(items, pref)
+        return items, valid
+
+    rooms, valid_rooms = _search_and_ground(search_args)
+
+    # Adaptive Radius: Nếu có tọa độ và user không chỉ định max_distance_km cố định
+    if pref.has_point and pref.max_distance_km is None:
+        for next_radius in (3.5, 5.0):
+            if len(valid_rooms) >= 3:
+                break
+            search_args["max_distance_km"] = next_radius
+            new_rooms, new_valid = _search_and_ground(search_args)
+            if len(new_valid) > len(valid_rooms):
+                rooms, valid_rooms = new_rooms, new_valid
+
+    return AgentResponse(
+        session_id=session_id,
+        text_reply=f"Đã tìm thấy {len(valid_rooms)} phòng phù hợp theo Offline NLU Benchmark.",
+        rooms=rooms[:5],
+    )
+
+
 def save_evaluation_results(
     results_payload: dict[str, Any],
     output_dir: str | Path = "eval_results",
 ) -> tuple[Path, Path]:
     """Lưu kết quả đánh giá ra hai định dạng JSON và Markdown."""
-    out_path = Path(output_dir)
+    if str(output_dir) == "eval_results" or not output_dir:
+        out_path = _AI_AGENT_DIR / "eval_results"
+    else:
+        p = Path(output_dir)
+        out_path = p if p.is_absolute() else _AI_AGENT_DIR / p
     out_path.mkdir(parents=True, exist_ok=True)
 
     json_path = out_path / "recommendation_eval_results.json"
@@ -288,9 +398,15 @@ def run_evaluation(
     judge_model_name: str = "gemini-2.5-flash-lite",
     output_dir: str = "eval_results",
     budget_tolerance_pct: float = 0.0,
+    pacing: float = 3.5,
+    offline_nlu: bool = False,
 ) -> dict[str, Any]:
     """Chạy toàn bộ quy trình đánh giá trên bộ Recommendation Benchmark."""
-    out_path = Path(output_dir)
+    if str(output_dir) == "eval_results" or not output_dir:
+        out_path = _AI_AGENT_DIR / "eval_results"
+    else:
+        p = Path(output_dir)
+        out_path = p if p.is_absolute() else _AI_AGENT_DIR / p
     out_path.mkdir(parents=True, exist_ok=True)
 
     # 1. Lọc queries
@@ -310,27 +426,32 @@ def run_evaluation(
 
     logger.info("=" * 70)
     logger.info("BẮT ĐẦU ĐÁNH GIÁ RECOMMENDATION BENCHMARK (%d queries)", total_queries)
-    logger.info("Chế độ Judge: %s | Model Judge: %s", judge_mode, judge_model_name)
+    logger.info("Chế độ Judge: %s | Model Judge: %s | Offline NLU: %s | Pacing: %.1fs",
+                judge_mode, judge_model_name, offline_nlu, pacing)
     logger.info("=" * 70)
 
     # 2. Khởi tạo LLM Judge
     judge_llm = None
     if judge_mode in ("auto", "llm"):
-        judge_llm = get_judge_llm(model_name=judge_model_name)
-        if judge_llm is None and judge_mode == "llm":
-            raise RuntimeError(
-                f"Chế độ judge='llm' yêu cầu API Key hợp lệ cho {judge_model_name}. Vui lòng cấu hình GEMINI_API_KEY hoặc OPENAI_API_KEY."
-            )
-        elif judge_llm is not None:
-            logger.info("Đã khởi tạo thành công Judge LLM: %s", judge_model_name)
+        if offline_nlu and judge_mode == "auto":
+            logger.info("Chế độ Offline NLU với Judge 'auto': Sử dụng Rule-based Judge offline để tiết kiệm 100% token.")
         else:
-            logger.info("Không có API Key cho Judge LLM, chuyển sang chế độ Rule-based offline.")
+            judge_llm = get_judge_llm(model_name=judge_model_name)
+            if judge_llm is None and judge_mode == "llm":
+                raise RuntimeError(
+                    f"Chế độ judge='llm' yêu cầu API Key hợp lệ cho {judge_model_name}. Vui lòng cấu hình GEMINI_API_KEY hoặc OPENAI_API_KEY."
+                )
+            elif judge_llm is not None:
+                logger.info("Đã khởi tạo thành công Judge LLM: %s", judge_model_name)
+            else:
+                logger.info("Không có API Key cho Judge LLM, chuyển sang chế độ Rule-based offline.")
 
-    # 3. Khởi tạo HousingAgentService
-    agent = HousingAgentService()
+    # 3. Khởi tạo HousingAgentService (nếu không chạy Offline NLU)
+    agent = None if offline_nlu else HousingAgentService()
 
     # 4. Vòng lặp thực thi từng query
     query_details: list[dict[str, Any]] = []
+    daily_quota_hit = False
 
     for idx, q in enumerate(queries, start=1):
         session_id = f"eval_rec_{q.id}_{uuid.uuid4().hex[:6]}"
@@ -338,31 +459,52 @@ def run_evaluation(
 
         t0 = time.perf_counter()
         resp = None
-        for attempt in range(3):
+
+        if offline_nlu:
             try:
-                # Gọi Agent Service
-                if hasattr(agent, "handle_message"):
-                    resp = agent.handle_message(session_id=session_id, message=q.query)
-                else:
-                    resp = agent.run(user_message=q.query, session_id=session_id)
-                break
+                resp = _execute_offline_nlu_search(q, session_id=session_id)
             except Exception as e:
-                err_msg = str(e).lower()
-                is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "resource_exhausted", "quota", "too many requests"))
-                if is_rate_limit and attempt < 2:
-                    wait_sec = 15.0 * (attempt + 1)
-                    logger.warning("Agent gặp Rate Limit (429) ở query %s, chờ %.1fs rồi thử lại lần %d...", q.id, wait_sec, attempt + 1)
-                    time.sleep(wait_sec)
-                    continue
-                logger.error("Lỗi khi thực thi Agent cho query %s: %s", q.id, e, exc_info=True)
-                # Khởi tạo response rỗng dự phòng khi agent gặp lỗi
-                from domain.schemas import AgentResponse
+                logger.error("Lỗi khi thực thi Offline NLU cho query %s: %s", q.id, e, exc_info=True)
                 resp = AgentResponse(
                     session_id=session_id,
-                    text_reply=f"Lỗi hệ thống khi tìm phòng: {e}",
+                    text_reply=f"Lỗi offline NLU: {e}",
                     rooms=[],
                 )
-                break
+        else:
+            for attempt in range(3):
+                try:
+                    if hasattr(agent, "handle_message"):
+                        resp = agent.handle_message(session_id=session_id, message=q.query)
+                    else:
+                        resp = agent.run(user_message=q.query, session_id=session_id)
+                    break
+                except LLMQuotaExceededError as exc:
+                    logger.warning("Agent chạm hạn mức Daily Quota LLM ở query %s: %s", q.id, exc)
+                    daily_quota_hit = True
+                    break
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    if is_daily_quota_exhausted(err_msg):
+                        logger.warning("Phát hiện Daily Quota LLM bị cạn ở query %s: %s", q.id, e)
+                        daily_quota_hit = True
+                        break
+                    is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "resource_exhausted", "quota", "too many requests"))
+                    if is_rate_limit and attempt < 2:
+                        wait_sec = 15.0 * (attempt + 1)
+                        logger.warning("Agent gặp Rate Limit (429) ở query %s, chờ %.1fs rồi thử lại lần %d...", q.id, wait_sec, attempt + 1)
+                        time.sleep(wait_sec)
+                        continue
+                    logger.error("Lỗi khi thực thi Agent cho query %s: %s", q.id, e, exc_info=True)
+                    resp = AgentResponse(
+                        session_id=session_id,
+                        text_reply=f"Lỗi hệ thống khi tìm phòng: {e}",
+                        rooms=[],
+                    )
+                    break
+
+        if daily_quota_hit:
+            logger.warning("Dừng sớm quy trình đánh giá để bảo toàn kết quả của %d queries đã hoàn thành.", len(query_details))
+            break
 
         latency_s = time.perf_counter() - t0
 
@@ -378,15 +520,50 @@ def run_evaluation(
         csr_bd = constraint_satisfaction_breakdown(rooms, q.expectation)
 
         # B. Thẩm định qua LLM-as-a-Judge (hoặc rule-based fallback)
-        judge_rep: RecommendationJudgeReport = evaluate_recommendation_quality(
-            model=judge_llm,
-            user_query=q.query,
-            expectation=q.expectation,
-            rooms=rooms,
-            text_reply=text_reply,
-            insights=insights,
-            budget_tolerance_pct=budget_tolerance_pct,
-        )
+        try:
+            judge_rep: RecommendationJudgeReport = evaluate_recommendation_quality(
+                model=judge_llm,
+                user_query=q.query,
+                expectation=q.expectation,
+                rooms=rooms,
+                text_reply=text_reply,
+                insights=insights,
+                budget_tolerance_pct=budget_tolerance_pct,
+            )
+        except LLMQuotaExceededError:
+            logger.warning("Judge LLM chạm hạn mức Daily Quota ở query %s, fallback sang Rule-based Judge.", q.id)
+            judge_rep = evaluate_recommendation_quality(
+                model=None,
+                user_query=q.query,
+                expectation=q.expectation,
+                rooms=rooms,
+                text_reply=text_reply,
+                insights=insights,
+                budget_tolerance_pct=budget_tolerance_pct,
+            )
+        except Exception as je:
+            if is_daily_quota_exhausted(str(je)):
+                logger.warning("Judge LLM cạn Daily Quota ở query %s, fallback sang Rule-based Judge.", q.id)
+                judge_rep = evaluate_recommendation_quality(
+                    model=None,
+                    user_query=q.query,
+                    expectation=q.expectation,
+                    rooms=rooms,
+                    text_reply=text_reply,
+                    insights=insights,
+                    budget_tolerance_pct=budget_tolerance_pct,
+                )
+            else:
+                logger.error("Lỗi khi chạy LLM Judge cho query %s: %s, fallback Rule-based Judge.", q.id, je)
+                judge_rep = evaluate_recommendation_quality(
+                    model=None,
+                    user_query=q.query,
+                    expectation=q.expectation,
+                    rooms=rooms,
+                    text_reply=text_reply,
+                    insights=insights,
+                    budget_tolerance_pct=budget_tolerance_pct,
+                )
 
         logger.info(
             " -> Kết quả: Rooms=%d | P@3=%.2f | P@5=%.2f | RR=%.2f | nDCG@5=%.2f | CSR=%.2f | Judge=%.2f/5.0 | Latency=%.2fs",
@@ -426,68 +603,77 @@ def run_evaluation(
             },
         }
         query_details.append(query_record)
-        time.sleep(3.0)  # Thư giãn nhẹ tránh chạm trần RPM của LLM API
+        if pacing > 0:
+            time.sleep(pacing)
 
     # 5. Tổng hợp số liệu toàn cục
+    evaluated_count = len(query_details)
+    if evaluated_count == 0:
+        logger.warning("Không có truy vấn nào được thực thi hoàn tất để tổng hợp số liệu.")
+        return {}
+
+    logger.info("Hoàn tất đánh giá %d/%d queries. Đang tổng hợp báo cáo...", evaluated_count, total_queries)
+
     latencies = sorted(q["latency_s"] for q in query_details)
     p50_lat = statistics.median(latencies) if latencies else 0.0
     p95_idx = int(len(latencies) * 0.95)
     p95_lat = latencies[min(p95_idx, len(latencies) - 1)] if latencies else 0.0
     max_lat = max(latencies) if latencies else 0.0
-    mean_lat = sum(latencies) / total_queries if total_queries > 0 else 0.0
+    mean_lat = sum(latencies) / evaluated_count if evaluated_count > 0 else 0.0
 
     summary = {
-        "total_queries": total_queries,
+        "total_queries": evaluated_count,
+        "planned_queries": total_queries,
         "mean_precision_at_3": round(
-            sum(q["ir_metrics"]["precision_at_3"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["precision_at_3"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_precision_at_5": round(
-            sum(q["ir_metrics"]["precision_at_5"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["precision_at_5"] for q in query_details) / evaluated_count,
             4,
         ),
         "mrr": round(
-            sum(q["ir_metrics"]["reciprocal_rank"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["reciprocal_rank"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_ndcg_at_5": round(
-            sum(q["ir_metrics"]["ndcg_at_5"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["ndcg_at_5"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_csr": round(
-            sum(q["ir_metrics"]["constraint_breakdown"]["overall_csr"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["constraint_breakdown"]["overall_csr"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_price_compliance_pct": round(
-            sum(q["ir_metrics"]["constraint_breakdown"]["price_compliance_pct"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["constraint_breakdown"]["price_compliance_pct"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_distance_compliance_pct": round(
-            sum(q["ir_metrics"]["constraint_breakdown"]["distance_compliance_pct"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["constraint_breakdown"]["distance_compliance_pct"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_room_type_compliance_pct": round(
-            sum(q["ir_metrics"]["constraint_breakdown"]["room_type_compliance_pct"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["constraint_breakdown"]["room_type_compliance_pct"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_amenities_compliance_pct": round(
-            sum(q["ir_metrics"]["constraint_breakdown"]["amenities_compliance_pct"] for q in query_details) / total_queries,
+            sum(q["ir_metrics"]["constraint_breakdown"]["amenities_compliance_pct"] for q in query_details) / evaluated_count,
             4,
         ),
         "mean_relevance_score": round(
-            sum(q["judge_report"]["relevance_score"] for q in query_details) / total_queries,
+            sum(q["judge_report"]["relevance_score"] for q in query_details) / evaluated_count,
             2,
         ),
         "mean_ranking_score": round(
-            sum(q["judge_report"]["ranking_score"] for q in query_details) / total_queries,
+            sum(q["judge_report"]["ranking_score"] for q in query_details) / evaluated_count,
             2,
         ),
         "mean_faithfulness_score": round(
-            sum(q["judge_report"]["faithfulness_score"] for q in query_details) / total_queries,
+            sum(q["judge_report"]["faithfulness_score"] for q in query_details) / evaluated_count,
             2,
         ),
         "mean_overall_score": round(
-            sum(q["judge_report"]["overall_score"] for q in query_details) / total_queries,
+            sum(q["judge_report"]["overall_score"] for q in query_details) / evaluated_count,
             2,
         ),
         "latency_p50_s": round(p50_lat, 3),
@@ -516,10 +702,14 @@ def run_evaluation(
 
     meta = {
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "total_queries": total_queries,
+        "total_queries": evaluated_count,
+        "planned_queries": total_queries,
         "judge_mode": judge_mode,
         "judge_model": judge_model_name,
         "budget_tolerance_pct": budget_tolerance_pct,
+        "offline_nlu": offline_nlu,
+        "pacing_s": pacing,
+        "daily_quota_stopped": daily_quota_hit,
     }
 
     results_payload = {
@@ -578,13 +768,24 @@ def main() -> None:
         "--out",
         type=str,
         default="eval_results",
-        help="Thư mục lưu trữ báo cáo đầu ra (mặc định: 'eval_results').",
+        help="Thư mục lưu trữ báo cáo đầu ra (mặc định: 'eval_results' -> lưu trong ai-agent/eval_results/).",
     )
     parser.add_argument(
         "--budget-tolerance",
         type=float,
         default=0.0,
         help="Tỷ lệ nới lỏng ngân sách khi thẩm định (mặc định: 0.0 = không nới lỏng).",
+    )
+    parser.add_argument(
+        "--pacing",
+        type=float,
+        default=3.5,
+        help="Thời gian nghỉ (giây) giữa các query (mặc định: 3.5s).",
+    )
+    parser.add_argument(
+        "--offline-nlu",
+        action="store_true",
+        help="Chế độ Offline NLU: chuyển trực tiếp GroundTruthExpectation thành truy vấn Backend để đo IR và Reranker mà không tốn token LLM.",
     )
 
     args = parser.parse_args()
@@ -596,6 +797,8 @@ def main() -> None:
         judge_model_name=args.model,
         output_dir=args.out,
         budget_tolerance_pct=args.budget_tolerance,
+        pacing=args.pacing,
+        offline_nlu=args.offline_nlu,
     )
 
 
