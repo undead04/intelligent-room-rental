@@ -16,6 +16,7 @@ from domain.schemas import UserPreferenceState, format_vnd_million
 from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import (
     CRITERIA,
+    LLMQuotaExceededError,
     TurnAnalysis,
     analyze_turn,
     apply_patch,
@@ -110,17 +111,39 @@ def interpret_turn(
 
     recent_dialog_turns = session.compact_history_tuples(window=4) if hasattr(session, "compact_history_tuples") else None
     recent_user_turns = [text for role, text in (getattr(session, "history", None) or []) if role == "user"][-3:]
-    analysis = analyze_turn(
-        model,
-        user_text,
-        pref0,
-        rooms_brief=_rooms_brief(rooms),
-        multipliers=mult0,
-        n_rooms=len(rooms),
-        skills=skills,
-        recent_dialog_turns=recent_dialog_turns,
-        recent_user_turns=recent_user_turns,
-    )
+    try:
+        analysis = analyze_turn(
+            model,
+            user_text,
+            pref0,
+            rooms_brief=_rooms_brief(rooms),
+            multipliers=mult0,
+            n_rooms=len(rooms),
+            skills=skills,
+            recent_dialog_turns=recent_dialog_turns,
+            recent_user_turns=recent_user_turns,
+        )
+    except LLMQuotaExceededError:
+        logger.warning("interpret_turn: LLM cạn Quota (429 RESOURCE_EXHAUSTED), kích hoạt phản hồi cảnh báo Quota trực tiếp.")
+        quota_text = (
+            "⚠️ **Hạn mức sử dụng AI tạm thời bị gián đoạn (Quota Exceeded / 429)**\n\n"
+            "Mô hình AI hiện tại đã đạt giới hạn lượt gọi miễn phí trong ngày của API Key "
+            "(Google Gemini Free Tier Quota Exceeded — 500 requests/ngày).\n\n"
+            "💡 **Cách khắc phục:**\n"
+            "1. Cập nhật `OPENAI_API_KEY` mới trong file `ai-agent/.env` (tạo miễn phí tại [Google AI Studio](https://aistudio.google.com/)).\n"
+            "2. Hoặc khởi động lại dịch vụ sau khi hạn mức được Google làm mới (sau khoảng 6 tiếng)."
+        )
+        empty_analysis = TurnAnalysis(intent="smalltalk")
+        return TurnPlan(
+            analysis=empty_analysis,
+            intent="smalltalk",
+            preferences=pref0,
+            multipliers=mult0,
+            computed_weights=compute_normalized_weights(pref0, mult0),
+            direct_reply=True,
+            final_text=quota_text,
+            needs_clarification=False,
+        )
 
     if analysis is None:
         # Không có model hoặc LLM lỗi: không dùng regex đoán mò, yêu cầu làm rõ an toàn

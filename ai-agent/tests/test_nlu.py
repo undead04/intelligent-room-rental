@@ -4,6 +4,7 @@ from domain.enums import Amenity, RoomType
 from intelligence.nlu import (
     LEVEL_TO_MULT, PreferencePatch, Priorities, TurnAnalysis, analyze_turn, apply_patch, apply_priorities,
     build_nlu_system_prompt as build_system_prompt, mult_to_level, multipliers_to_levels, sanitize_user_text,
+    LLMQuotaExceededError, is_daily_quota_exhausted,
 )
 from domain.schemas import UserPreferenceState
 from tests.helpers import SKILLS, FakeModel
@@ -227,3 +228,44 @@ def test_multi_intent_detection_preserves_compound_fields():
     )
     assert a3.is_multi_intent is True
     assert a3.referenced_room_rank == 2 and a3.skill_slug == "rental-contract-advisor"
+
+
+def test_is_daily_quota_exhausted_detection():
+    assert is_daily_quota_exhausted("Resource_Exhausted: Quota exceeded for metric") is True
+    assert is_daily_quota_exhausted("generaterequestsperday limit reached") is True
+    assert is_daily_quota_exhausted("requests per day limit exceeded on Free Tier") is True
+    assert is_daily_quota_exhausted("exceeded your current quota, please check your plan") is True
+    assert is_daily_quota_exhausted("Rate limit reached for requests per minute") is False
+    assert is_daily_quota_exhausted("Connection timeout") is False
+
+
+def test_analyze_daily_quota_fast_fails_without_sleep():
+    import time
+
+    quota_err = RuntimeError(
+        "Error code: 429 - Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, "
+        "limit: 500, model: gemini-3.5-flash-lite, description: Generate content requests per day limit exceeded on Free Tier. "
+        "status: RESOURCE_EXHAUSTED"
+    )
+    t0 = time.time()
+    with pytest.raises(LLMQuotaExceededError):
+        _analyze(quota_err)
+    elapsed = time.time() - t0
+    # Phải ngắt ngay lập tức, tuyệt đối không được sleep 12s/24s/36s
+    assert elapsed < 1.0
+
+
+def test_interpret_turn_handles_quota_error():
+    from intelligence.understand import interpret_turn
+    from core.session_store import SessionData
+
+    quota_err = RuntimeError("429 RESOURCE_EXHAUSTED: requests per day limit exceeded")
+    fake_model = FakeModel(quota_err)
+    session = SessionData(session_id="test_sid")
+
+    plan = interpret_turn("tìm phòng 3 triệu ở quận 9", session, fake_model, skills=SKILLS)
+    assert plan.direct_reply is True
+    assert plan.needs_clarification is False
+    assert "Quota Exceeded" in (plan.final_text or "")
+    assert "500 requests/ngày" in (plan.final_text or "")
+

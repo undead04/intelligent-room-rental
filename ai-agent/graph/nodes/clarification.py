@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from graph.deps import Deps
 from graph.tracing import traced_call
-from intelligence.nlu import sanitize_user_text
+from intelligence.nlu import is_daily_quota_exhausted, sanitize_user_text
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +48,18 @@ def make_clarification_node(deps: Deps):
                 reply = reply if isinstance(reply, ClarifyReply) else ClarifyReply.model_validate(reply)
                 text = reply.text.strip()
                 suggestions = [s.strip() for s in reply.suggestions if s and s.strip()]
-            except Exception:
-                logger.warning("clarification_node: LLM lỗi", exc_info=True)
+            except Exception as exc:
+                err_str = str(exc).lower()
+                if is_daily_quota_exhausted(err_str) or any(t in err_str for t in ("429", "rate limit", "resource_exhausted", "quota")):
+                    logger.error("clarification_node: LLM chạm rate limit / Quota Exceeded (429).")
+                    text = (
+                        "⚠️ **Hạn mức sử dụng AI tạm thời bị gián đoạn (Quota Exceeded / 429)**\n\n"
+                        "Mô hình AI hiện tại đã đạt giới hạn lượt gọi miễn phí trong ngày của API Key "
+                        "(Google Gemini Free Tier Quota Exceeded — 500 requests/ngày).\n\n"
+                        "💡 **Cách khắc phục:** Vui lòng cập nhật `OPENAI_API_KEY` mới trong file `ai-agent/.env` để tiếp tục."
+                    )
+                else:
+                    logger.warning("clarification_node: LLM lỗi", exc_info=True)
         if len(text) < 15:
             text = FALLBACK_TEXT
         return {"final_text": text, "needs_clarification": True, "retrieved_rooms": [], "follow_up_questions": suggestions, "trace_events": trace}
