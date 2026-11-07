@@ -126,11 +126,56 @@ def make_retrieval_node(deps: Deps):
                 status, candidates = "ambiguous", res.candidates
             # unresolved_point: vẫn tìm theo văn bản, không có toạ độ
 
-        # 2) tìm phòng
+        # 2) chuẩn bị tham số tìm phòng
         rooms: list[RoomItem] = []
         search_error: Optional[str] = None
         search_args: dict[str, Any] = {}
+        ctx = None
+
+        def _execute_search_and_ground(args: dict[str, Any]) -> tuple[list[RoomItem], Optional[str], Any]:
+            cur_rooms: list[RoomItem] = []
+            cur_err: Optional[str] = None
+            call_args = dict(args)
+            try:
+                data = tool_event(
+                    trace,
+                    "search_rooms",
+                    call_args,
+                    lambda: deps.search_rooms(call_args),
+                    lambda d: {"ok": bool(d.get("ok")), "rooms_found": len(d.get("data") or []), "error": d.get("error")},
+                )
+                if data.get("ok"):
+                    cur_rooms = [
+                        RoomItem.from_backend_result(raw, rank=i, target_lat=pref.lat, target_lng=pref.lng)
+                        for i, raw in enumerate(data.get("data") or [], 1)
+                    ]
+                else:
+                    cur_err = str(data.get("error") or "Lỗi search_rooms")
+            except Exception as e:
+                cur_err = str(e)
+
+            # Lọc tin đăng chứa mã độc/injection
+            safe = []
+            for r in cur_rooms:
+                flags = scan_untrusted_text(r.title)
+                if flags:
+                    logger.warning("Loại tin đăng nghi injection %s: %s", r.id, flags)
+                    emit_trace(trace, "suspicious_listing", node="retrieval_node", listing_id=r.id, rules=flags)
+                else:
+                    safe.append(r)
+
+            # Kiểm ràng buộc cứng + ngữ cảnh thị trường
+            cur_ctx = verify_context_grounding(
+                safe,
+                pref,
+                last_search_args=args,
+                area_name=pref.location_text,
+                market_fetcher=deps.market_fetcher,
+            )
+            return safe, cur_err, cur_ctx
+
         if status == "ok":
+            base_radius = pref.max_distance_km or 2.5
             search_args = {
                 "query": build_query(
                     pref,
@@ -145,7 +190,7 @@ def make_retrieval_node(deps: Deps):
                 "max_area": pref.max_area,
                 "amenities": [a.value for a in pref.amenities] or None,
                 "preferred_amenities": [a.value for a in pref.preferred_amenities] or None,
-                "max_distance_km": 8.0 if pref.has_point else None,
+                "max_distance_km": base_radius if pref.has_point else None,
                 "weights": weights or None,
                 "limit": OVERFETCH_LIMIT if pref.excluded_room_types else RESULT_LIMIT,
             }
@@ -154,34 +199,30 @@ def make_retrieval_node(deps: Deps):
                     search_args[key] = getattr(pref, key)
             if pref.room_type is not None:
                 search_args["room_type"] = pref.room_type.value
-            try:
-                data = tool_event(
-                    trace,
-                    "search_rooms",
-                    search_args,
-                    lambda: deps.search_rooms(search_args),
-                    lambda d: {"ok": bool(d.get("ok")), "rooms_found": len(d.get("data") or []), "error": d.get("error")},
-                )
-                if data.get("ok"):
-                    rooms = [
-                        RoomItem.from_backend_result(raw, rank=i, target_lat=pref.lat, target_lng=pref.lng)
-                        for i, raw in enumerate(data.get("data") or [], 1)
-                    ]
-                else:
-                    search_error = str(data.get("error") or "Lỗi search_rooms")
-            except Exception as e:
-                search_error = str(e)
+            if pref.excluded_room_types:
+                search_args["excluded_room_types"] = [r.value for r in pref.excluded_room_types]
 
-        # 3) tin đăng chứa mã độc/injection (dữ liệu bên thứ ba) -> loại, ghi vết
-        safe_rooms = []
-        for r in rooms:
-            flags = scan_untrusted_text(r.title)
-            if flags:
-                logger.warning("Loại tin đăng nghi injection %s: %s", r.id, flags)
-                emit_trace(trace, "suspicious_listing", node="retrieval_node", listing_id=r.id, rules=flags)
-            else:
-                safe_rooms.append(r)
-        rooms = safe_rooms
+            # Pha 1: Tìm kiếm với bán kính cơ sở
+            rooms, search_error, ctx = _execute_search_and_ground(search_args)
+
+            # Pha 2: Bán kính thích ứng (Adaptive Radius) khi có tọa độ và user không cố định bán kính
+            if not search_error and pref.has_point and pref.max_distance_km is None:
+                for next_radius in (3.5, 5.0):
+                    if len(ctx.valid_rooms) >= 3:
+                        break
+                    emit_trace(
+                        trace,
+                        "adaptive_radius_expansion",
+                        node="retrieval_node",
+                        from_radius=search_args.get("max_distance_km"),
+                        to_radius=next_radius,
+                        valid_rooms_before=len(ctx.valid_rooms),
+                        reason=f"Số phòng hợp lệ ({len(ctx.valid_rooms)}) < 3, tự động mở rộng bán kính tìm kiếm lên {next_radius}km",
+                    )
+                    search_args["max_distance_km"] = next_radius
+                    new_rooms, new_err, new_ctx = _execute_search_and_ground(search_args)
+                    if not new_err:
+                        rooms, search_error, ctx = new_rooms, new_err, new_ctx
 
         session.preferences = pref
         if search_error:
@@ -199,15 +240,8 @@ def make_retrieval_node(deps: Deps):
                 "last_search_args": search_args,
             }
 
-        # 4) kiểm ràng buộc cứng + phân tích thị trường
-        if status == "ok":
-            ctx = verify_context_grounding(
-                rooms,
-                pref,
-                last_search_args=search_args,
-                area_name=pref.location_text,
-                market_fetcher=deps.market_fetcher,
-            )
+        # 4) kết luận sau tìm kiếm và phân tích thị trường
+        if status == "ok" and ctx:
             rooms = ctx.valid_rooms[:RESULT_LIMIT]
             session.proposed_budget = ctx.proposed_budget
             session.zero_result_streak = 0 if rooms else session.zero_result_streak + 1

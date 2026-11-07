@@ -182,3 +182,23 @@ def test_format_vnd_million():
     assert format_vnd_million(2_750_000) == "2.75 triệu/tháng"
     assert format_vnd_million(500_000) == "500,000 đ/tháng"
     assert format_vnd_million(0) == "Thỏa thuận" and format_vnd_million(None) == "Thỏa thuận"
+
+
+def test_max_distance_km_in_user_preference_and_patch():
+    from intelligence.nlu import PreferencePatch, apply_patch
+
+    p = UserPreferenceState(location_text="UIT", lat=10.87, lng=106.80, max_distance_km=3.5)
+    assert p.max_distance_km == 3.5
+    ctx_str = p.to_context_string()
+    assert "- Bán kính tối đa: 3.5 km" in ctx_str
+
+    # Cập nhật patch
+    patch = PreferencePatch(max_distance_km=2.0)
+    p_updated = apply_patch(p, patch)
+    assert p_updated.max_distance_km == 2.0
+
+    # Xóa location -> xóa luôn max_distance_km
+    patch_clear = PreferencePatch(clear=["location"])
+    p_cleared = apply_patch(p_updated, patch_clear)
+    assert p_cleared.max_distance_km is None
+    assert p_cleared.location_text is None

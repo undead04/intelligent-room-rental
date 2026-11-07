@@ -115,6 +115,30 @@ def test_hard_constraints_drop_and_renumber():
     assert "vượt ngân sách" in reasons["nhatot_100"] and "nhỏ hơn" in reasons["nhatot_200"] and "loại trừ" in reasons["nhatot_300"]
 
 
+def test_hard_constraints_blocks_sleepbox_by_type_id_even_without_enum():
+    pref = UserPreferenceState(excluded_room_types=[RoomType.SLEEPBOX])
+    # Phòng từ backend chỉ có room_type_id = 4 mà room_type object bị None
+    raw_item = {
+        "listing": {
+            "id": "sleepbox_99",
+            "title": "Hộp ngủ cao cấp",
+            "price_vnd": 1_800_000,
+            "area_m2": 6.0,
+            "room_type_id": 4,
+            "room_type": None,
+        },
+        "match_score": 0.85,
+    }
+    room_item = RoomItem.from_backend_result(raw_item)
+    assert room_item.room_type == RoomType.SLEEPBOX
+    assert room_item.room_type_id == 4
+
+    valid, dropped = check_hard_constraints([room_item], pref)
+    assert valid == []
+    assert len(dropped) == 1
+    assert "loại trừ" in dropped[0][1]
+
+
 def test_price_filter_tolerance():
     pref = UserPreferenceState(max_price=3_000_000)
     valid, _ = check_hard_constraints([R(1, 3_050_000), R(2, 3_100_000)], pref)
@@ -129,7 +153,7 @@ def test_context_ok_returns_valid_rooms_and_top_score():
 def test_context_empty_triggers_market_context():
     res = verify_context_grounding([], UserPreferenceState(max_price=3_000_000, location_text="Dĩ An"))
     assert not res.is_grounded and res.market_context
-    assert res.proposed_budget == 3_450_000 and res.proposed_budget_str == "3.45 triệu/tháng"
+    assert res.proposed_budget is None and res.proposed_budget_str is None
 
 
 def test_context_all_violating_also_triggers_market_context_with_dropped():
@@ -159,7 +183,8 @@ def test_never_invents_market_data_when_backend_has_none():
     for fetcher in (lambda **kw: None, None):
         p = build_market_context(pref, market_fetcher=fetcher)
         assert not p.is_market_gap and p.market_min_price is None and p.market_avg_price is None
-        assert p.proposed_budget == 1_400_000 and "thấp nhất ghi nhận" not in (p.message or "")
+        assert p.proposed_budget is None and "thấp nhất ghi nhận" not in (p.message or "")
+        assert "chưa tìm thấy phòng trọ nào khớp với ngân sách" in (p.message or "")
 
 
 def test_no_city_means_no_market_call():

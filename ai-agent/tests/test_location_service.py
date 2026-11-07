@@ -123,10 +123,10 @@ def test_kind_unknown_tries_admin_then_falls_back_to_place():
 
 
 def test_geocode_failure_modes():
-    assert resolve_location("UIT", "place", FakeDB(), lambda q, h: None).kind == "unresolved_point"
+    assert resolve_location("Dia diem khong ton tai XYZ", "place", FakeDB(), lambda q, h: None).kind == "unresolved_point"
     def boom(q, h): raise RuntimeError("x")
-    assert resolve_location("UIT", "place", FakeDB(), boom).kind == "unresolved_point"
-    assert resolve_location("UIT", "place", FakeDB(), lambda q, h: {"lat": None, "lng": 1}).kind == "unresolved_point"
+    assert resolve_location("Dia diem khong ton tai XYZ", "place", FakeDB(), boom).kind == "unresolved_point"
+    assert resolve_location("Dia diem khong ton tai XYZ", "place", FakeDB(), lambda q, h: {"lat": None, "lng": 1}).kind == "unresolved_point"
     assert resolve_location("  ", "place", FakeDB(), geo_ok).kind == "unresolved_point"
 
 
@@ -180,3 +180,21 @@ def test_infer_region_from_text_and_preference():
     assert infer_region_from_preference(MockPref(location_text="Bình Thạnh")) == "Hồ Chí Minh"
     assert infer_region_from_preference(None) is None
 
+
+
+def test_university_poi_lookup_0ms():
+    from tools.location_service import lookup_university_poi
+
+    poi_uit = lookup_university_poi("gần trường UIT")
+    assert poi_uit is not None
+    assert poi_uit["lat"] == 10.87 and poi_uit["lng"] == 106.8
+    assert poi_uit["short_name"] == "UIT"
+
+    poi_hust = lookup_university_poi("ĐH Bách Khoa Hà Nội")
+    assert poi_hust is not None
+    assert poi_hust["short_name"] == "HUST"
+
+    called = []
+    r = resolve_location("UIT", "place", FakeDB(), lambda q, h: called.append(q))
+    assert r.kind == "point" and r.lat == 10.87 and r.lng == 106.8
+    assert called == []

@@ -26,9 +26,8 @@ from domain.budget import (
     MarketFetcher,
     fetch_market_stats,
     propose_budget,
-    relax_budget,
 )
-from domain.enums import normalize_room_type
+from domain.enums import RoomType, normalize_room_type
 from domain.filters import renumber
 from domain.schemas import (
     MarketContext,
@@ -95,8 +94,12 @@ def check_hard_constraints(
             reason = f"diện tích {r.area_m2:g}m² nhỏ hơn yêu cầu"
         elif r.area_m2 and pref.max_area and r.area_m2 > pref.max_area:
             reason = f"diện tích {r.area_m2:g}m² lớn hơn yêu cầu"
-        elif r.room_type is not None and r.room_type in excluded:
-            reason = f"loại phòng {r.room_type.label_vi} đã bị loại trừ"
+        elif (
+            (r.room_type is not None and r.room_type in excluded)
+            or (getattr(r, "room_type_id", None) == 4 and (RoomType.SLEEPBOX in excluded or any(e.type_id == 4 for e in excluded)))
+        ):
+            rt_name = r.room_type.label_vi if r.room_type else "Ký túc xá / Sleepbox"
+            reason = f"loại phòng {rt_name} đã bị loại trừ"
         elif pref.amenities and r.concept_scores:
             missing_ams = []
             for am in pref.amenities:
@@ -142,7 +145,7 @@ def _explanation(bp: BudgetProposal, proposed: Optional[float] = None) -> str:
     if bp.is_market_gap and bp.market:
         avg = f" (trung bình ~{format_vnd_million(bp.market.avg_price)})" if bp.market.avg_price else ""
         return f"Tại {area}, giá phòng thấp nhất ghi nhận từ {format_vnd_million(bp.market.min_price)}{avg}. Ngân sách {user} hiện chưa đủ để tiếp cận phòng tại đây."
-    return f"Có thể cân nhắc nới ngân sách lên khoảng {prop} (+15%) để tiếp cận thêm các lựa chọn tốt."
+    return "Homigo hiện chưa tìm thấy phòng trọ nào khớp với ngân sách của bạn. Bạn có thể cân nhắc mở rộng phạm vi tìm kiếm hoặc điều chỉnh yêu cầu tiện ích."
 
 
 def build_market_context(
@@ -162,11 +165,7 @@ def build_market_context(
         excluded_room_types=pref.excluded_room_types,
     )
     m = bp.market if bp else None
-    proposed = (
-        bp.proposed_budget
-        if (bp and bp.is_market_gap)
-        else (relax_budget(bp.user_budget) if bp and bp.user_budget else None)
-    )
+    proposed = bp.proposed_budget if (bp and bp.is_market_gap) else None
     return MarketContext(
         area_name=bp.area_name if bp else (area_name or pref.location_text),
         user_budget=bp.user_budget if bp else None,

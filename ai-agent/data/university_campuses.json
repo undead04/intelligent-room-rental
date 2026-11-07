@@ -1,0 +1,209 @@
+[
+  {
+    "name": "Trường Đại học Công nghệ Thông tin - ĐHQG-HCM",
+    "short_name": "UIT",
+    "aliases": ["uit", "đh công nghệ thông tin", "đại học công nghệ thông tin", "trường đại học công nghệ thông tin", "truong dai hoc cong nghe thong tin", "cntt đhqg"],
+    "lat": 10.87,
+    "lng": 106.8,
+    "region": "Hồ Chí Minh",
+    "address": "Khu đô thị ĐHQG-HCM, P. Linh Trung, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Bách khoa - ĐHQG-HCM (Cơ sở 1)",
+    "short_name": "HCMUT CS1",
+    "aliases": ["bách khoa cs1", "bách khoa quận 10", "đh bách khoa lý thường kiệt", "hcmut cs1", "bach khoa cs1", "bach khoa quan 10"],
+    "lat": 10.7726,
+    "lng": 106.6578,
+    "region": "Hồ Chí Minh",
+    "address": "268 Lý Thường Kiệt, Phường 14, Quận 10, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Bách khoa - ĐHQG-HCM (Cơ sở 2)",
+    "short_name": "HCMUT CS2",
+    "aliases": ["bách khoa cs2", "bách khoa thủ đức", "bách khoa dĩ an", "hcmut cs2", "bach khoa cs2", "bach khoa thu duc"],
+    "lat": 10.8804,
+    "lng": 106.8056,
+    "region": "Hồ Chí Minh",
+    "address": "Khu đô thị ĐHQG-HCM, TP. Dĩ An / TP. Thủ Đức"
+  },
+  {
+    "name": "Trường Đại học Sư phạm Kỹ thuật TP.HCM",
+    "short_name": "HCMUTE",
+    "aliases": ["hcmute", "spkt", "sư phạm kỹ thuật", "đh sư phạm kỹ thuật", "dai hoc su pham ky thuat", "su pham ky thuat tphcm"],
+    "lat": 10.8506,
+    "lng": 106.7720,
+    "region": "Hồ Chí Minh",
+    "address": "1 Võ Văn Ngân, P. Linh Chiểu, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Khoa học Tự nhiên - ĐHQG-HCM (Cơ sở 1)",
+    "short_name": "HCMUS CS1",
+    "aliases": ["khtn cs1", "khoa học tự nhiên cs1", "khtn nguyễn văn cừ", "khtn q5", "hcmus cs1"],
+    "lat": 10.7628,
+    "lng": 106.6825,
+    "region": "Hồ Chí Minh",
+    "address": "227 Nguyễn Văn Cừ, Phường 4, Quận 5, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Khoa học Tự nhiên - ĐHQG-HCM (Cơ sở 2)",
+    "short_name": "HCMUS CS2",
+    "aliases": ["khtn cs2", "khoa học tự nhiên cs2", "khtn thủ đức", "khtn linh trung", "hcmus cs2"],
+    "lat": 10.8757,
+    "lng": 106.7981,
+    "region": "Hồ Chí Minh",
+    "address": "Khu đô thị ĐHQG-HCM, P. Linh Trung, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Khoa học Xã hội và Nhân văn - ĐHQG-HCM (Cơ sở 1)",
+    "short_name": "USSH CS1",
+    "aliases": ["ussh cs1", "nhân văn cs1", "nhân văn quận 1", "nhân văn đinh tiên hoàng", "ussh q1"],
+    "lat": 10.7876,
+    "lng": 106.7011,
+    "region": "Hồ Chí Minh",
+    "address": "10-12 Đinh Tiên Hoàng, P. Bến Nghé, Quận 1, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Khoa học Xã hội và Nhân văn - ĐHQG-HCM (Cơ sở 2)",
+    "short_name": "USSH CS2",
+    "aliases": ["ussh cs2", "nhân văn cs2", "nhân văn thủ đức", "ussh thủ đức"],
+    "lat": 10.8715,
+    "lng": 106.7997,
+    "region": "Hồ Chí Minh",
+    "address": "Khu đô thị ĐHQG-HCM, P. Linh Trung, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Kinh tế - Luật - ĐHQG-HCM",
+    "short_name": "UEL",
+    "aliases": ["uel", "kinh tế luật", "đh kinh tế luật", "đại học kinh tế luật"],
+    "lat": 10.8690,
+    "lng": 106.7788,
+    "region": "Hồ Chí Minh",
+    "address": "669 Quốc lộ 1K, P. Linh Xuân, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Quốc tế - ĐHQG-HCM",
+    "short_name": "IU",
+    "aliases": ["đh quốc tế", "iu", "international university", "đại học quốc tế đhqg"],
+    "lat": 10.8776,
+    "lng": 106.8017,
+    "region": "Hồ Chí Minh",
+    "address": "Khu đô thị ĐHQG-HCM, P. Linh Trung, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Ký túc xá Khu A ĐHQG-HCM",
+    "short_name": "KTX Khu A",
+    "aliases": ["ktx khu a", "ktx khu a đhqg", "ký túc xá khu a", "ktx đhqg khu a"],
+    "lat": 10.8782,
+    "lng": 106.8064,
+    "region": "Hồ Chí Minh",
+    "address": "Đường Tạ Quang Bửu, Khu đô thị ĐHQG-HCM, P. Linh Trung, TP. Thủ Đức"
+  },
+  {
+    "name": "Ký túc xá Khu B ĐHQG-HCM",
+    "short_name": "KTX Khu B",
+    "aliases": ["ktx khu b", "ktx khu b đhqg", "ký túc xá khu b", "ktx đhqg khu b"],
+    "lat": 10.8835,
+    "lng": 106.7816,
+    "region": "Bình Dương",
+    "address": "Đường Tô Vĩnh Diện, P. Đông Hòa, TP. Dĩ An, Bình Dương"
+  },
+  {
+    "name": "Trường Đại học Kinh tế TP.HCM (Cơ sở B)",
+    "short_name": "UEH CS B",
+    "aliases": ["ueh", "kinh tế tphcm", "đại học kinh tế", "ueh nguyễn tri phương", "ueh cs b"],
+    "lat": 10.7600,
+    "lng": 106.6669,
+    "region": "Hồ Chí Minh",
+    "address": "279 Nguyễn Tri Phương, Phường 5, Quận 10, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Kinh tế TP.HCM (Cơ sở A)",
+    "short_name": "UEH CS A",
+    "aliases": ["ueh cs a", "ueh nguyễn đình chiểu", "ueh q3"],
+    "lat": 10.7828,
+    "lng": 106.6961,
+    "region": "Hồ Chí Minh",
+    "address": "59C Nguyễn Đình Chiểu, Phường 6, Quận 3, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Công nghệ TP.HCM (HUTECH)",
+    "short_name": "HUTECH",
+    "aliases": ["hutech", "đh hutech", "công nghệ tphcm", "đại học công nghệ tphcm", "hutech điện biên phủ"],
+    "lat": 10.8016,
+    "lng": 106.7144,
+    "region": "Hồ Chí Minh",
+    "address": "475A Điện Biên Phủ, Phường 25, Bình Thạnh, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Nông Lâm TP.HCM",
+    "short_name": "NLU",
+    "aliases": ["nông lâm", "đh nông lâm", "nlu", "đại học nông lâm"],
+    "lat": 10.8702,
+    "lng": 106.7915,
+    "region": "Hồ Chí Minh",
+    "address": "Khu phố 6, P. Linh Trung, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Đại học Bách khoa Hà Nội",
+    "short_name": "HUST",
+    "aliases": ["hust", "bách khoa hà nội", "đh bách khoa hn", "đại học bách khoa hà nội", "bach khoa ha noi"],
+    "lat": 21.0044,
+    "lng": 105.8434,
+    "region": "Hà Nội",
+    "address": "1 Đại Cồ Việt, Bách Khoa, Hai Bà Trưng, Hà Nội"
+  },
+  {
+    "name": "Trường Đại học Kinh tế Quốc dân",
+    "short_name": "NEU",
+    "aliases": ["neu", "kinh tế quốc dân", "đh kinh tế quốc dân", "đại học kinh tế quốc dân"],
+    "lat": 20.9965,
+    "lng": 105.8427,
+    "region": "Hà Nội",
+    "address": "207 Giải Phóng, Đồng Tâm, Hai Bà Trưng, Hà Nội"
+  },
+  {
+    "name": "Đại học Quốc gia Hà Nội (Cơ sở Cầu Giấy)",
+    "short_name": "VNU-HN",
+    "aliases": ["đhqg hà nội", "vnu hn", "đại học quốc gia hà nội", "vnu xuân thủy"],
+    "lat": 21.0374,
+    "lng": 105.7824,
+    "region": "Hà Nội",
+    "address": "144 Xuân Thủy, Dịch Vọng Hậu, Cầu Giấy, Hà Nội"
+  },
+  {
+    "name": "Trường Đại học Bách khoa - Đại học Đà Nẵng",
+    "short_name": "DUT",
+    "aliases": ["dut", "bách khoa đà nẵng", "đh bách khoa đà nẵng", "bach khoa da nang"],
+    "lat": 16.0747,
+    "lng": 108.1499,
+    "region": "Đà Nẵng",
+    "address": "54 Nguyễn Lương Bằng, Hòa Khánh Bắc, Liên Chiểu, Đà Nẵng"
+  },
+  {
+    "name": "Trường Đại học Kinh tế - Đại học Đà Nẵng",
+    "short_name": "DUE",
+    "aliases": ["due", "kinh tế đà nẵng", "đh kinh tế đà nẵng", "kinh te da nang"],
+    "lat": 16.0505,
+    "lng": 108.2435,
+    "region": "Đà Nẵng",
+    "address": "71 Ngũ Hành Sơn, Bắc Mỹ An, Ngũ Hành Sơn, Đà Nẵng"
+  },
+  {
+    "name": "Trường Đại học Thủ Dầu Một",
+    "short_name": "TDMU",
+    "aliases": ["tdmu", "thủ dầu một", "đh thủ dầu một", "đại học thủ dầu một", "thu dau mot"],
+    "lat": 10.9806,
+    "lng": 106.6744,
+    "region": "Bình Dương",
+    "address": "6 Trần Văn Ơn, Phú Hòa, Thủ Dầu Một, Bình Dương"
+  },
+  {
+    "name": "Trường Đại học Quốc tế Miền Đông",
+    "short_name": "EIU",
+    "aliases": ["eiu", "đh quốc tế miền đông", "quốc tế miền đông", "dai hoc quoc te mien dong"],
+    "lat": 11.0534,
+    "lng": 106.6663,
+    "region": "Bình Dương",
+    "address": "Đường Nam Kỳ Khởi Nghĩa, P. Hòa Phú, TP. Thủ Dầu Một, Bình Dương"
+  }
+]

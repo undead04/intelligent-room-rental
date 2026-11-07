@@ -120,6 +120,11 @@ class RoomItem(BaseModel):
         s = self.matchScore
         return round(s * 100) if s <= 1.0 else round(s)
 
+    @property
+    def room_type_id(self) -> Optional[int]:
+        """ID số của loại phòng (1: Phòng trọ, 2: Studio, 3: Căn hộ, 4: Sleepbox/KTX, 5: Nhà nguyên căn)."""
+        return self.room_type.type_id if self.room_type else None
+
     @classmethod
     def from_backend_result(
         cls,
@@ -129,7 +134,7 @@ class RoomItem(BaseModel):
         target_lng: Optional[float] = None,
     ) -> "RoomItem":
         """Chuyển đổi từ VectorSearchResult của Backend sang RoomItem của Agent."""
-        listing = item.get("listing") or {}
+        listing = item.get("listing") if isinstance(item.get("listing"), dict) else item
         explain = item.get("explain_match") or {}
         score = float(item.get("match_score") or 0.0)
 
@@ -194,6 +199,10 @@ class RoomItem(BaseModel):
         lat_pct = 40.0 + ((rank * 13 + room_hash) % 25)
         lng_pct = 35.0 + ((rank * 17 + room_hash * 2) % 35)
 
+        resolved_rt = _room_type_from_listing(room_type_obj)
+        if resolved_rt is None and listing.get("room_type_id") is not None:
+            resolved_rt = normalize_room_type(listing.get("room_type_id"))
+
         return cls(
             id=str(listing.get("id", f"room-{rank}")),
             rank=rank,
@@ -203,7 +212,7 @@ class RoomItem(BaseModel):
             price=price_str,
             priceNum=price_vnd,
             area_m2=area_f,
-            room_type=_room_type_from_listing(room_type_obj),
+            room_type=resolved_rt,
             address=listing.get("address_raw") or "",
             distance=dist_str,
             photoCount=photo_count,
@@ -278,6 +287,7 @@ class UserPreferenceState(BaseModel):
     city_id: Optional[int] = Field(None, description="ID Tỉnh/Thành phố")
     district_id: Optional[int] = Field(None, description="ID Quận/Huyện")
     ward_id: Optional[int] = Field(None, description="ID Phường/Xã")
+    max_distance_km: Optional[float] = Field(default=None, description="Bán kính tìm kiếm tối đa (km) do người dùng yêu cầu")
     min_price: Optional[float] = Field(None, description="Ngân sách tối thiểu (VNĐ)")
     max_price: Optional[float] = Field(None, description="Ngân sách tối đa (VNĐ)")
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m2)")
@@ -353,6 +363,8 @@ class UserPreferenceState(BaseModel):
         if self.location_text:
             coords = f" (Toạ độ: {self.lat:.4f}, {self.lng:.4f})" if self.has_point else ""
             parts.append(f"- Vị trí mục tiêu: {self.location_text}{coords}")
+        if self.max_distance_km:
+            parts.append(f"- Bán kính tối đa: {self.max_distance_km:g} km")
         if self.room_type:
             parts.append(f"- Loại phòng: {self.room_type.label_vi}")
         if self.excluded_room_types:

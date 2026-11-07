@@ -95,6 +95,10 @@ class PreferencePatch(BaseModel):
         None,
         description="Tên Tỉnh/Thành phố hoặc Quận/Huyện đi kèm trong câu hoặc ngữ cảnh (vd: 'Bình Dương' trong 'gần khu công nghiệp ở Bình Dương')",
     )
+    max_distance_km: Optional[float] = Field(
+        None,
+        description="Bán kính tìm kiếm tối đa (km) do người dùng yêu cầu (vd: 'bán kính 2km', 'trong vòng 3 cây số')",
+    )
     min_price: Optional[float] = Field(
         None,
         description="Giá tối thiểu (VNĐ) — CHỈ điền khi người dùng nêu rõ mức sàn 'từ X đến Y' hoặc 'trên X'; BẮT BUỘC để null nếu người dùng nói 'dưới X', 'khoảng X', 'tầm X', 'loanh quanh X'",
@@ -203,6 +207,7 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
     for group in patch.clear:
         if group == "location":
             p.clear_location()
+            p.max_distance_km = None
         elif group == "price":
             p.min_price = p.max_price = None
         elif group == "area":
@@ -222,7 +227,7 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
     elif patch.location_kind and p.location_text and not patch.location_is_vague and p.location_kind is None:
         p.location_kind = patch.location_kind        # cùng địa danh nhưng giờ mới biết loại
 
-    for key in ("min_price", "max_price", "min_area", "max_area"):
+    for key in ("min_price", "max_price", "min_area", "max_area", "max_distance_km"):
         v = getattr(patch, key)
         if v is not None:
             setattr(p, key, v)
@@ -460,6 +465,30 @@ def _postprocess(
         a.semantic_query = None
     elif a.semantic_query:
         a.semantic_query = sanitize_user_text(a.semantic_query).strip() or None
+
+    # Guardrail chặn SLEEPBOX khi người dùng tìm phòng riêng khép kín / có WC riêng / cho 2 người
+    user_lower = (user_text or "").lower()
+    clean_u = strip_accents(user_lower)
+    wants_shared_dorm = any(kw in clean_u for kw in ("ktx", "ky tuc xa", "sleepbox", "hop ngu", "giuong tang"))
+    is_private_room_cue = any(kw in clean_u for kw in (
+        "khep kin", "wc rieng", "ve sinh rieng", "toilet rieng",
+        "khong chung chu", "khong chung phong", "phong rieng", "o rieng",
+        "cho 2 ban", "2 ban nu", "2 nguoi", "2 ban o", "o 2 nguoi", "cap doi",
+        "studio", "can ho", "nguyen can", "phong tro"
+    ))
+    has_private_wc = (
+        Amenity.PRIVATE_WC in a.patch.amenities_add
+        or Amenity.PRIVATE_WC in a.patch.preferred_amenities_add
+    )
+    is_private_room_type = a.patch.room_type in (
+        RoomType.ROOM,
+        RoomType.STUDIO,
+        RoomType.APARTMENT,
+        RoomType.WHOLE_HOUSE,
+    )
+    if (is_private_room_cue or has_private_wc or is_private_room_type) and not wants_shared_dorm:
+        if RoomType.SLEEPBOX not in a.patch.room_types_exclude:
+            a.patch.room_types_exclude.append(RoomType.SLEEPBOX)
 
     return a
 

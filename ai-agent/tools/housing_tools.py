@@ -138,6 +138,8 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
         body["preferred_amenities"] = sorted(pref_amenities)
     if args.get("max_distance_km") is not None:
         body["max_distance_km"] = float(args["max_distance_km"])
+    if args.get("excluded_room_types"):
+        body["excluded_room_types"] = [getattr(r, "value", r) for r in args["excluded_room_types"]]
     if args.get("weights"):
         body["weights"] = args["weights"]
 

@@ -21,11 +21,11 @@ __all__ = ["rerank", "explain_match", "DEFAULT_WEIGHTS"]
 UNKNOWN_SCORE: float = 0.0
 EARTH_RADIUS_KM: float = 6371.0
 DEFAULT_WEIGHTS: Mapping[str, float] = {
-    "price": 0.2,
-    "location": 0.2,
-    "amenity": 0.2,
-    "safety": 0.2,
-    "semantic": 0.2,
+    "location": 0.25,
+    "price": 0.25,
+    "safety": 0.20,
+    "amenity": 0.20,
+    "semantic": 0.10,
 }
 
 # --- Helpers ---
@@ -59,13 +59,14 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return EARTH_RADIUS_KM * 2 * asin(sqrt(a))
 
 
-def _location_fit(dist_km: float, near_km: float = 1.0, far_km: float = 10.0) -> float:
-    """<= near_km -> 1.0, >= far_km -> 0.0, ở giữa giảm tuyến tính."""
+def _location_fit(dist_km: float, near_km: float = 0.8, far_km: float = 5.0) -> float:
+    """<= near_km -> 1.0, >= far_km -> 0.0, ở giữa suy giảm phi tuyến (ratio ** 1.5)."""
     if dist_km <= near_km:
         return 1.0
     if dist_km >= far_km:
         return 0.0
-    return 1.0 - (dist_km - near_km) / (far_km - near_km)
+    ratio = (dist_km - near_km) / (far_km - near_km)
+    return max(0.0, 1.0 - (ratio ** 1.5))
 
 
 def _normalize_amenity(code: object) -> str:
@@ -152,13 +153,16 @@ def _location_part(listing: object, user_pref: object) -> float:
         return UNKNOWN_SCORE
 
     try:
-        return _location_fit(_haversine_km(float(lat), float(lng), float(pref_lat), float(pref_lng))) # type: ignore
+        dist = _haversine_km(float(lat), float(lng), float(pref_lat), float(pref_lng)) # type: ignore
+        max_dist = _get(user_pref, "max_distance_km")
+        far_km = float(max_dist) if max_dist else 5.0
+        return _location_fit(dist, near_km=0.8, far_km=far_km)
     except (ValueError, TypeError):
         return UNKNOWN_SCORE
 
 
-def _price_fit(orm: object, user_pref: object = None) -> float:
-    """Điểm hợp lý giá (price_score) do mô hình Machine Learning thẩm định kết hợp tiết kiệm ngân sách."""
+def _price_fit(orm: object, user_pref: object = None, weights: Optional[Mapping[str, float]] = None) -> float:
+    """Điểm hợp lý giá (price_score) do mô hình Machine Learning thẩm định kết hợp độ rẻ tiền danh nghĩa."""
     price_score = _get(orm, "price_score")
     ml_score = 0.50
     if price_score is not None:
@@ -174,8 +178,27 @@ def _price_fit(orm: object, user_pref: object = None) -> float:
         m_val = float(max_price)
         if p_val <= m_val:
             savings_ratio = max(0.0, min(1.0, (m_val - p_val) / m_val))
-            # 70% giá trị hợp lý thị trường từ ML + 30% điểm tiết kiệm trong ngân sách
-            return _clamp01(0.7 * ml_score + 0.3 * (0.5 + 0.5 * savings_ratio))
+
+            # Xác định người dùng có đang ưu tiên giá rẻ danh nghĩa hay không
+            prefer_cheap = False
+            if user_pref:
+                if _get(user_pref, "prefer_cheapest"):
+                    prefer_cheap = True
+                user_weights = _get(user_pref, "weights")
+                if isinstance(user_weights, Mapping) and float(user_weights.get("price", 0.0)) > 0.28:
+                    prefer_cheap = True
+            if weights and float(weights.get("price", 0.0)) > 0.28:
+                prefer_cheap = True
+
+            if prefer_cheap:
+                # Đẩy tỷ trọng độ rẻ tiền thực tế (savings_ratio) lên 85%, ML score chỉ 15%
+                return _clamp01(0.85 * (0.3 + 0.7 * savings_ratio) + 0.15 * ml_score)
+            else:
+                # Cân bằng 50% độ rẻ tiền + 50% độ hợp lý thị trường từ ML
+                return _clamp01(0.50 * ml_score + 0.50 * (0.4 + 0.6 * savings_ratio))
+        else:
+            return _clamp01(0.3 * ml_score)
+
     return ml_score
 
 
@@ -187,7 +210,7 @@ def _match_breakdown(
     """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
     orm = _get(listing, "listing", listing)
     scorers = {
-        "price": lambda: _price_fit(orm, user_pref),
+        "price": lambda: _price_fit(orm, user_pref, weights=weights),
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
         "amenity": lambda: _amenity_fit(

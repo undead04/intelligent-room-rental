@@ -269,3 +269,32 @@ def test_interpret_turn_handles_quota_error():
     assert "Quota Exceeded" in (plan.final_text or "")
     assert "500 requests/ngày" in (plan.final_text or "")
 
+
+def test_sleepbox_auto_exclusion_guardrail():
+    from intelligence.nlu import _postprocess, TurnAnalysis, PreferencePatch
+    from domain.enums import Amenity, RoomType
+
+    # 1. Người dùng tìm phòng có WC riêng -> tự động loại trừ SLEEPBOX
+    a1 = TurnAnalysis(
+        intent="new_search",
+        patch=PreferencePatch(amenities_add=[Amenity.PRIVATE_WC]),
+    )
+    res1 = _postprocess(a1, user_text="tìm phòng có wc riêng")
+    assert RoomType.SLEEPBOX in res1.patch.room_types_exclude
+
+    # 2. Người dùng tìm phòng khép kín / cho 2 bạn -> tự động loại trừ SLEEPBOX
+    a2 = TurnAnalysis(
+        intent="new_search",
+        patch=PreferencePatch(room_type=RoomType.ROOM),
+    )
+    res2 = _postprocess(a2, user_text="tìm phòng khép kín cho 2 bạn nữ")
+    assert RoomType.SLEEPBOX in res2.patch.room_types_exclude
+
+    # 3. Người dùng chủ động tìm KTX / sleepbox -> KHÔNG bị loại trừ
+    a3 = TurnAnalysis(
+        intent="new_search",
+        patch=PreferencePatch(room_type=RoomType.SLEEPBOX),
+    )
+    res3 = _postprocess(a3, user_text="tìm ký túc xá hoặc sleepbox gần trường")
+    assert RoomType.SLEEPBOX not in res3.patch.room_types_exclude
+

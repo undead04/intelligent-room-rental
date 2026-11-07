@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Optional
@@ -88,6 +90,60 @@ def infer_region_from_preference(pref: Any) -> Optional[str]:
 
 
 _PAREN_RE = re.compile(r"\s*\([^)]*\)")
+
+_POI_CACHE: Optional[list[dict[str, Any]]] = None
+
+
+def _load_university_pois() -> list[dict[str, Any]]:
+    global _POI_CACHE
+    if _POI_CACHE is not None:
+        return _POI_CACHE
+    data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "university_campuses.json")
+    try:
+        if os.path.exists(data_path):
+            with open(data_path, "r", encoding="utf-8") as f:
+                _POI_CACHE = json.load(f)
+        else:
+            _POI_CACHE = []
+    except Exception:
+        _POI_CACHE = []
+    return _POI_CACHE
+
+
+def lookup_university_poi(text: str, region_hint: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Tra cứu nhanh POI trường đại học từ từ điển cục bộ (0 ms)."""
+    if not text:
+        return None
+    pois = _load_university_pois()
+    if not pois:
+        return None
+
+    clean = re.sub(r"^(?:gần|quanh|khu\s+vực|ở|tìm\s+phòng\s+(?:gần|quanh))\s+", "", text, flags=re.IGNORECASE).strip()
+    clean_k = norm_key(clean)
+    clean_k_sub = re.sub(r"^(?:truong|dh|dai hoc)\s+", "", clean_k).strip()
+    norm_hint = norm_key(region_hint) if region_hint else ""
+
+    candidates = []
+    for poi in pois:
+        names = [poi.get("name", ""), poi.get("short_name", "")] + list(poi.get("aliases", []))
+        norm_names = {norm_key(n) for n in names if n}
+
+        if clean_k in norm_names or (clean_k_sub and clean_k_sub in norm_names):
+            candidates.append(poi)
+
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    if norm_hint:
+        for c in candidates:
+            c_reg = norm_key(c.get("region", ""))
+            if c_reg and (c_reg in norm_hint or norm_hint in c_reg):
+                return c
+
+    return candidates[0]
 
 
 def _dedot(name: Optional[str]) -> str:
@@ -277,6 +333,11 @@ def resolve_location(
             return res
         if kind == "admin":
             return res                       # NLU chắc chắn là hành chính mà DB không có -> "chưa có dữ liệu"
+
+    # Tra cứu nhanh POI đại học cục bộ (0 ms) trước khi geocode bên ngoài
+    poi = lookup_university_poi(text, region_hint)
+    if poi and poi.get("lat") is not None and poi.get("lng") is not None:
+        return LocationResolution("point", lat=float(poi["lat"]), lng=float(poi["lng"]))
 
     # 'ĐH Bách Khoa, Hà Nội' -> geocode('ĐH Bách Khoa, Hà Nội', hint='Hà Nội') nếu chưa có hint
     hint = region_hint

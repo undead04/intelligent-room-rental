@@ -155,6 +155,10 @@ class VectorSearchBody(BaseModel):
     ward_id: Optional[int] = Field(None, ge=1, description="ID Phường/Xã")
     room_type_id: Optional[int] = Field(None, ge=1, le=5, description="ID loại phòng (1..5)")
     room_type: Optional[str] = Field(None, description="Mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE)")
+    excluded_room_types: Optional[list[str | int]] = Field(
+        default=None,
+        description="Danh sách loại phòng bị loại trừ (mã string hoặc ID số, vd: ['SLEEPBOX', 4])",
+    )
     min_price: Optional[float] = Field(None, ge=0, description="Giá tối thiểu (VNĐ)")
     max_price: Optional[float] = Field(None, ge=0, description="Giá tối đa (VNĐ)")
     min_area: Optional[float] = Field(None, ge=0, description="Diện tích tối thiểu (m2)")
