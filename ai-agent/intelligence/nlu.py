@@ -464,6 +464,27 @@ def _postprocess(
     return a
 
 
+class LLMQuotaExceededError(RuntimeError):
+    """Ngoại lệ ném ra khi API Key chạm hạn mức gọi trong ngày (429 RESOURCE_EXHAUSTED / Daily Quota)."""
+    pass
+
+
+def is_daily_quota_exhausted(err_msg: str) -> bool:
+    """Nhận diện lỗi cạn hạn mức ngày (Daily Quota) của Google Gemini / OpenAI."""
+    low = (err_msg or "").lower()
+    return any(
+        kw in low
+        for kw in (
+            "resource_exhausted",
+            "generaterequestsperday",
+            "requests per day limit exceeded",
+            "free_tier_requests",
+            "quota exceeded for metric",
+            "exceeded your current quota",
+        )
+    )
+
+
 def analyze_turn(
     model: Any,
     user_text: str,
@@ -506,10 +527,17 @@ def analyze_turn(
             break
         except Exception as exc:
             err_msg = str(exc).lower()
-            is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "resource_exhausted", "quota", "too many requests"))
-            if is_rate_limit and attempt < 3:
-                wait_sec = 12.0 * (attempt + 1)
-                logger.warning("analyze_turn chạm rate limit (429), chờ %.1fs rồi thử lại lần %d...", wait_sec, attempt + 1)
+            if is_daily_quota_exhausted(err_msg):
+                logger.error("analyze_turn: LLM cạn Quota ngày (RESOURCE_EXHAUSTED). Hủy retry ngay lập tức.")
+                raise LLMQuotaExceededError(
+                    "Mô hình AI hiện tại đã đạt giới hạn hạn mức gọi trong ngày (Google Gemini Quota Exceeded / 429 RESOURCE_EXHAUSTED). "
+                    "Vui lòng cập nhật OPENAI_API_KEY mới trong file ai-agent/.env để tiếp tục."
+                ) from exc
+
+            is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "too many requests"))
+            if is_rate_limit and attempt < 2:
+                wait_sec = 2.0 * (attempt + 1)
+                logger.warning("analyze_turn chạm rate limit (429 RPM), chờ %.1fs rồi thử lại lần %d...", wait_sec, attempt + 1)
                 _time.sleep(wait_sec)
                 continue
             is_transient = any(t in err_msg for t in ("model unloaded", "model reloaded", "failed to load model", "connection", "timeout"))
@@ -532,6 +560,8 @@ __all__ = [
     "Priorities",
     "PreferencePatch",
     "TurnAnalysis",
+    "LLMQuotaExceededError",
+    "is_daily_quota_exhausted",
     "apply_patch",
     "mult_to_level",
     "multipliers_to_levels",

@@ -147,5 +147,15 @@ def stream_graph_events(
             yield f"event: complete\ndata: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
     except Exception as exc:
         logger.exception("Lỗi khi stream SSE events qua LangGraph")
-        err_event = {"type": "error", "error": f"Lỗi xử lý luồng AI: {str(exc)}"}
+        err_raw = str(exc)
+        err_low = err_raw.lower()
+        if any(t in err_low for t in ("429", "resource_exhausted", "quota", "rate limit", "generaterequestsperday")):
+            error_message = (
+                "Hạn mức sử dụng AI đã hết (Quota Exceeded / 429). "
+                "API Key Google Gemini hiện tại đã vượt quá giới hạn 500 lượt gọi/ngày trên gói Free Tier. "
+                "Vui lòng cập nhật OPENAI_API_KEY mới trong file ai-agent/.env để tiếp tục."
+            )
+        else:
+            error_message = f"Lỗi xử lý luồng AI: {err_raw}"
+        err_event = {"type": "error", "error": error_message}
         yield f"event: error\ndata: {json.dumps(err_event, ensure_ascii=False)}\n\n"

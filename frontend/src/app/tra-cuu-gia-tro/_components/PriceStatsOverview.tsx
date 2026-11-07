@@ -25,11 +25,10 @@ export default function PriceStatsOverview({ stats }: PriceStatsOverviewProps) {
           <>
             {priceFluctuation !== null ? (
               <span
-                className={`inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  isPriceUp
-                    ? "bg-[#E6F4EE] text-[#0F5F4A]"
-                    : "bg-[#FEECEC] text-[#D32F2F]"
-                }`}
+                className={`inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${isPriceUp
+                  ? "bg-[#E6F4EE] text-[#0F5F4A]"
+                  : "bg-[#FEECEC] text-[#D32F2F]"
+                  }`}
               >
                 <span className="material-symbols-outlined text-[14px]">
                   {isPriceUp ? "trending_up" : "trending_down"}
@@ -66,24 +65,28 @@ export default function PriceStatsOverview({ stats }: PriceStatsOverviewProps) {
         tone="coral"
         compactValue
         footer={
-          postingGrowth !== null ? (
-            <span
-              className={`inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                isGrowthUp ? "bg-[#FFF0ED] text-[#FF6B4A]" : "bg-gray-100 text-gray-600"
-              }`}
-            >
-              <span className="material-symbols-outlined text-[14px]">whatshot</span>
-              {postingGrowth > 0
-                ? `Tin đăng tăng +${postingGrowth}%`
-                : `Tin đăng giảm ${postingGrowth}%`}{" "}
-              <span className="text-gray-400 font-normal">sv tháng trước</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-[#FFF0ED] text-[#FF6B4A] text-xs font-bold">
-              <span className="material-symbols-outlined text-[14px]">whatshot</span>
-              Khu vực có nhiều tin nhất
-            </span>
-          )
+          <>
+            {postingGrowth !== null ? (
+              <span
+                className={`inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${isGrowthUp ? "bg-[#FFF0ED] text-[#FF6B4A]" : "bg-gray-100 text-gray-600"
+                  }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">
+                  {isGrowthUp ? "trending_up" : "trending_down"}
+                </span>
+                {postingGrowth > 0
+                  ? `+${postingGrowth}%`
+                  : `${postingGrowth}%`}{" "}
+
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-[#FFF0ED] text-[#FF6B4A] text-xs font-bold">
+                <span className="material-symbols-outlined text-[14px]">whatshot</span>
+                Khu vực có nhiều tin nhất
+              </span>
+            )}
+            <span className="text-xs text-gray-500">so với tháng trước</span>
+          </>
         }
       />
     </div>

@@ -295,6 +295,11 @@ export function useAiChat() {
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Lỗi kết nối tới AI Agent";
       setConnectionError(errorMsg);
+      const isQuotaError = /429|quota|resource_exhausted|rate limit|hạn mức|exceeded/i.test(errorMsg);
+      const displayText = isQuotaError
+        ? `⚠️ **Hạn mức sử dụng AI tạm thời bị gián đoạn (Quota Exceeded / 429)**\n\n${errorMsg}\n\n💡 **Cách khắc phục:**\n1. Tạo API Key mới tại [Google AI Studio](https://aistudio.google.com/).\n2. Mở file \`ai-agent/.env\`, cập nhật giá trị \`OPENAI_API_KEY\` bằng key mới.\n3. Khởi động lại dịch vụ AI Agent để tiếp tục sử dụng.`
+        : `⚠️ Không thể kết nối tới máy chủ AI Agent (Port 8001): ${errorMsg}.\n\nNếu đang phát triển cục bộ, bạn hãy kiểm tra microservice AI bằng lệnh:\n\`python ai-agent/main.py\``;
+
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId
@@ -302,8 +307,8 @@ export function useAiChat() {
                 ...m,
                 isStreaming: false,
                 statusText: undefined,
-                text: `⚠️ Không thể kết nối tới máy chủ AI Agent (Port 8001): ${errorMsg}.\n\nNếu đang phát triển cục bộ, bạn hãy kiểm tra microservice AI bằng lệnh:\n\`cd ai-agent; uvicorn service:app --port 8001 --reload\``,
-                followUpQuestions: ["Thử gửi lại yêu cầu"],
+                text: displayText,
+                followUpQuestions: isQuotaError ? ["Thử gửi lại sau khi cập nhật key"] : ["Thử gửi lại yêu cầu"],
               }
             : m
         )

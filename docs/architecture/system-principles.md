@@ -162,9 +162,12 @@ Nhằm tối ưu hóa trải nghiệm người dùng và giảm thiểu lượt 
 
 ### 5.3. Pre-Expansion Geocoding & Rate Limit Resilience Guard:
 1. **Pre-Expansion Geocoding Tổng Quát:** Tại [`ai-agent/tools/housing_tools.py`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/ai-agent/tools/housing_tools.py), trước khi gửi truy vấn sang OpenStreetMap Nominatim, hàm `geocode_point` tự động kích hoạt `expand_location_with_llm` để mở rộng các tên viết tắt (như *ĐHQG TP.HCM*, *Làng Đại học*, *Bách Khoa CS2*, *UIT*...) thành tên chuẩn tự nhiên của cơ sở chính. Cơ chế ưu tiên thử `(expanded, hint)` và `(expanded, None)` trước khi fallback sang chuỗi gốc, loại bỏ hoàn toàn nhu cầu hardcode bảng từ điển hay overfit prompt NLU.
-2. **Rate Limit Pacing & 429 Adaptive Backoff:**
-   - Trong `intelligence/nlu.py` và `eval/llm_judge.py`: Tự động nhận diện lỗi 429 (`Resource Exhausted`, `Quota Exceeded`) và thực hiện adaptive backoff (`12s` - `36s`), ngăn ngừa trạng thái suy sụp (cascading failure).
-   - Trong `eval/run_recommendation_eval.py`: Tích hợp bộ đệm pacing 3.0s giữa các query để bảo vệ hạn ngạch 15 RPM / 500 RPD của các nhà cung cấp LLM Free Tier.
+2. **Rate Limit Pacing, Quota Fast-Fail & Error Transparency:**
+   - **Phân định Quota ngày (RPD) vs Rate Limit tạm thời (RPM):** Tại [`ai-agent/intelligence/nlu.py`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/ai-agent/intelligence/nlu.py), hệ thống sử dụng `is_daily_quota_exhausted` để nhận diện chính xác các mã lỗi cạn hạn mức ngày của Google Gemini / OpenAI (`RESOURCE_EXHAUSTED`, `GenerateRequestsPerDay`, `requests per day limit exceeded`).
+   - **Fast-fail Quota ngày (< 0.1s):** Khi dính cạn hạn mức ngày (500 RPD), hệ thống hủy retry ngay lập tức, không ngủ chờ 12s-36s làm nghẽn luồng. Ném `LLMQuotaExceededError` để `understand_node` trả về `direct_reply=True` điều hướng thẳng sang `formatter_node` gửi thông báo rõ ràng cho người dùng thay vì nuốt lỗi.
+   - **Adaptive backoff cho RPM:** Đối với Rate Limit theo phút thông thường (15 RPM), hàm áp dụng backoff ngắn (`2.0s` $\rightarrow$ `4.0s`).
+   - **Trong `eval/run_recommendation_eval.py`:** Tích hợp bộ đệm pacing 3.0s giữa các query để bảo vệ hạn ngạch 15 RPM / 500 RPD của các nhà cung cấp LLM Free Tier.
+   - **Minh bạch hóa lỗi tại SSE Stream & Frontend:** Payload lỗi tại `api/sse.py` và hook `useAiChat.ts` phân loại chính xác lỗi Quota 429 để hướng dẫn người dùng cập nhật `OPENAI_API_KEY` trong `.env`, phân biệt hoàn toàn với lỗi mất kết nối máy chủ Port 8001.
 
 ---
 
