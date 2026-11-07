@@ -1,10 +1,16 @@
 from typing import Optional, Any
+import math
 import re
 from sqlalchemy import Float, case, cast, func, or_
 from sqlalchemy.orm import Query, Session, joinedload
 
 from app.models.embedding import ListingEmbedding
 from app.models.listing import Listing
+
+def _active_listing_filter():
+    """Bộ lọc tin đăng công khai còn hiệu lực (active và chưa bị gỡ)."""
+    return (Listing.is_active == True) & (Listing.status.is_(None) | (func.lower(Listing.status) == "active"))
+
 
 _FTS_STOPWORDS = {
     "tìm", "tim", "giúp", "giup", "tôi", "toi", "mình", "minh", "em", "cho",
@@ -67,7 +73,7 @@ class ListingRepository:
     ) -> Query:
         query = self.base_query()
         if not include_inactive:
-            query = query.filter(Listing.is_active == True)
+            query = query.filter(_active_listing_filter())
         if search:
             pattern = f"%{search}%"
             query = query.filter(or_(Listing.title.ilike(pattern), Listing.address_raw.ilike(pattern)))
@@ -159,7 +165,7 @@ class ListingRepository:
         return self.db.query(
             func.count(Listing.id),
             func.avg(Listing.price_vnd),
-        ).filter(*filters).one()
+        ).filter(*filters).filter(_active_listing_filter()).one()
 
     def price_aggregates(self, filters: list) -> tuple[int, Optional[float], Optional[float], Optional[float]]:
         row = self.db.query(
@@ -167,7 +173,7 @@ class ListingRepository:
             func.avg(Listing.price_vnd),
             func.min(Listing.price_vnd),
             func.max(Listing.price_vnd),
-        ).filter(*filters).one()
+        ).filter(*filters).filter(_active_listing_filter()).one()
         return row[0], row[1], row[2], row[3]
 
     def get_by_ids(self, ids: list[str], preserve_order: bool = True) -> list[Listing]:
@@ -198,6 +204,7 @@ class ListingRepository:
         ward_id: int | None = None,
         room_type_id: int | None = None,
         room_type: Optional[str] = None,
+        room_types: Optional[list[str | int]] = None,
         min_price: float | None = None,
         max_price: float | None = None,
         min_area: float | None = None,
@@ -256,7 +263,7 @@ class ListingRepository:
                 joinedload(Listing.ward),
                 joinedload(Listing.room_type),
             )
-            .filter(Listing.is_active == True)
+            .filter(_active_listing_filter())
         )
 
         # Filters
@@ -269,23 +276,47 @@ class ListingRepository:
         if ward_id is not None:
             query = query.filter(Listing.ward_id == ward_id)
 
-        # Cách 1: Lọc an toàn bằng room_type_id (tránh so sánh relationship với str)
+        # Lọc theo danh sách loại phòng (room_types, room_type_id, room_type)
+        allowed_ids: set[int] = set()
+
         effective_room_type_id = room_type_id
         if effective_room_type_id is None and room_type is not None:
             clean = room_type.value if hasattr(room_type, "value") else str(room_type).strip().upper()
-            if clean.isdigit():
+            if clean == "BOARDING_HOUSE":
+                clean = "ROOM"
+            if clean.isdigit() and 1 <= int(clean) <= 5:
                 effective_room_type_id = int(clean)
             elif clean in ROOM_TYPE_CODE_TO_ID:
                 effective_room_type_id = ROOM_TYPE_CODE_TO_ID[clean]
 
         if effective_room_type_id is not None:
-            query = query.filter(Listing.room_type_id == effective_room_type_id)
+            allowed_ids.add(effective_room_type_id)
+
+        if room_types:
+            for item in room_types:
+                if isinstance(item, bool):
+                    continue
+                if isinstance(item, int) and 1 <= item <= 5:
+                    allowed_ids.add(item)
+                else:
+                    clean = item.value if hasattr(item, "value") else str(item).strip().upper()
+                    if clean == "BOARDING_HOUSE":
+                        clean = "ROOM"
+                    if clean.isdigit() and 1 <= int(clean) <= 5:
+                        allowed_ids.add(int(clean))
+                    elif clean in ROOM_TYPE_CODE_TO_ID:
+                        allowed_ids.add(ROOM_TYPE_CODE_TO_ID[clean])
+
+        if allowed_ids:
+            query = query.filter(Listing.room_type_id.in_(list(allowed_ids)))
 
         if excluded_room_types:
             excluded_ids = []
             for item in excluded_room_types:
                 clean = item.value if hasattr(item, "value") else str(item).strip().upper()
-                if clean.isdigit():
+                if clean == "BOARDING_HOUSE":
+                    clean = "ROOM"
+                if clean.isdigit() and 1 <= int(clean) <= 5:
                     excluded_ids.append(int(clean))
                 elif clean in ROOM_TYPE_CODE_TO_ID:
                     excluded_ids.append(ROOM_TYPE_CODE_TO_ID[clean])
@@ -302,10 +333,10 @@ class ListingRepository:
         if max_area is not None:
             query = query.filter(Listing.area_m2 <= max_area)
 
-        # Lọc không gian theo bán kính (bounding box) quanh toạ độ mục tiêu
+        # Lọc không gian Bán kính Tròn Haversine chính xác quanh toạ độ mục tiêu
         if lat is not None and lng is not None and max_distance_km:
-            lat_delta = max_distance_km / 111.0
-            lng_delta = max_distance_km / 105.0
+            lat_delta = float(max_distance_km) / 110.574
+            lng_delta = float(max_distance_km) / max(10.0, 111.320 * math.cos(math.radians(lat)))
             query = query.filter(
                 Listing.lat.isnot(None),
                 Listing.lng.isnot(None),
@@ -314,14 +345,38 @@ class ListingRepository:
                 Listing.lng >= lng - lng_delta,
                 Listing.lng <= lng + lng_delta,
             )
+            haversine_expr = 2.0 * 6371.0 * func.asin(
+                func.sqrt(
+                    func.least(
+                        1.0,
+                        func.pow(func.sin(func.radians(Listing.lat - lat) / 2.0), 2)
+                        + func.cos(func.radians(lat))
+                        * func.cos(func.radians(Listing.lat))
+                        * func.pow(func.sin(func.radians(Listing.lng - lng) / 2.0), 2),
+                    )
+                )
+            )
+            query = query.filter(haversine_expr <= float(max_distance_km))
 
-        # Lọc cứng tiện ích bắt buộc từ concept_scores
+        # Đồng bộ lọc ngữ nghĩa Tiện ích bắt buộc từ concept_scores
         if amenities:
             for am in amenities:
                 clean_code = str(getattr(am, "value", am)).strip().lower()
-                query = query.filter(
-                    func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
-                )
+                if clean_code == "safe_area":
+                    c_safe = func.coalesce(cast(Listing.concept_scores.op("->>")("safe_area"), Float), 0.0) >= 0.5
+                    c_cam = func.coalesce(cast(Listing.concept_scores.op("->>")("camera"), Float), 0.0) >= 0.5
+                    c_lock = func.coalesce(cast(Listing.concept_scores.op("->>")("fingerprint_lock"), Float), 0.0) >= 0.5
+                    c_guard = func.coalesce(cast(Listing.concept_scores.op("->>")("guard"), Float), 0.0) >= 0.5
+                    c_score = func.coalesce(Listing.safety_score, 0.0) >= 0.7
+                    query = query.filter(or_(c_safe, c_cam, c_lock, c_guard, c_score))
+                elif clean_code == "furniture":
+                    c_furn = func.coalesce(cast(Listing.concept_scores.op("->>")("furniture"), Float), 0.0) >= 0.5
+                    c_code = Listing.furnishing_code.in_([1, 2])
+                    query = query.filter(or_(c_furn, c_code))
+                else:
+                    query = query.filter(
+                        func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
+                    )
 
         rows = query.order_by(hybrid_score_col.desc()).limit(limit).all()
 

@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
 import threading
 import time
 import uuid
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Generator, Optional, Union
 
 from domain.schemas import RoomItem, UserPreferenceState
 from core.paths import DEFAULT_DB_PATH
@@ -71,6 +72,8 @@ class SessionData:
         self.turn_snapshots.append(pref.model_copy(deep=True))
         if len(self.preference_history) > 5:
             self.preference_history = self.preference_history[-5:]
+        if len(self.turn_snapshots) > 20:
+            self.turn_snapshots = [self.turn_snapshots[0]] + self.turn_snapshots[-19:]
 
     @property
     def messages(self) -> list[tuple[str, str]]:   # tương thích code đọc `session.messages`
@@ -249,10 +252,14 @@ class PersistentSessionStore(SessionStore):
         with self._db() as c:
             c.execute("CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, version INTEGER NOT NULL, last_active REAL NOT NULL, payload TEXT NOT NULL)")
 
-    def _db(self) -> sqlite3.Connection:
+    @contextmanager
+    def _db(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self._path, timeout=10, isolation_level=None)   # autocommit; ta tự BEGIN IMMEDIATE khi ghi
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            yield conn
+        finally:
+            conn.close()
 
     def get_or_create_session(self, session_id: str) -> SessionData:
         if not session_id:

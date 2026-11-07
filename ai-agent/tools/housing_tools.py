@@ -109,16 +109,15 @@ def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, 
     return None
 
 
-
-
-
 # =============================================================================
 # Tìm phòng / chi tiết / thống kê giá
 # =============================================================================
 def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
     """Hàm lõi: gọi vector-search. args cùng tên với tool. Trả {"ok", "data"|"error", ...}; KHÔNG ném lỗi."""
     lat, lng = args.get("lat"), args.get("lng")
-    body: dict[str, Any] = {"query": str(args.get("query") or ""), "limit": max(1, min(int(args.get("limit") or 5), MAX_LIMIT)), "offset": 0}
+    raw_q = str(args.get("query") or "").strip()
+    query_str = raw_q if raw_q else "phòng trọ"
+    body: dict[str, Any] = {"query": query_str, "limit": max(1, min(int(args.get("limit") or 5), MAX_LIMIT)), "offset": 0}
     if lat is not None:
         body["lat"] = lat
     if lng is not None:
@@ -130,6 +129,8 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
     for k in ("room_type", "min_price", "max_price", "min_area", "max_area"):
         if args.get(k) is not None:
             body[k] = getattr(args[k], "value", args[k])
+    if args.get("room_types"):
+        body["room_types"] = [getattr(r, "value", r) for r in args["room_types"]]
     amenities = [a.value for a in normalize_amenities(args.get("amenities"))]
     if amenities:
         body["amenities"] = sorted(amenities)
@@ -137,7 +138,7 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
     if pref_amenities:
         body["preferred_amenities"] = sorted(pref_amenities)
     if args.get("max_distance_km") is not None:
-        body["max_distance_km"] = float(args["max_distance_km"])
+        body["max_distance_km"] = max(0.5, min(50.0, float(args["max_distance_km"])))
     if args.get("excluded_room_types"):
         body["excluded_room_types"] = [getattr(r, "value", r) for r in args["excluded_room_types"]]
     if args.get("weights"):
@@ -177,11 +178,15 @@ def search_rooms(
     district_id: Optional[int] = None,
     ward_id: Optional[int] = None,
     room_type: Optional[str] = None,
+    room_types: Optional[list[str]] = None,
+    excluded_room_types: Optional[list[str]] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     min_area: Optional[float] = None,
     max_area: Optional[float] = None,
     amenities: Optional[list[str]] = None,
+    preferred_amenities: Optional[list[str]] = None,
+    max_distance_km: Optional[float] = None,
     weights: Optional[dict[str, float]] = None,
     limit: int = 5,
 ) -> str:
@@ -198,20 +203,28 @@ def search_rooms(
         district_id: ID quận/huyện.
         ward_id: ID phường/xã.
         room_type: Mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE).
+        room_types: Danh sách mã loại phòng cho phép khi chấp nhận nhiều loại.
+        excluded_room_types: Danh sách mã loại phòng bị loại trừ.
         min_price: Giá tối thiểu bằng VNĐ (ví dụ: 1500000).
         max_price: Giá tối đa bằng VNĐ (ví dụ: 3500000).
         min_area: Diện tích tối thiểu (m²).
         max_area: Diện tích tối đa (m²).
         amenities: Danh sách tiện ích yêu cầu theo format Amenity (ví dụ: ['aircon', 'mezzanine', 'pet_allowed']).
+        preferred_amenities: Danh sách tiện ích ưu tiên mềm.
+        max_distance_km: Bán kính tìm kiếm tối đa (km).
         weights: Trọng số động tùy chỉnh (e.g. {'price': 0.35, 'location': 0.35, ...}).
         limit: Số lượng phòng tối đa cần lấy (mặc định 5).
 
     Returns:
         JSON string chứa danh sách phòng phù hợp nhất kèm match_score và explain_match của từng phòng.
     """
-    return dump(search_rooms_api(dict(query=query, lat=lat, lng=lng, city_id=city_id, district_id=district_id, ward_id=ward_id, room_type=room_type,
-                                      min_price=min_price, max_price=max_price, min_area=min_area, max_area=max_area, amenities=amenities,
-                                      weights=weights, limit=limit)))
+    return dump(search_rooms_api(dict(
+        query=query, lat=lat, lng=lng, city_id=city_id, district_id=district_id, ward_id=ward_id,
+        room_type=room_type, room_types=room_types, excluded_room_types=excluded_room_types,
+        min_price=min_price, max_price=max_price, min_area=min_area, max_area=max_area,
+        amenities=amenities, preferred_amenities=preferred_amenities, max_distance_km=max_distance_km,
+        weights=weights, limit=limit,
+    )))
 
 
 def fetch_listing_detail(listing_id: str) -> dict[str, Any]:

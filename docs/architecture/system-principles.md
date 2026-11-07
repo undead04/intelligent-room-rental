@@ -95,6 +95,15 @@ flowchart TD
 * **Dense Branch:** Đo lường Cosine Distance trên bảng `listing_embeddings` giúp hiểu được các nhu cầu ẩn (ví dụ: "chỗ ở thoáng mát cho sinh viên").
 * **Sparse Branch:** Đánh giá độ khớp từ khóa chính xác trên `title`, `address_raw`, `description` qua PostgreSQL Full-Text Search (`ts_rank_cd`), đảm bảo bắt chính xác tên trường đại học, tên quận, tên đường.
 
+### Cơ Chế Lọc Không Gian & Ràng Buộc Cứng (Spatial & Hard Filtering Pipeline):
+- **Spatial Pre-filter & Exact Haversine Filter:** Kết hợp lọc không gian 2 lớp:
+  1. *Lớp 1 (Bounding Box SQL Pre-filter):* Tính toán khung giới hạn toạ độ hộp chữ nhật (`lat BETWEEN lat_min AND lat_max`, `lng BETWEEN lng_min AND lng_max`) tại CSDL để loại bỏ nhanh các tin đăng ngoài vùng và tận dụng index B-tree.
+  2. *Lớp 2 (Exact Haversine Great-Circle Filter):* Tính khoảng cách đường cong mặt cầu chính xác theo toạ độ địa lý (`haversine_km(lat, lng) <= max_distance_km`), loại bỏ triệt để các tin nằm ở 4 góc chéo của Bounding Box nhưng thực tế vượt quá bán kính cho phép.
+- **Lọc Tập Đa Loại Phòng (`room_types` / `allowed_room_types`):** Hỗ trợ tìm kiếm đồng thời nhiều loại hình phòng (ví dụ chấp nhận cả `"ROOM"` và `"STUDIO"`) thông qua điều kiện SQL `Listing.room_type_id.in_(type_ids)` linh hoạt thay vì chỉ cố định 1 loại duy nhất.
+- **Ánh Xạ Ngữ Nghĩa Cho Tiện Ích Tổng Hợp (Composite Concept Mapping):**
+  - `safe_area` (Khu an ninh): Được ánh xạ từ tổ hợp các tín hiệu an ninh (`camera`, `guard`, `fingerprint_lock`) và nhãn phân loại tin đăng trong khu dân cư an ninh, dân trí cao.
+  - `furniture` (Nội thất cơ bản/đầy đủ): Được ánh xạ và thỏa mãn khi phòng trang bị các tiện nghi thiết yếu (`bed`, `wardrobe`, `air_conditioner`).
+
 ---
 
 ## 4. ⚖️ Bộ Tái Xếp Hạng Đa Tiêu Chí (MCDM Reranker 5 Tiêu Chí)
@@ -128,17 +137,20 @@ flowchart TD
     
     guardrail_node --> understand_node["2. understand_node<br/>Phân tích ý định & bóc tách tiêu chí"]
     
-    understand_node -->|Thiếu thông tin cốt lõi| clarification_node["3. clarification_node<br/>Hỏi làm rõ yêu cầu"]
-    understand_node -->|Câu hỏi chung / tư vấn| advisory_node["4. advisory_node<br/>Tư vấn pháp lý, khu vực"]
+    understand_node -->|Thiếu thông tin cốt lõi / đa nghĩa| clarification_node["3. clarification_node<br/>Hỏi làm rõ yêu cầu"]
+    understand_node -->|Câu hỏi chung / tư vấn cẩm nang| advisory_node["4. advisory_node<br/>Tư vấn pháp lý, thị trường, cẩm nang"]
     understand_node -->|Đủ điều kiện tìm phòng| retrieval_node["5. retrieval_node<br/>Truy vấn Hybrid Search Backend"]
+    understand_node -->|Hỏi đáp phòng đã tìm| decision_node["6. decision_node<br/>Tổng hợp giải pháp & chọn top phòng"]
     
-    clarification_node --> decision_node["6. decision_node<br/>Tổng hợp giải pháp & chọn top phòng"]
-    advisory_node --> decision_node
     retrieval_node --> decision_node
     
     decision_node --> verify_node["7. verify_node (Self-RAG)<br/>Kiểm chứng thông tin đối chiếu với DB"]
+    verify_node -->|Grounding fail (retry <= 2)| decision_node
+    verify_node -->|Grounding pass / fallback| formatter_node["8. formatter_node<br/>Định dạng Markdown / UI components"]
     
-    verify_node --> formatter_node["8. formatter_node<br/>Định dạng Markdown / UI components"]
+    clarification_node --> formatter_node
+    advisory_node --> formatter_node
+    
     formatter_node --> END
 ```
 
@@ -176,8 +188,17 @@ Nhằm tối ưu hóa trải nghiệm người dùng và giảm thiểu lượt 
 
 1. **Tầng 1 (Data Ingestion — Crawler):**
    * Hàm `verify_evidence`: LLM khi trích xuất bất kỳ tiện ích nào đều phải trích nguyên văn câu làm bằng chứng. Nếu câu đó không khớp trong bài viết gốc $\rightarrow$ Tự động hạ về `unknown`.
-2. **Tầng 2 (Response Generation — AI Agent):**
-   * Node `verify_node` (Self-RAG Grounding): Trước khi câu trả lời được chuyển sang `formatter_node`, Agent đối chiếu từng phát biểu của câu trả lời với dữ liệu thực tế từ Backend. Nếu phát hiện AI tự bịa tiện ích (ví dụ: phòng không có máy lạnh mà nói có) $\rightarrow$ Yêu cầu đính chính ngay lập tức.
+2. **Tầng 2 (Hard-Constraints & Self-RAG Grounding — AI Agent):**
+   * **Tầng 2A - Lọc Ràng Buộc Cứng Bằng Mã Lệnh (`check_hard_constraints`):** 100% bằng code Python thuần (loại bỏ phụ thuộc vào tính bất định của LLM) kiểm tra mọi phòng thu thập được:
+     - *Ngân sách:* `priceNum <= max_price * 1.02` (dung sai kỹ thuật 2%) và `priceNum >= min_price * 0.98`.
+     - *Diện tích:* `area_m2 >= min_area` và `area_m2 <= max_area`.
+     - *Khoảng cách Haversine:* `dist <= max_distance_km` tính từ toạ độ mốc.
+     - *Loại phòng:* Khớp với nhóm cho phép `allowed_room_types` / `room_type` và không thuộc nhóm cấm `excluded_room_types`.
+     - *Tiện ích bắt buộc:* Khớp đủ mọi tiện ích trong `pref.amenities` dựa trên `concept_scores`.
+     - Phòng vi phạm bị loại ngay lập tức kèm ghi nhận lý do cụ thể (`elimination_reasons`).
+   * **Tầng 2B - Đối Chiếu Chéo Ngữ Cảnh & Scope Binding (`verify_context_grounding`):**
+     - Node `verify_node` (Self-RAG Grounding): Trước khi câu trả lời được chuyển sang `formatter_node`, Agent đối chiếu từng phát biểu của câu trả lời với dữ liệu thực tế từ Backend. Nếu phát hiện AI tự bịa tiện ích (ví dụ: phòng không có máy lạnh mà nói có) $\rightarrow$ Yêu cầu `decision_node` tái tạo câu trả lời (tối đa 2 lần retry).
+     - **Scope Binding Chặt Chẽ:** Hỗ trợ đối chiếu ràng buộc theo cả **Mã ID** lẫn **Nhãn Thứ Hạng** (`"Top 1"`, `"Top 2"`...). Mọi đặc tính tiện ích (máy lạnh, gác lửng, giá tiền...) khi được LLM phát ngôn về một phòng cụ thể phải được gán đúng vào phòng đó, triệt tiêu hoàn toàn lỗi hoán đổi tiện ích chéo giữa các phòng trong danh sách gợi ý.
 3. **Phòng Thủ 3 Lớp Chặn Sleepbox / KTX Khi Tìm Phòng Riêng Khép Kín:**
    * *Lớp 1 (NLU Prompt & Guardrail Code):* Khi người dùng tìm phòng khép kín, có WC riêng, không chung chủ, studio, căn hộ, hoặc phòng cho 2 người, hệ thống tự động bổ sung `RoomType.SLEEPBOX` vào `room_types_exclude`.
    * *Lớp 2 (SQL Filter Backend):* API `/listings/vector-search` lọc cứng `Listing.room_type_id.notin_(excluded_ids)` triệt tiêu hộp ngủ ngay từ tầng cơ sở dữ liệu.

@@ -3,6 +3,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -72,7 +73,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content=payload.model_dump(),
+        content=jsonable_encoder(payload),
         headers={"X-Request-ID": request_id},
     )
 
@@ -95,7 +96,7 @@ async def app_exception_handler(request: Request, exc: AppException):
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content=payload.model_dump(),
+        content=jsonable_encoder(payload),
         headers={"X-Request-ID": request_id},
     )
 
@@ -103,17 +104,18 @@ async def app_exception_handler(request: Request, exc: AppException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    clean_errors = jsonable_encoder(exc.errors())
     payload = ErrorDTO(
         status=422,
         code="VALIDATION_ERROR",
         message="Request validation failed",
-        details=exc.errors(),
+        details=clean_errors,
         request_id=request_id,
     )
-    logger.warning("Validation error request_id=%s details=%s", request_id, exc.errors())
+    logger.warning("Validation error request_id=%s details=%s", request_id, clean_errors)
     return JSONResponse(
         status_code=422,
-        content=payload.model_dump(),
+        content=jsonable_encoder(payload),
         headers={"X-Request-ID": request_id},
     )
 
@@ -130,7 +132,7 @@ async def database_exception_handler(request: Request, exc: SQLAlchemyError):
     )
     return JSONResponse(
         status_code=500,
-        content=payload.model_dump(),
+        content=jsonable_encoder(payload),
         headers={"X-Request-ID": request_id},
     )
 
@@ -147,7 +149,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
     return JSONResponse(
         status_code=500,
-        content=payload.model_dump(),
+        content=jsonable_encoder(payload),
         headers={"X-Request-ID": request_id},
     )
 

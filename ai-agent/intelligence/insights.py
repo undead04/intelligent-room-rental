@@ -43,7 +43,10 @@ def price_trade_off(a: RoomItem, b: RoomItem) -> str:
             parts.append(f"Top {a.rank} {'rẻ' if d < 0 else 'đắt'} hơn Top {b.rank} khoảng {fmt_money_short(d)}/tháng")
     if a.area_m2 and b.area_m2 and abs(a.area_m2 - b.area_m2) >= 1:
         d = a.area_m2 - b.area_m2
-        parts.append(f"{'rộng' if d > 0 else 'nhỏ'} hơn {abs(d):g} m²")
+        if not parts:
+            parts.append(f"Top {a.rank} {'rộng' if d > 0 else 'nhỏ'} hơn Top {b.rank} {abs(d):g} m²")
+        else:
+            parts.append(f"{'rộng' if d > 0 else 'nhỏ'} hơn {abs(d):g} m²")
     return (", ".join(parts) + ".") if parts else ""
 
 

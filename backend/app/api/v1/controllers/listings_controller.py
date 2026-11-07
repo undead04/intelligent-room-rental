@@ -150,6 +150,7 @@ def vector_search_listings(
         ward_id=body.ward_id,
         room_type_id=body.room_type_id,
         room_type=body.room_type,
+        room_types=body.room_types,
         excluded_room_types=body.excluded_room_types,
         min_price=body.min_price,
         max_price=body.max_price,

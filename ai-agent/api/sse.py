@@ -142,7 +142,7 @@ def stream_graph_events(
 
             complete_payload = {
                 "type": "complete",
-                **final_resp.model_dump(by_alias=True),
+                **final_resp.model_dump(mode="json", by_alias=True),
             }
             yield f"event: complete\ndata: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
     except Exception as exc:

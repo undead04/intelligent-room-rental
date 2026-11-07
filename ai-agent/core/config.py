@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from core import paths
 
@@ -37,7 +37,7 @@ class Settings(BaseModel):
     port: int = Field(default=8001, description="Port khởi chạy Uvicorn")
     env: str = Field(default="development", description="Môi trường vận hành")
 
-    model_config = {"frozen": True, "extra": "ignore"}
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
 
 def load_settings() -> tuple[Settings | None, list[str]]:

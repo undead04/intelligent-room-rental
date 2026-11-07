@@ -58,7 +58,13 @@ _CONCEPT_TAGS = {
     "furniture": "Có nội thất",
     "fridge": "Có tủ lạnh",
     "elevator": "Có thang máy",
-    "parking": "Có chỗ đỗ xe"
+    "parking": "Có chỗ đỗ xe",
+    "washing_machine": "Có máy giặt",
+    "no_shared_landlord": "Không chung chủ",
+    "fingerprint_lock": "Khóa vân tay",
+    "camera": "Camera an ninh",
+    "guard": "Bảo vệ 24/7",
+    "safe_area": "Khu an ninh",
 }
 _CONCEPT_THRESHOLD = 0.75
 
@@ -120,6 +126,7 @@ class RoomItem(BaseModel):
         s = self.matchScore
         return round(s * 100) if s <= 1.0 else round(s)
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def room_type_id(self) -> Optional[int]:
         """ID số của loại phòng (1: Phòng trọ, 2: Studio, 3: Căn hộ, 4: Sleepbox/KTX, 5: Nhà nguyên căn)."""
@@ -276,7 +283,7 @@ class UserPreferenceState(BaseModel):
     - Cung cấp tiêu chí cho `retrieval_node` để xây dựng bộ lọc và vector trọng số MCDM truy vấn backend.
     """
 
-    model_config = ConfigDict(validate_assignment=True)
+    model_config = ConfigDict(validate_assignment=True, extra="ignore")
 
     location_text: Optional[str] = Field(None, description="Địa điểm hoặc khu vực (ví dụ: 'Linh Xuân, Thủ Đức')")
     location_kind: Optional[Literal["admin", "place"]] = Field(
@@ -293,6 +300,10 @@ class UserPreferenceState(BaseModel):
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m2)")
     max_area: Optional[float] = Field(None, description="Diện tích tối đa (m2)")
     room_type: Optional[RoomType] = Field(None, description="Loại phòng muốn tìm")
+    allowed_room_types: list[RoomType] = Field(
+        default_factory=list,
+        description="Tập các loại phòng được phép (khi người dùng chấp nhận nhiều loại, vd: ['ROOM', 'STUDIO'])",
+    )
     excluded_room_types: list[RoomType] = Field(
         default_factory=list, description="Loại phòng người dùng đã loại trừ ('không lấy ktx')"
     )
@@ -316,7 +327,7 @@ class UserPreferenceState(BaseModel):
     def _clean_room_type(cls, v: Any) -> Optional[RoomType]:
         return normalize_room_type(v)
 
-    @field_validator("excluded_room_types", mode="before")
+    @field_validator("excluded_room_types", "allowed_room_types", mode="before")
     @classmethod
     def _clean_excluded(cls, v: Any) -> list[RoomType]:
         return normalize_room_types(v)
@@ -327,6 +338,7 @@ class UserPreferenceState(BaseModel):
         return normalize_amenities(v)
 
     # -- thuộc tính suy ra ---------------------------------------------------
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def room_type_id(self) -> Optional[int]:
         return self.room_type.type_id if self.room_type else None
@@ -367,6 +379,8 @@ class UserPreferenceState(BaseModel):
             parts.append(f"- Bán kính tối đa: {self.max_distance_km:g} km")
         if self.room_type:
             parts.append(f"- Loại phòng: {self.room_type.label_vi}")
+        if self.allowed_room_types and (not self.room_type or self.allowed_room_types != [self.room_type]):
+            parts.append(f"- Loại phòng cho phép: {', '.join(r.label_vi for r in self.allowed_room_types)}")
         if self.excluded_room_types:
             parts.append(f"- Không lấy loại: {', '.join(r.label_vi for r in self.excluded_room_types)}")
         if self.max_price:

@@ -1,76 +1,76 @@
 {
   "meta": {
-    "timestamp": "2026-11-07 10:44:04",
+    "timestamp": "2026-11-07 12:05:31",
     "total_queries": 40,
     "planned_queries": 40,
     "judge_mode": "rule",
     "judge_model": "gemini-2.5-flash-lite",
     "budget_tolerance_pct": 0.0,
     "offline_nlu": true,
-    "pacing_s": 0.1,
+    "pacing_s": 0.05,
     "daily_quota_stopped": false
   },
   "summary": {
     "total_queries": 40,
     "planned_queries": 40,
-    "mean_precision_at_3": 0.6333,
-    "mean_precision_at_5": 0.58,
-    "mrr": 0.7458,
-    "mean_ndcg_at_5": 0.7779,
-    "mean_csr": 0.6517,
-    "mean_price_compliance_pct": 0.925,
-    "mean_distance_compliance_pct": 0.8267,
-    "mean_room_type_compliance_pct": 0.75,
-    "mean_amenities_compliance_pct": 0.925,
-    "mean_relevance_score": 3.53,
-    "mean_ranking_score": 3.8,
-    "mean_faithfulness_score": 4.78,
-    "mean_overall_score": 3.98,
-    "latency_p50_s": 0.108,
-    "latency_p95_s": 0.377,
-    "latency_max_s": 2.277,
-    "latency_mean_s": 0.178
+    "mean_precision_at_3": 0.825,
+    "mean_precision_at_5": 0.76,
+    "mrr": 0.875,
+    "mean_ndcg_at_5": 0.875,
+    "mean_csr": 0.875,
+    "mean_price_compliance_pct": 0.875,
+    "mean_distance_compliance_pct": 0.875,
+    "mean_room_type_compliance_pct": 0.875,
+    "mean_amenities_compliance_pct": 0.875,
+    "mean_relevance_score": 4.5,
+    "mean_ranking_score": 4.32,
+    "mean_faithfulness_score": 4.62,
+    "mean_overall_score": 4.48,
+    "latency_p50_s": 0.124,
+    "latency_p95_s": 0.366,
+    "latency_max_s": 2.606,
+    "latency_mean_s": 0.2
   },
   "group_breakdown": {
     "G1_BUDGET": {
       "count": 8,
-      "mean_p3": 0.7083,
-      "mean_p5": 0.6,
+      "mean_p3": 0.875,
+      "mean_p5": 0.725,
       "mean_mrr": 0.875,
-      "mean_ndcg5": 0.8669,
-      "mean_csr": 0.7063,
-      "mean_overall_score": 4.2,
-      "mean_latency_s": 0.367
+      "mean_ndcg5": 0.875,
+      "mean_csr": 0.875,
+      "mean_overall_score": 4.51,
+      "mean_latency_s": 0.433
     },
     "G2_SAFETY_AMENITY": {
       "count": 8,
-      "mean_p3": 0.5833,
-      "mean_p5": 0.575,
-      "mean_mrr": 0.5729,
-      "mean_ndcg5": 0.6753,
-      "mean_csr": 0.575,
-      "mean_overall_score": 3.64,
-      "mean_latency_s": 0.154
+      "mean_p3": 1.0,
+      "mean_p5": 1.0,
+      "mean_mrr": 1.0,
+      "mean_ndcg5": 1.0,
+      "mean_csr": 1.0,
+      "mean_overall_score": 4.91,
+      "mean_latency_s": 0.183
     },
     "G3_GROUP_FRIENDS": {
       "count": 8,
-      "mean_p3": 0.375,
-      "mean_p5": 0.3,
-      "mean_mrr": 0.5312,
-      "mean_ndcg5": 0.5627,
-      "mean_csr": 0.4146,
-      "mean_overall_score": 3.4,
-      "mean_latency_s": 0.099
+      "mean_p3": 0.5,
+      "mean_p5": 0.375,
+      "mean_mrr": 0.625,
+      "mean_ndcg5": 0.625,
+      "mean_csr": 0.625,
+      "mean_overall_score": 3.57,
+      "mean_latency_s": 0.11
     },
     "G4_PREMIUM_STUDIO": {
       "count": 8,
-      "mean_p3": 0.6667,
-      "mean_p5": 0.625,
-      "mean_mrr": 0.875,
-      "mean_ndcg5": 0.9097,
-      "mean_csr": 0.7625,
-      "mean_overall_score": 4.3,
-      "mean_latency_s": 0.126
+      "mean_p3": 0.9167,
+      "mean_p5": 0.9,
+      "mean_mrr": 1.0,
+      "mean_ndcg5": 1.0,
+      "mean_csr": 1.0,
+      "mean_overall_score": 4.92,
+      "mean_latency_s": 0.127
     },
     "G5_EDGE_CASES": {
       "count": 8,
@@ -78,9 +78,9 @@
       "mean_p5": 0.8,
       "mean_mrr": 0.875,
       "mean_ndcg5": 0.875,
-      "mean_csr": 0.8,
-      "mean_overall_score": 4.38,
-      "mean_latency_s": 0.145
+      "mean_csr": 0.875,
+      "mean_overall_score": 4.5,
+      "mean_latency_s": 0.148
     }
   },
   "query_details": [
@@ -89,44 +89,40 @@
       "group": "G1_BUDGET",
       "persona_description": "Tân sinh viên ĐHQG TP.HCM, tài chính rất hạn hẹp, cần tiết kiệm tối đa chi phí nhưng cần có điều hòa.",
       "query": "Em là sinh viên năm nhất ĐHQG TP.HCM, tài chính eo hẹp tầm 1.5 triệu quay đầu, muốn tìm giường KTX hoặc sleepbox gần trường có máy lạnh.",
-      "latency_s": 2.277,
-      "returned_rooms_count": 5,
+      "latency_s": 2.606,
+      "returned_rooms_count": 3,
       "top_room_ids": [
         "nhatot_132062058",
         "nhatot_111989226",
-        "nhatot_132062207",
-        "nhatot_122648410",
-        "nhatot_103662097"
+        "nhatot_122648410"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.6667,
+        "precision_at_3": 1.0,
         "precision_at_5": 0.6,
         "reciprocal_rank": 1.0,
-        "ndcg_at_5": 0.9675,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.6,
+          "distance_compliance_pct": 1.0,
           "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.6
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.6,
+        "relevance_score": 5.0,
         "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.41,
+        "overall_score": 4.97,
         "strengths": [
-          "3/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 3/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (3/3) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 3/3 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 2/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.6/5.0 (3/5 phòng đạt ràng buộc cứng, 3/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.41/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (3/3 phòng đạt ràng buộc cứng, 3/3 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -134,7 +130,7 @@
       "group": "G1_BUDGET",
       "persona_description": "Sinh viên ĐHQG hay làm thêm về muộn, cần giờ giấc tự do và giá dưới 2 triệu.",
       "query": "Tìm phòng trọ hoặc sleepbox giá rẻ dưới 2 triệu gần làng đại học Thủ Đức, có giờ giấc tự do 24/7.",
-      "latency_s": 0.093,
+      "latency_s": 0.146,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_132062058",
@@ -177,44 +173,42 @@
       "group": "G1_BUDGET",
       "persona_description": "Sinh viên cần chỗ ở sạch sẽ, có máy giặt chung để đỡ tốn thời gian giặt tay.",
       "query": "Sinh viên ngân sách từ 1 triệu đến 1.8 triệu tìm chỗ ở KTX sleepbox sạch sẽ, có máy giặt chung gần ĐHQG TP.HCM.",
-      "latency_s": 0.106,
+      "latency_s": 0.127,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_132062058",
         "nhatot_111989226",
         "nhatot_122648410",
         "nhatot_130462298",
-        "nhatot_133955983"
+        "nhatot_127458464"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
-        "precision_at_5": 0.8,
+        "precision_at_5": 1.0,
         "reciprocal_rank": 1.0,
         "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.8,
+          "distance_compliance_pct": 1.0,
           "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.8
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.8,
+        "relevance_score": 5.0,
         "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.49,
+        "overall_score": 4.97,
         "strengths": [
-          "4/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 4/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 1/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.8/5.0 (4/5 phòng đạt ràng buộc cứng, 4/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.49/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -222,7 +216,7 @@
       "group": "G1_BUDGET",
       "persona_description": "Sinh viên muốn ở phòng trọ truyền thống có nhà vệ sinh riêng để đảm bảo riêng tư.",
       "query": "Cần tìm phòng trọ giá sinh viên dưới 2.5 triệu quanh khu vực Thủ Đức, bán kính 3km quanh ĐHQG, yêu cầu có WC riêng.",
-      "latency_s": 0.093,
+      "latency_s": 0.126,
       "returned_rooms_count": 3,
       "top_room_ids": [
         "nhatot_121784718",
@@ -263,7 +257,7 @@
       "group": "G1_BUDGET",
       "persona_description": "Nam sinh viên với mức ngân sách tối thiểu, cần chỗ ngả lưng gần KTX Khu B.",
       "query": "Nam sinh viên tìm chỗ ở ghép hoặc sleepbox giá dưới 1.2 triệu gần Ký túc xá khu B ĐHQG.",
-      "latency_s": 0.083,
+      "latency_s": 0.129,
       "returned_rooms_count": 0,
       "top_room_ids": [],
       "ir_metrics": {
@@ -297,43 +291,40 @@
       "group": "G1_BUDGET",
       "persona_description": "Sinh viên có xe máy, cần tìm phòng trọ không chung chủ, có chỗ để xe.",
       "query": "Tìm phòng trọ giá rẻ từ 1.5tr đến 2.2tr gần ĐHQG Thủ Đức, có chỗ để xe an toàn và không chung chủ.",
-      "latency_s": 0.092,
-      "returned_rooms_count": 4,
+      "latency_s": 0.113,
+      "returned_rooms_count": 3,
       "top_room_ids": [
         "nhatot_121784718",
         "nhatot_135386795",
-        "nhatot_134793621",
         "nhatot_125550088"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.6667,
+        "precision_at_3": 1.0,
         "precision_at_5": 0.6,
         "reciprocal_rank": 1.0,
-        "ndcg_at_5": 0.9675,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.75,
+          "distance_compliance_pct": 1.0,
           "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.75
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.8,
+        "relevance_score": 5.0,
         "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.49,
+        "overall_score": 4.97,
         "strengths": [
-          "3/4 phòng tuân thủ ràng buộc cứng.",
-          "Có 3/4 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (3/3) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 3/3 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 1/4 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.8/5.0 (3/4 phòng đạt ràng buộc cứng, 3/4 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.49/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (3/3 phòng đạt ràng buộc cứng, 3/3 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -341,40 +332,42 @@
       "group": "G1_BUDGET",
       "persona_description": "Nữ sinh viên tìm phòng trọ giá sinh viên nhưng bắt buộc có điều hòa và môi trường an ninh.",
       "query": "Nữ sinh viên tìm phòng hoặc sleepbox dưới 2 triệu gần ĐHQG, có điều hòa và an ninh tốt.",
-      "latency_s": 0.084,
-      "returned_rooms_count": 2,
+      "latency_s": 0.105,
+      "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_132062058",
-        "nhatot_132061981"
+        "nhatot_111989226",
+        "nhatot_122648410",
+        "nhatot_130462298",
+        "nhatot_132757497"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.3333,
-        "precision_at_5": 0.2,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
         "reciprocal_rank": 1.0,
         "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.5,
+          "distance_compliance_pct": 1.0,
           "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.5
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 2.5,
-        "ranking_score": 5.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.0,
+        "overall_score": 4.97,
         "strengths": [
-          "Có 1/2 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 1/2 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 2.5/5.0 (1/2 phòng đạt ràng buộc cứng, 1/2 phòng đạt tuyệt đối). Chất lượng xếp hạng 5.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.0/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -382,7 +375,7 @@
       "group": "G1_BUDGET",
       "persona_description": "Sinh viên cần phòng riêng biệt có gác lửng để tối ưu không gian sinh hoạt với giá dưới 2.5tr.",
       "query": "Sinh viên tài chính eo hẹp tối đa 2.5 triệu muốn thuê phòng đơn riêng gần ĐHQG TP.HCM trong bán kính 4km, có gác lửng.",
-      "latency_s": 0.107,
+      "latency_s": 0.116,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_135311557",
@@ -425,14 +418,57 @@
       "group": "G2_SAFETY_AMENITY",
       "persona_description": "Nữ sinh viên Bách Khoa Q10 coi trọng an ninh, khóa vân tay và cần máy lạnh.",
       "query": "Em là nữ sinh viên Bách Khoa CS1 Q10, muốn tìm phòng an ninh cao có camera và khóa vân tay, có máy lạnh, ngân sách 3.5 - 4.5 triệu.",
-      "latency_s": 0.232,
+      "latency_s": 0.289,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_134350033",
+        "nhatot_135418670",
         "nhatot_133036813",
         "nhatot_135352086",
-        "nhatot_131220663",
-        "nhatot_135641491"
+        "nhatot_131220663"
+      ],
+      "ir_metrics": {
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
+        "constraint_breakdown": {
+          "price_compliance_pct": 1.0,
+          "distance_compliance_pct": 1.0,
+          "room_type_compliance_pct": 1.0,
+          "area_compliance_pct": 1.0,
+          "amenities_compliance_pct": 1.0,
+          "overall_csr": 1.0
+        }
+      },
+      "judge_report": {
+        "relevance_score": 5.0,
+        "ranking_score": 4.9,
+        "faithfulness_score": 5.0,
+        "overall_score": 4.97,
+        "strengths": [
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
+          "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
+        ],
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
+      }
+    },
+    {
+      "query_id": "G2_02",
+      "group": "G2_SAFETY_AMENITY",
+      "persona_description": "Sinh viên UEH cần tiện nghi khép kín, có máy giặt máy lạnh và khu vực an toàn.",
+      "query": "Nữ sinh viên UEH cơ sở B Nguyễn Tri Phương Q10 cần thuê phòng khép kín WC riêng, có máy lạnh máy giặt, khu an ninh, tối đa 4 triệu.",
+      "latency_s": 0.125,
+      "returned_rooms_count": 5,
+      "top_room_ids": [
+        "nhatot_133041204",
+        "nhatot_133036813",
+        "nhatot_135095131",
+        "nhatot_133586662",
+        "nhatot_135491374"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
@@ -464,92 +500,46 @@
       }
     },
     {
-      "query_id": "G2_02",
-      "group": "G2_SAFETY_AMENITY",
-      "persona_description": "Sinh viên UEH cần tiện nghi khép kín, có máy giặt máy lạnh và khu vực an toàn.",
-      "query": "Nữ sinh viên UEH cơ sở B Nguyễn Tri Phương Q10 cần thuê phòng khép kín WC riêng, có máy lạnh máy giặt, khu an ninh, tối đa 4 triệu.",
-      "latency_s": 0.107,
-      "returned_rooms_count": 5,
-      "top_room_ids": [
-        "nhatot_118753978",
-        "nhatot_133036813",
-        "nhatot_135095131",
-        "nhatot_133586662",
-        "nhatot_130175508"
-      ],
-      "ir_metrics": {
-        "precision_at_3": 0.6667,
-        "precision_at_5": 0.6,
-        "reciprocal_rank": 0.5,
-        "ndcg_at_5": 0.7328,
-        "constraint_breakdown": {
-          "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.6,
-          "area_compliance_pct": 1.0,
-          "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.6
-        }
-      },
-      "judge_report": {
-        "relevance_score": 3.6,
-        "ranking_score": 1.5,
-        "faithfulness_score": 5.0,
-        "overall_score": 3.39,
-        "strengths": [
-          "3/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 3/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
-          "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
-        ],
-        "weaknesses": [
-          "Có 2/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.6/5.0 (3/5 phòng đạt ràng buộc cứng, 3/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 1.5/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.39/5.0."
-      }
-    },
-    {
       "query_id": "G2_03",
       "group": "G2_SAFETY_AMENITY",
       "persona_description": "Nữ sinh viên đề cao sự riêng tư không chung chủ nhưng an toàn tuyệt đối với khóa vân tay.",
       "query": "Tìm phòng trọ cho nữ gần ĐH Bách Khoa Lý Thường Kiệt trong bán kính 2km, bắt buộc có khóa vân tay, không chung chủ, giá dưới 5 triệu.",
-      "latency_s": 0.178,
+      "latency_s": 0.222,
       "returned_rooms_count": 5,
       "top_room_ids": [
-        "nhatot_129886787",
-        "nhatot_129874605",
         "nhatot_135279110",
-        "nhatot_133755255",
-        "nhatot_135617575"
+        "nhatot_135617575",
+        "nhatot_135375393",
+        "nhatot_135337981",
+        "nhatot_135639093"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.3333,
-        "precision_at_5": 0.4,
-        "reciprocal_rank": 0.3333,
-        "ndcg_at_5": 0.5438,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.4,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.4
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 2.4,
-        "ranking_score": 2.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.6,
         "faithfulness_score": 5.0,
-        "overall_score": 3.06,
+        "overall_score": 4.88,
         "strengths": [
-          "Có 2/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 3/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 2.4/5.0 (2/5 phòng đạt ràng buộc cứng, 2/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 2.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.06/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.88/5.0."
       }
     },
     {
@@ -557,43 +547,42 @@
       "group": "G2_SAFETY_AMENITY",
       "persona_description": "Sinh viên UEH cần phòng có ban công/cửa sổ thoáng mát, có điều hòa và hệ thống camera an ninh.",
       "query": "Cần tìm phòng nữ gần UEH Q10, giá dưới 4.5 triệu, yêu cầu có camera an ninh, có máy lạnh và cửa sổ ban công thoáng.",
-      "latency_s": 0.131,
+      "latency_s": 0.144,
       "returned_rooms_count": 5,
       "top_room_ids": [
-        "nhatot_134071918",
-        "nhatot_112922799",
-        "nhatot_130175508",
         "nhatot_134462417",
-        "nhatot_135380824"
+        "nhatot_134268405",
+        "nhatot_135095131",
+        "nhatot_132362660",
+        "nhatot_135132083"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.0,
-        "precision_at_5": 0.2,
-        "reciprocal_rank": 0.25,
-        "ndcg_at_5": 0.4307,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.2,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.2
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 1.2,
-        "ranking_score": 2.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.6,
         "faithfulness_score": 5.0,
-        "overall_score": 2.58,
+        "overall_score": 4.88,
         "strengths": [
-          "Có 1/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 4/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 1.2/5.0 (1/5 phòng đạt ràng buộc cứng, 1/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 2.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 2.58/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.88/5.0."
       }
     },
     {
@@ -601,44 +590,42 @@
       "group": "G2_SAFETY_AMENITY",
       "persona_description": "Nữ sinh viên ở các tầng cao cần thang máy và máy giặt tiện ích trong tòa nhà an ninh.",
       "query": "Sinh viên nữ tìm phòng studio hoặc phòng trọ an ninh tuyệt đối gần Bách Khoa Q10, có thang máy, máy giặt, tài chính 4 - 5.5 triệu.",
-      "latency_s": 0.112,
+      "latency_s": 0.116,
       "returned_rooms_count": 5,
       "top_room_ids": [
-        "nhatot_135514606",
+        "nhatot_135375393",
         "nhatot_135387404",
         "nhatot_134506308",
-        "nhatot_134940581",
-        "nhatot_135285219"
+        "nhatot_135285219",
+        "nhatot_135638112"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.6667,
-        "precision_at_5": 0.6,
-        "reciprocal_rank": 0.5,
-        "ndcg_at_5": 0.7123,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.8,
-          "room_type_compliance_pct": 0.8,
+          "distance_compliance_pct": 1.0,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.6
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.6,
-        "ranking_score": 1.5,
+        "relevance_score": 5.0,
+        "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 3.39,
+        "overall_score": 4.97,
         "strengths": [
-          "3/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 3/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 2/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.6/5.0 (3/5 phòng đạt ràng buộc cứng, 3/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 1.5/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.39/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -646,44 +633,42 @@
       "group": "G2_SAFETY_AMENITY",
       "persona_description": "Hai bạn nữ sinh viên ở ghép cần phòng khép kín, có điều hòa, giờ tự do và an ninh tốt.",
       "query": "Tìm phòng trọ an ninh cho 2 bạn nữ gần ngã tư Lý Thường Kiệt - Tô Hiến Thành Q10, có máy lạnh, WC riêng, giờ tự do, giá dưới 5 triệu.",
-      "latency_s": 0.122,
+      "latency_s": 0.13,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_133036613",
+        "nhatot_133670086",
         "nhatot_133036813",
         "nhatot_135352086",
-        "nhatot_134350033",
-        "nhatot_135344761"
+        "nhatot_135132083"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
-        "precision_at_5": 0.8,
+        "precision_at_5": 1.0,
         "reciprocal_rank": 1.0,
-        "ndcg_at_5": 0.9829,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.8,
+          "distance_compliance_pct": 1.0,
           "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.8
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.8,
-        "ranking_score": 4.6,
+        "relevance_score": 5.0,
+        "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.4,
+        "overall_score": 4.97,
         "strengths": [
-          "4/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 4/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 1/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.8/5.0 (4/5 phòng đạt ràng buộc cứng, 4/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.4/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -691,42 +676,42 @@
       "group": "G2_SAFETY_AMENITY",
       "persona_description": "Nữ sinh viên năm cuối chuẩn bị tốt nghiệp cần không gian yên tĩnh, an ninh và đầy đủ nội thất.",
       "query": "Nữ sinh viên năm cuối cần phòng yên tĩnh an ninh gần ĐH Kinh Tế Q10, có camera an ninh, full nội thất, ngân sách tối đa 4.8 triệu.",
-      "latency_s": 0.233,
+      "latency_s": 0.289,
       "returned_rooms_count": 5,
       "top_room_ids": [
-        "nhatot_129886787",
-        "nhatot_118753978",
-        "nhatot_129874605",
-        "nhatot_134071918",
-        "nhatot_112922799"
+        "nhatot_132362660",
+        "nhatot_135095131",
+        "nhatot_135631043",
+        "nhatot_135352086",
+        "nhatot_135613580"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.0,
-        "precision_at_5": 0.0,
-        "reciprocal_rank": 0.0,
-        "ndcg_at_5": 0.0,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.0,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.0
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 1.0,
-        "ranking_score": 2.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.6,
         "faithfulness_score": 5.0,
-        "overall_score": 2.5,
+        "overall_score": 4.88,
         "strengths": [
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 5/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 1.0/5.0 (0/5 phòng đạt ràng buộc cứng, 0/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 2.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 2.5/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.88/5.0."
       }
     },
     {
@@ -734,14 +719,14 @@
       "group": "G2_SAFETY_AMENITY",
       "persona_description": "Sinh viên tìm phòng an toàn gần trường Bách Khoa, có điều hòa và nhà vệ sinh riêng.",
       "query": "Tìm phòng trọ khép kín gần ĐH Bách Khoa CS1 dưới 4.2 triệu, ưu tiên khu vực an ninh cao, có máy lạnh, chỗ để xe rộng rãi.",
-      "latency_s": 0.121,
+      "latency_s": 0.153,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_133036613",
         "nhatot_133036813",
+        "nhatot_133670086",
         "nhatot_135352086",
-        "nhatot_132362660",
-        "nhatot_134350033"
+        "nhatot_132362660"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
@@ -777,43 +762,42 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm 3 sinh viên kỹ thuật ở ghép để tiết kiệm chi phí, cần diện tích tối thiểu 30m2 và gác lửng cao.",
       "query": "Nhóm 3 bạn sinh viên SPKT HCMUTE tìm phòng trọ rộng trên 30m2 có gác lửng cao, giờ tự do, giá từ 3.5 đến 5 triệu gần trường.",
-      "latency_s": 0.115,
+      "latency_s": 0.122,
       "returned_rooms_count": 5,
       "top_room_ids": [
-        "nhatot_135428818",
-        "nhatot_135264855",
-        "nhatot_135322243",
         "nhatot_135610282",
-        "nhatot_135644953"
+        "nhatot_135644953",
+        "nhatot_135254537",
+        "nhatot_135272595",
+        "nhatot_134917574"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.0,
-        "precision_at_5": 0.4,
-        "reciprocal_rank": 0.25,
-        "ndcg_at_5": 0.5013,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.4,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.4
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 2.4,
-        "ranking_score": 2.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.6,
         "faithfulness_score": 5.0,
-        "overall_score": 3.06,
+        "overall_score": 4.88,
         "strengths": [
-          "Có 2/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 3/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 2.4/5.0 (2/5 phòng đạt ràng buộc cứng, 2/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 2.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.06/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.88/5.0."
       }
     },
     {
@@ -821,40 +805,33 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm sinh viên HUTECH cần phòng lớn để ở cùng nhau, tự nấu ăn và không phụ thuộc chủ nhà.",
       "query": "Nhóm bạn sinh viên HUTECH Điện Biên Phủ cần tìm phòng rộng >= 35m2 có gác lửng, cho nấu ăn, không chung chủ, ngân sách dưới 6 triệu.",
-      "latency_s": 0.097,
-      "returned_rooms_count": 3,
-      "top_room_ids": [
-        "nhatot_133110715",
-        "nhatot_130925831",
-        "nhatot_135329776"
-      ],
+      "latency_s": 0.103,
+      "returned_rooms_count": 0,
+      "top_room_ids": [],
       "ir_metrics": {
         "precision_at_3": 0.0,
         "precision_at_5": 0.0,
         "reciprocal_rank": 0.0,
         "ndcg_at_5": 0.0,
         "constraint_breakdown": {
-          "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.6667,
-          "room_type_compliance_pct": 0.3333,
-          "area_compliance_pct": 1.0,
-          "amenities_compliance_pct": 1.0,
+          "price_compliance_pct": 0.0,
+          "distance_compliance_pct": 0.0,
+          "room_type_compliance_pct": 0.0,
+          "area_compliance_pct": 0.0,
+          "amenities_compliance_pct": 0.0,
           "overall_csr": 0.0
         }
       },
       "judge_report": {
         "relevance_score": 1.0,
-        "ranking_score": 2.0,
-        "faithfulness_score": 5.0,
-        "overall_score": 2.5,
-        "strengths": [
-          "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
-        ],
+        "ranking_score": 1.0,
+        "faithfulness_score": 2.0,
+        "overall_score": 1.3,
+        "strengths": [],
         "weaknesses": [
-          "Có 3/3 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
+          "Hệ thống không trả về phòng trọ nào đáp ứng tiêu chí người dùng"
         ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 1.0/5.0 (0/3 phòng đạt ràng buộc cứng, 0/3 phòng đạt tuyệt đối). Chất lượng xếp hạng 2.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 2.5/5.0."
+        "rationale": "Hệ thống trả về 0 phòng và không có lý giải thỏa đáng."
       }
     },
     {
@@ -862,12 +839,11 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm bạn trẻ có nuôi thú cưng (mèo), cần phòng trọ cho nuôi pet và diện tích rộng rãi.",
       "query": "Tụi mình 3 người có nuôi 1 bé mèo, cần thuê phòng gần HCMUTE Võ Văn Ngân, diện tích >= 30m2, cho phép nuôi pet, giờ giấc tự do, dưới 5.5 triệu.",
-      "latency_s": 0.102,
-      "returned_rooms_count": 3,
+      "latency_s": 0.154,
+      "returned_rooms_count": 2,
       "top_room_ids": [
         "nhatot_134117471",
-        "nhatot_135324382",
-        "nhatot_135247555"
+        "nhatot_135324382"
       ],
       "ir_metrics": {
         "precision_at_3": 0.6667,
@@ -877,27 +853,25 @@
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.6667,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.6667
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.7,
+        "relevance_score": 5.0,
         "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.45,
+        "overall_score": 4.97,
         "strengths": [
-          "2/3 phòng tuân thủ ràng buộc cứng.",
-          "Có 2/3 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (2/2) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 2/2 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 1/3 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.7/5.0 (2/3 phòng đạt ràng buộc cứng, 2/3 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.45/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (2/2 phòng đạt ràng buộc cứng, 2/2 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -905,7 +879,7 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm 4 sinh viên ở chung cần không gian lớn từ 40m2 trở lên với đầy đủ điều hòa và máy giặt.",
       "query": "Nhóm 4 sinh viên HUTECH Bình Thạnh tìm căn hộ mini hoặc phòng trọ lớn >= 40m2, có gác lửng, máy lạnh, máy giặt, giá dưới 7 triệu.",
-      "latency_s": 0.086,
+      "latency_s": 0.111,
       "returned_rooms_count": 4,
       "top_room_ids": [
         "nhatot_135397621",
@@ -947,7 +921,7 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm sinh viên kỹ thuật cần ban công phơi đồ thoáng và kệ bếp nấu nướng.",
       "query": "Cần tìm phòng trọ diện tích từ 30m2 trở lên cho nhóm bạn gần ĐH Sư Phạm Kỹ Thuật Thủ Đức, có ban công, gác lửng, kệ bếp nấu ăn, tối đa 5 triệu.",
-      "latency_s": 0.083,
+      "latency_s": 0.099,
       "returned_rooms_count": 0,
       "top_room_ids": [],
       "ir_metrics": {
@@ -981,13 +955,10 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm sinh viên HUTECH Ung Văn Khiêm nuôi thú cưng và cần có máy lạnh cho mùa hè.",
       "query": "3 bạn sinh viên cần thuê phòng gần HUTECH Ung Văn Khiêm, diện tích tối thiểu 30m2, cho nuôi thú cưng, có máy lạnh, giá dưới 6.5 triệu.",
-      "latency_s": 0.091,
-      "returned_rooms_count": 4,
+      "latency_s": 0.096,
+      "returned_rooms_count": 1,
       "top_room_ids": [
-        "nhatot_135434894",
-        "nhatot_134603580",
-        "nhatot_135152811",
-        "nhatot_135439801"
+        "nhatot_135434894"
       ],
       "ir_metrics": {
         "precision_at_3": 0.3333,
@@ -996,27 +967,26 @@
         "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.25,
+          "distance_compliance_pct": 1.0,
           "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.25
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 1.2,
-        "ranking_score": 5.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.5,
         "faithfulness_score": 5.0,
-        "overall_score": 3.48,
+        "overall_score": 4.85,
         "strengths": [
-          "Có 1/4 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (1/1) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 1/1 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 3/4 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 1.2/5.0 (1/4 phòng đạt ràng buộc cứng, 1/4 phòng đạt tuyệt đối). Chất lượng xếp hạng 5.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.48/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (1/1 phòng đạt ràng buộc cứng, 1/1 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.5/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.85/5.0."
       }
     },
     {
@@ -1024,39 +994,33 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm sinh viên năm cuối đi thực tập về muộn, cần giờ giấc 24/7 và độc lập không chung chủ.",
       "query": "Nhóm bạn tìm phòng trọ rộng rãi >= 32m2 gần ngã tư Thủ Đức / HCMUTE, có gác lửng, giờ tự do 24/7, không chung chủ, ngân sách 4 - 5.5 triệu.",
-      "latency_s": 0.124,
-      "returned_rooms_count": 2,
-      "top_room_ids": [
-        "nhatot_135322243",
-        "nhatot_135415828"
-      ],
+      "latency_s": 0.097,
+      "returned_rooms_count": 0,
+      "top_room_ids": [],
       "ir_metrics": {
         "precision_at_3": 0.0,
         "precision_at_5": 0.0,
         "reciprocal_rank": 0.0,
         "ndcg_at_5": 0.0,
         "constraint_breakdown": {
-          "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.5,
-          "room_type_compliance_pct": 0.5,
-          "area_compliance_pct": 1.0,
-          "amenities_compliance_pct": 1.0,
+          "price_compliance_pct": 0.0,
+          "distance_compliance_pct": 0.0,
+          "room_type_compliance_pct": 0.0,
+          "area_compliance_pct": 0.0,
+          "amenities_compliance_pct": 0.0,
           "overall_csr": 0.0
         }
       },
       "judge_report": {
         "relevance_score": 1.0,
-        "ranking_score": 2.0,
-        "faithfulness_score": 5.0,
-        "overall_score": 2.5,
-        "strengths": [
-          "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
-        ],
+        "ranking_score": 1.0,
+        "faithfulness_score": 2.0,
+        "overall_score": 1.3,
+        "strengths": [],
         "weaknesses": [
-          "Có 2/2 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
+          "Hệ thống không trả về phòng trọ nào đáp ứng tiêu chí người dùng"
         ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 1.0/5.0 (0/2 phòng đạt ràng buộc cứng, 0/2 phòng đạt tuyệt đối). Chất lượng xếp hạng 2.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 2.5/5.0."
+        "rationale": "Hệ thống trả về 0 phòng và không có lý giải thỏa đáng."
       }
     },
     {
@@ -1064,7 +1028,7 @@
       "group": "G3_GROUP_FRIENDS",
       "persona_description": "Nhóm bạn ở chung tìm phòng cao tầng có thang máy, gác lửng và máy giặt tiện lợi.",
       "query": "Nhóm sinh viên tìm căn hộ dịch vụ hoặc phòng trọ lớn >= 35m2 gần HUTECH Bình Thạnh, có thang máy, gác lửng, máy giặt, ngân sách dưới 7 triệu.",
-      "latency_s": 0.092,
+      "latency_s": 0.098,
       "returned_rooms_count": 3,
       "top_room_ids": [
         "nhatot_135397621",
@@ -1105,7 +1069,7 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Chuyên viên văn phòng trung tâm Q1, thu nhập khá, cần studio đẹp đầy đủ tiện nghi cao cấp.",
       "query": "Tôi là chuyên viên làm việc tại Quận 1, cần tìm căn hộ studio cao cấp full nội thất, có ban công view đẹp, thang máy, ngân sách 6 - 8 triệu gần Chợ Bến Thành.",
-      "latency_s": 0.118,
+      "latency_s": 0.131,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_134563190",
@@ -1148,44 +1112,42 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Nhân viên công ty quốc tế tại Nam Sài Gòn cần căn hộ dịch vụ văn minh, có thang máy và máy giặt.",
       "query": "Tìm studio hoặc căn hộ dịch vụ 1 phòng ngủ tại Phú Mỹ Hưng Quận 7, đầy đủ tiện nghi máy giặt, thang máy, giá dưới 8 triệu.",
-      "latency_s": 0.169,
+      "latency_s": 0.146,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_123059556",
-        "nhatot_120245418",
         "nhatot_135341610",
-        "nhatot_134836051",
-        "nhatot_135383867"
+        "nhatot_135383867",
+        "nhatot_135244191",
+        "nhatot_135381838"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.6667,
-        "precision_at_5": 0.6,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
         "reciprocal_rank": 1.0,
-        "ndcg_at_5": 0.8855,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.6,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.6
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.6,
-        "ranking_score": 5.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.6,
         "faithfulness_score": 5.0,
-        "overall_score": 4.44,
+        "overall_score": 4.88,
         "strengths": [
-          "3/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 3/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 2/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.6/5.0 (3/5 phòng đạt ràng buộc cứng, 3/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 5.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.44/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.88/5.0."
       }
     },
     {
@@ -1193,44 +1155,42 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Người đi làm khu ẩm thực Phan Xích Long thích phòng studio có ánh sáng tự nhiên và nội thất sẵn.",
       "query": "Chuyên viên tìm căn hộ studio hiện đại ở Phú Nhuận gần Phan Xích Long, full nội thất xịn, ban công thoáng mát, ngân sách 6.5 - 8 triệu.",
-      "latency_s": 0.122,
+      "latency_s": 0.121,
       "returned_rooms_count": 5,
       "top_room_ids": [
-        "nhatot_135473655",
         "nhatot_135015658",
         "nhatot_135310071",
-        "nhatot_130934111",
-        "nhatot_135313671"
+        "nhatot_135313671",
+        "nhatot_135281026",
+        "nhatot_135285334"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.6667,
-        "precision_at_5": 0.6,
-        "reciprocal_rank": 0.5,
-        "ndcg_at_5": 0.7123,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.6,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.6
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.6,
-        "ranking_score": 1.5,
+        "relevance_score": 5.0,
+        "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 3.39,
+        "overall_score": 4.97,
         "strengths": [
-          "3/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 3/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 2/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.6/5.0 (3/5 phòng đạt ràng buộc cứng, 3/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 1.5/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.39/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -1238,44 +1198,42 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Quản lý trẻ làm việc tại trung tâm TP, yêu cầu sự riêng tư với máy giặt riêng và ban công thoáng.",
       "query": "Cần thuê căn hộ dịch vụ cao cấp tại Quận 1, có thang máy, ban công, máy giặt riêng, tài chính tối đa 8 triệu.",
-      "latency_s": 0.109,
+      "latency_s": 0.11,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_134563190",
         "nhatot_134151609",
         "nhatot_135429877",
         "nhatot_134008560",
-        "nhatot_135370154"
+        "nhatot_134940581"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
-        "precision_at_5": 0.8,
+        "precision_at_5": 1.0,
         "reciprocal_rank": 1.0,
         "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.8,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.8
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.8,
+        "relevance_score": 5.0,
         "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.49,
+        "overall_score": 4.97,
         "strengths": [
-          "4/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 4/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 1/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.8/5.0 (4/5 phòng đạt ràng buộc cứng, 4/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.49/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -1283,40 +1241,42 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Chuyên viên làm việc gần Crescent Mall Q7 cần không gian sống an ninh tuyệt đối và tự do giờ giấc.",
       "query": "Tìm căn studio sang trọng gần Crescent Mall Phú Mỹ Hưng Q7, diện tích >= 28m2, full nội thất cao cấp, giờ tự do, an ninh 24/7, ngân sách 6 - 7.5 triệu.",
-      "latency_s": 0.099,
-      "returned_rooms_count": 2,
+      "latency_s": 0.106,
+      "returned_rooms_count": 5,
       "top_room_ids": [
+        "nhatot_135383818",
+        "nhatot_135401666",
         "nhatot_135444481",
-        "nhatot_135225443"
+        "nhatot_135310451",
+        "nhatot_135386237"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.3333,
-        "precision_at_5": 0.2,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
         "reciprocal_rank": 1.0,
         "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.5,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.5
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 2.5,
-        "ranking_score": 5.0,
+        "relevance_score": 5.0,
+        "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 4.0,
+        "overall_score": 4.97,
         "strengths": [
-          "Có 1/2 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 1/2 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 2.5/5.0 (1/2 phòng đạt ràng buộc cứng, 1/2 phòng đạt tuyệt đối). Chất lượng xếp hạng 5.0/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.0/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -1324,44 +1284,42 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Nhân viên văn phòng thích tự nấu ăn tại nhà, cần studio có bếp riêng biệt và ban công.",
       "query": "Nhân viên văn phòng cần studio ở Phú Nhuận giáp Quận 1, có ban công rộng, bếp riêng, máy lạnh, thang máy, giá từ 5.5 đến 7.5 triệu.",
-      "latency_s": 0.104,
+      "latency_s": 0.123,
       "returned_rooms_count": 5,
       "top_room_ids": [
-        "nhatot_134282342",
         "nhatot_135436753",
-        "nhatot_135411301",
         "nhatot_135376436",
-        "nhatot_135580346"
+        "nhatot_135580346",
+        "nhatot_135281479",
+        "nhatot_135399958"
       ],
       "ir_metrics": {
-        "precision_at_3": 0.3333,
-        "precision_at_5": 0.6,
-        "reciprocal_rank": 0.5,
-        "ndcg_at_5": 0.6797,
+        "precision_at_3": 1.0,
+        "precision_at_5": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
           "distance_compliance_pct": 1.0,
-          "room_type_compliance_pct": 0.6,
+          "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.6
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 3.6,
-        "ranking_score": 1.5,
+        "relevance_score": 5.0,
+        "ranking_score": 4.6,
         "faithfulness_score": 5.0,
-        "overall_score": 3.39,
+        "overall_score": 4.88,
         "strengths": [
-          "3/5 phòng tuân thủ ràng buộc cứng.",
-          "Có 3/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 2/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính).",
-          "Chất lượng xếp hạng chưa tối ưu (Top 1 có chất lượng thấp hơn các phòng bên dưới)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 3.6/5.0 (3/5 phòng đạt ràng buộc cứng, 3/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 1.5/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.39/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.88/5.0."
       }
     },
     {
@@ -1369,7 +1327,7 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Chuyên gia tài chính tại Q1 cần căn hộ dịch vụ độc lập không chung chủ, nội thất sang trọng.",
       "query": "Tìm căn hộ dịch vụ cao cấp tại Quận 1, khu vực Bến Thành - Đa Kao, full nội thất, không chung chủ, thang máy, ngân sách 7 - 8 triệu.",
-      "latency_s": 0.077,
+      "latency_s": 0.105,
       "returned_rooms_count": 1,
       "top_room_ids": [
         "nhatot_135266406"
@@ -1408,14 +1366,14 @@
       "group": "G4_PREMIUM_STUDIO",
       "persona_description": "Người làm việc sáng tạo nội dung cần ban công rộng đón ánh sáng tự nhiên và máy giặt riêng.",
       "query": "Thuê studio view đẹp tại Quận 7 giáp Phú Mỹ Hưng, đầy đủ nội thất cao cấp, máy giặt riêng, ban công đón sáng, giá tối đa 7.5 triệu.",
-      "latency_s": 0.211,
+      "latency_s": 0.173,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_123059556",
         "nhatot_135341610",
         "nhatot_135383867",
-        "nhatot_135381838",
-        "nhatot_135383818"
+        "nhatot_135313726",
+        "nhatot_135381838"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
@@ -1451,7 +1409,7 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Sinh viên dùng tiếng lóng ngân sách ('3 củ rưỡi') và mệnh đề phủ định ('ko lấy ktx hay sleepbox').",
       "query": "Cần tìm phòng tầm 3 củ rưỡi đổ lại gần ĐHQG, ko lấy ktx hay sleepbox nha, muốn phòng riêng có gác lửng và giờ tự do.",
-      "latency_s": 0.12,
+      "latency_s": 0.134,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_135311557",
@@ -1494,14 +1452,11 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Sinh viên di chuyển bằng xe buýt dùng từ 'triệu hai đến triệu rưỡi', cần máy lạnh và giá cực rẻ.",
       "query": "Tìm chỗ trọ giá khoảng triệu hai đến triệu rưỡi gần trạm xe buýt Suối Tiên / ĐHQG Thủ Đức, có máy lạnh.",
-      "latency_s": 0.08,
-      "returned_rooms_count": 5,
+      "latency_s": 0.091,
+      "returned_rooms_count": 2,
       "top_room_ids": [
         "nhatot_132062058",
-        "nhatot_122648410",
-        "nhatot_103662097",
-        "nhatot_127458464",
-        "nhatot_130354945"
+        "nhatot_122648410"
       ],
       "ir_metrics": {
         "precision_at_3": 0.6667,
@@ -1510,27 +1465,26 @@
         "ndcg_at_5": 1.0,
         "constraint_breakdown": {
           "price_compliance_pct": 1.0,
-          "distance_compliance_pct": 0.4,
+          "distance_compliance_pct": 1.0,
           "room_type_compliance_pct": 1.0,
           "area_compliance_pct": 1.0,
           "amenities_compliance_pct": 1.0,
-          "overall_csr": 0.4
+          "overall_csr": 1.0
         }
       },
       "judge_report": {
-        "relevance_score": 2.4,
+        "relevance_score": 5.0,
         "ranking_score": 4.9,
         "faithfulness_score": 5.0,
-        "overall_score": 3.93,
+        "overall_score": 4.97,
         "strengths": [
-          "Có 2/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
+          "100% (2/2) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
+          "Có 2/2 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
           "Thứ tự xếp hạng tối ưu: Top 1 là lựa chọn tốt nhất theo đa tiêu chí.",
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
-        "weaknesses": [
-          "Có 3/5 phòng vi phạm ràng buộc cứng (vượt ngân sách hoặc bán kính)."
-        ],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 2.4/5.0 (2/5 phòng đạt ràng buộc cứng, 2/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 3.93/5.0."
+        "weaknesses": [],
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (2/2 phòng đạt ràng buộc cứng, 2/2 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
       }
     },
     {
@@ -1538,7 +1492,7 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Người đi làm khu công nghiệp giáp ranh Dĩ An - Thủ Đức, kiên quyết phủ định KTX và chung chủ.",
       "query": "Muốn thuê phòng trọ không chung chủ, tuyệt đối không ở ghép ktx, giá dưới 3 triệu ở khu vực giáp ranh Dĩ An Bình Dương và Thủ Đức.",
-      "latency_s": 0.115,
+      "latency_s": 0.111,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_135348694",
@@ -1581,7 +1535,7 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Sinh viên dùng tiếng lóng '2 củ 8 quay đầu', ràng buộc máy lạnh, vệ sinh riêng và cấm chung chủ.",
       "query": "Tìm phòng tầm 2 củ 8 quay đầu gần làng đại học, phòng có máy lạnh với wc khép kín, cấm chung chủ.",
-      "latency_s": 0.078,
+      "latency_s": 0.089,
       "returned_rooms_count": 0,
       "top_room_ids": [],
       "ir_metrics": {
@@ -1615,14 +1569,14 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Người đi làm di chuyển bằng xe bus trung tâm, dùng tiếng lóng '4 củ' và yêu cầu khóa vân tay an ninh.",
       "query": "Cần căn studio hoặc phòng đơn giá dưới 4 củ gần trạm xe bus Bến Thành Q1, yêu cầu ko chung chủ và có khóa vân tay.",
-      "latency_s": 0.149,
+      "latency_s": 0.146,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_135320134",
         "nhatot_134944746",
         "nhatot_135372137",
         "nhatot_128549682",
-        "nhatot_134979018"
+        "nhatot_128811958"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
@@ -1658,14 +1612,14 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Khách hàng phủ định kép ('không lấy phòng không có cửa sổ'), yêu cầu ban công thoáng đãng.",
       "query": "Tìm phòng 5 triệu rưỡi ở Phú Nhuận, không lấy phòng không có cửa sổ, phải có ban công hoặc giếng trời thoáng đãng.",
-      "latency_s": 0.377,
+      "latency_s": 0.366,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_135085714",
+        "nhatot_135117606",
+        "nhatot_135188638",
         "nhatot_133407995",
-        "nhatot_135617701",
-        "nhatot_135093622",
-        "nhatot_135481194"
+        "nhatot_135617701"
       ],
       "ir_metrics": {
         "precision_at_3": 1.0,
@@ -1683,9 +1637,9 @@
       },
       "judge_report": {
         "relevance_score": 5.0,
-        "ranking_score": 4.9,
+        "ranking_score": 4.6,
         "faithfulness_score": 5.0,
-        "overall_score": 4.97,
+        "overall_score": 4.88,
         "strengths": [
           "100% (5/5) phòng đề xuất tuân thủ nghiêm ngặt các ràng buộc cứng (giá, bán kính, loại phòng).",
           "Có 5/5 phòng đáp ứng trọn vẹn cả các tiện ích mong muốn.",
@@ -1693,7 +1647,7 @@
           "Lời tư vấn trung thực, số liệu giá cả và thông số khớp với dữ liệu thực tế."
         ],
         "weaknesses": [],
-        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.9/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.97/5.0."
+        "rationale": "Đánh giá quy tắc IR: Độ phù hợp 5.0/5.0 (5/5 phòng đạt ràng buộc cứng, 5/5 phòng đạt tuyệt đối). Chất lượng xếp hạng 4.6/5.0. Độ trung thực thông tin 5.0/5.0. Điểm tổng hợp: 4.88/5.0."
       }
     },
     {
@@ -1701,7 +1655,7 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Công nhân/sinh viên khu ngã tư Bình Phước giáp Dĩ An, cấm sleepbox, cần giờ giấc 24/7 và gác lửng.",
       "query": "Tài chính 2 củ rưỡi, tìm phòng quanh ngã tư Bình Phước Thủ Đức giáp ranh Dĩ An, cấm ktx sleepbox, cần giờ tự do có gác.",
-      "latency_s": 0.092,
+      "latency_s": 0.099,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_135384966",
@@ -1744,7 +1698,7 @@
       "group": "G5_EDGE_CASES",
       "persona_description": "Sinh viên Bách Khoa dùng tiếng lóng '3 củ', ràng buộc không chung chủ và giờ giấc tự do.",
       "query": "Tìm phòng trọ tầm 3 củ ở khu vực Bách Khoa Q10, không chung chủ, không hạn chế giờ giấc, có chỗ để xe máy.",
-      "latency_s": 0.15,
+      "latency_s": 0.148,
       "returned_rooms_count": 5,
       "top_room_ids": [
         "nhatot_135646746",
