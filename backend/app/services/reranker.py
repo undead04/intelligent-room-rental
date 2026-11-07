@@ -161,8 +161,8 @@ def _location_part(listing: object, user_pref: object) -> float:
         return UNKNOWN_SCORE
 
 
-def _price_fit(orm: object, user_pref: object = None) -> float:
-    """Điểm hợp lý giá (price_score) do mô hình Machine Learning thẩm định kết hợp tiết kiệm ngân sách."""
+def _price_fit(orm: object, user_pref: object = None, weights: Optional[Mapping[str, float]] = None) -> float:
+    """Điểm hợp lý giá (price_score) do mô hình Machine Learning thẩm định kết hợp độ rẻ tiền danh nghĩa."""
     price_score = _get(orm, "price_score")
     ml_score = 0.50
     if price_score is not None:
@@ -178,8 +178,27 @@ def _price_fit(orm: object, user_pref: object = None) -> float:
         m_val = float(max_price)
         if p_val <= m_val:
             savings_ratio = max(0.0, min(1.0, (m_val - p_val) / m_val))
-            # 70% giá trị hợp lý thị trường từ ML + 30% điểm tiết kiệm trong ngân sách
-            return _clamp01(0.7 * ml_score + 0.3 * (0.5 + 0.5 * savings_ratio))
+
+            # Xác định người dùng có đang ưu tiên giá rẻ danh nghĩa hay không
+            prefer_cheap = False
+            if user_pref:
+                if _get(user_pref, "prefer_cheapest"):
+                    prefer_cheap = True
+                user_weights = _get(user_pref, "weights")
+                if isinstance(user_weights, Mapping) and float(user_weights.get("price", 0.0)) > 0.28:
+                    prefer_cheap = True
+            if weights and float(weights.get("price", 0.0)) > 0.28:
+                prefer_cheap = True
+
+            if prefer_cheap:
+                # Đẩy tỷ trọng độ rẻ tiền thực tế (savings_ratio) lên 85%, ML score chỉ 15%
+                return _clamp01(0.85 * (0.3 + 0.7 * savings_ratio) + 0.15 * ml_score)
+            else:
+                # Cân bằng 50% độ rẻ tiền + 50% độ hợp lý thị trường từ ML
+                return _clamp01(0.50 * ml_score + 0.50 * (0.4 + 0.6 * savings_ratio))
+        else:
+            return _clamp01(0.3 * ml_score)
+
     return ml_score
 
 
@@ -191,7 +210,7 @@ def _match_breakdown(
     """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
     orm = _get(listing, "listing", listing)
     scorers = {
-        "price": lambda: _price_fit(orm, user_pref),
+        "price": lambda: _price_fit(orm, user_pref, weights=weights),
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
         "amenity": lambda: _amenity_fit(

@@ -209,6 +209,7 @@ class ListingRepository:
         lng: float | None = None,
         max_distance_km: float | None = None,
         amenities: list[Any] | None = None,
+        excluded_room_types: list[Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Tìm kiếm tin đăng kết hợp Hybrid Search (Dense pgvector + Sparse PostgreSQL Full-Text Search).
 
@@ -279,6 +280,17 @@ class ListingRepository:
 
         if effective_room_type_id is not None:
             query = query.filter(Listing.room_type_id == effective_room_type_id)
+
+        if excluded_room_types:
+            excluded_ids = []
+            for item in excluded_room_types:
+                clean = item.value if hasattr(item, "value") else str(item).strip().upper()
+                if clean.isdigit():
+                    excluded_ids.append(int(clean))
+                elif clean in ROOM_TYPE_CODE_TO_ID:
+                    excluded_ids.append(ROOM_TYPE_CODE_TO_ID[clean])
+            if excluded_ids:
+                query = query.filter(Listing.room_type_id.notin_(set(excluded_ids)))
 
         if min_price is not None:
             query = query.filter(Listing.price_vnd >= min_price)

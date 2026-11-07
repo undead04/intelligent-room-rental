@@ -115,6 +115,30 @@ def test_hard_constraints_drop_and_renumber():
     assert "vượt ngân sách" in reasons["nhatot_100"] and "nhỏ hơn" in reasons["nhatot_200"] and "loại trừ" in reasons["nhatot_300"]
 
 
+def test_hard_constraints_blocks_sleepbox_by_type_id_even_without_enum():
+    pref = UserPreferenceState(excluded_room_types=[RoomType.SLEEPBOX])
+    # Phòng từ backend chỉ có room_type_id = 4 mà room_type object bị None
+    raw_item = {
+        "listing": {
+            "id": "sleepbox_99",
+            "title": "Hộp ngủ cao cấp",
+            "price_vnd": 1_800_000,
+            "area_m2": 6.0,
+            "room_type_id": 4,
+            "room_type": None,
+        },
+        "match_score": 0.85,
+    }
+    room_item = RoomItem.from_backend_result(raw_item)
+    assert room_item.room_type == RoomType.SLEEPBOX
+    assert room_item.room_type_id == 4
+
+    valid, dropped = check_hard_constraints([room_item], pref)
+    assert valid == []
+    assert len(dropped) == 1
+    assert "loại trừ" in dropped[0][1]
+
+
 def test_price_filter_tolerance():
     pref = UserPreferenceState(max_price=3_000_000)
     valid, _ = check_hard_constraints([R(1, 3_050_000), R(2, 3_100_000)], pref)

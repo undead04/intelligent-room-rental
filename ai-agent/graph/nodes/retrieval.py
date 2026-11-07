@@ -199,6 +199,8 @@ def make_retrieval_node(deps: Deps):
                     search_args[key] = getattr(pref, key)
             if pref.room_type is not None:
                 search_args["room_type"] = pref.room_type.value
+            if pref.excluded_room_types:
+                search_args["excluded_room_types"] = [r.value for r in pref.excluded_room_types]
 
             # Pha 1: Tìm kiếm với bán kính cơ sở
             rooms, search_error, ctx = _execute_search_and_ground(search_args)

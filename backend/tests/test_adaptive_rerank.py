@@ -296,3 +296,4 @@ def test_zero_weights_raises_value_error():
     zero_weights = {"price": 0.0, "safety": 0.0, "semantic": 0.0, "location": 0.0, "amenity": 0.0}
     with pytest.raises(ValueError, match="Tổng trọng số của các tiêu chí đang bật phải > 0"):
         _dynamic_weights({"lat": 10.77, "lng": 106.65}, base=zero_weights)
+

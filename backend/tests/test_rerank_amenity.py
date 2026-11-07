@@ -249,3 +249,38 @@ def test_location_fit_non_linear_and_default_weights():
     pref = {"lat": 10.87, "lng": 106.80, "max_distance_km": 3.0}
     # Cùng tọa độ -> khoảng cách ~ 0 -> score 1.0
     assert _location_part(listing, pref) == 1.0
+
+
+def test_price_fit_cheapest_mode_and_excluded_room_types():
+    from app.services.reranker import _price_fit
+    from app.schemas.listing import VectorSearchBody
+
+    # Căn rẻ: giá 2tr, ML score 0.40
+    cheap_room = {"price_vnd": 2_000_000, "price_score": 0.40}
+    # Căn đắt hơn: giá 3.8tr, ML score 0.90 (deal rất hời theo ML)
+    expensive_good_deal = {"price_vnd": 3_800_000, "price_score": 0.90}
+
+    # Ngân sách trần 4tr
+    pref_normal = {"max_price": 4_000_000}
+    pref_cheapest = {"max_price": 4_000_000, "prefer_cheapest": True}
+
+    # Ở chế độ bình thường (weights price = 0.25):
+    score_cheap_normal = _price_fit(cheap_room, pref_normal, weights={"price": 0.25})
+    score_exp_normal = _price_fit(expensive_good_deal, pref_normal, weights={"price": 0.25})
+    # Căn đắt deal hời vẫn có điểm ML kéo lại
+    assert score_exp_normal > 0.45
+
+    # Ở chế độ ưu tiên giá rẻ (weights price = 0.40 hoặc prefer_cheapest=True):
+    score_cheap_priority = _price_fit(cheap_room, pref_cheapest, weights={"price": 0.40})
+    score_exp_priority = _price_fit(expensive_good_deal, pref_cheapest, weights={"price": 0.40})
+
+    # Căn rẻ 2tr (tiết kiệm 50% ngân sách) PHẢI thắng áp đảo căn 3.8tr (chỉ tiết kiệm 5%)
+    assert score_cheap_priority > score_exp_priority
+    assert score_cheap_priority - score_exp_priority > 0.15
+
+    # Kiểm tra VectorSearchBody nhận excluded_room_types hợp lệ
+    body = VectorSearchBody(
+        query="tìm phòng trọ",
+        excluded_room_types=["SLEEPBOX", 4],
+    )
+    assert body.excluded_room_types == ["SLEEPBOX", 4]

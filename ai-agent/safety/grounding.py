@@ -27,7 +27,7 @@ from domain.budget import (
     fetch_market_stats,
     propose_budget,
 )
-from domain.enums import normalize_room_type
+from domain.enums import RoomType, normalize_room_type
 from domain.filters import renumber
 from domain.schemas import (
     MarketContext,
@@ -94,8 +94,12 @@ def check_hard_constraints(
             reason = f"diện tích {r.area_m2:g}m² nhỏ hơn yêu cầu"
         elif r.area_m2 and pref.max_area and r.area_m2 > pref.max_area:
             reason = f"diện tích {r.area_m2:g}m² lớn hơn yêu cầu"
-        elif r.room_type is not None and r.room_type in excluded:
-            reason = f"loại phòng {r.room_type.label_vi} đã bị loại trừ"
+        elif (
+            (r.room_type is not None and r.room_type in excluded)
+            or (getattr(r, "room_type_id", None) == 4 and (RoomType.SLEEPBOX in excluded or any(e.type_id == 4 for e in excluded)))
+        ):
+            rt_name = r.room_type.label_vi if r.room_type else "Ký túc xá / Sleepbox"
+            reason = f"loại phòng {rt_name} đã bị loại trừ"
         elif pref.amenities and r.concept_scores:
             missing_ams = []
             for am in pref.amenities:

@@ -466,6 +466,30 @@ def _postprocess(
     elif a.semantic_query:
         a.semantic_query = sanitize_user_text(a.semantic_query).strip() or None
 
+    # Guardrail chặn SLEEPBOX khi người dùng tìm phòng riêng khép kín / có WC riêng / cho 2 người
+    user_lower = (user_text or "").lower()
+    clean_u = strip_accents(user_lower)
+    wants_shared_dorm = any(kw in clean_u for kw in ("ktx", "ky tuc xa", "sleepbox", "hop ngu", "giuong tang"))
+    is_private_room_cue = any(kw in clean_u for kw in (
+        "khep kin", "wc rieng", "ve sinh rieng", "toilet rieng",
+        "khong chung chu", "khong chung phong", "phong rieng", "o rieng",
+        "cho 2 ban", "2 ban nu", "2 nguoi", "2 ban o", "o 2 nguoi", "cap doi",
+        "studio", "can ho", "nguyen can", "phong tro"
+    ))
+    has_private_wc = (
+        Amenity.PRIVATE_WC in a.patch.amenities_add
+        or Amenity.PRIVATE_WC in a.patch.preferred_amenities_add
+    )
+    is_private_room_type = a.patch.room_type in (
+        RoomType.ROOM,
+        RoomType.STUDIO,
+        RoomType.APARTMENT,
+        RoomType.WHOLE_HOUSE,
+    )
+    if (is_private_room_cue or has_private_wc or is_private_room_type) and not wants_shared_dorm:
+        if RoomType.SLEEPBOX not in a.patch.room_types_exclude:
+            a.patch.room_types_exclude.append(RoomType.SLEEPBOX)
+
     return a
 
 

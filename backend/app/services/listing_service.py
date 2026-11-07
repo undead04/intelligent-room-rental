@@ -1,6 +1,6 @@
 from app.schemas.listing import AmenityCode
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -264,6 +264,7 @@ class ListingService:
         ward_id: Optional[int] = None,
         room_type_id: Optional[int] = None,
         room_type: Optional[str] = None,
+        excluded_room_types: Optional[list[Any]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         min_area: Optional[float] = None,
@@ -295,6 +296,7 @@ class ListingService:
             "lng": lng,
             "max_distance_km": max_distance_km,
             "amenities": amenities,
+            "excluded_room_types": excluded_room_types,
             "limit": 50,
         }
         model_name = model_embedding.model_name.strip()

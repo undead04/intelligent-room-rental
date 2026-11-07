@@ -97,8 +97,8 @@ def test_ambiguous_admin_asks_which_one():
 
 
 def test_unresolved_point_still_searches_by_text():
-    h = Harness(search_llm(), THREE, geocode_ok=False)
-    r = h.turn("tìm phòng gần UIT")
+    h = Harness(search_llm(location_text="quán cà phê Cây Điệp"), THREE, geocode_ok=False)
+    r = h.turn("tìm phòng gần quán cà phê Cây Điệp")
     assert h.search_calls[0]["lat"] is None and len(r.rooms) == 3
     assert "location" not in h.search_calls[0]["weights"]
 

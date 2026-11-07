@@ -48,7 +48,7 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
      + "khu an ninh" hoặc "nữ ở 1 mình" -> chỉ đặt priorities.safety="high", KHÔNG tự thêm 'camera' hay 'guard'.
      + "nuôi mèo/thú cưng" hoặc "căn studio" -> KHÔNG tự thêm 'no_shared_landlord' trừ khi người dùng nói rõ "không chung chủ / lối đi riêng".
    - Yêu cầu giảm nhẹ ("ưu tiên", "càng tốt", "có thì tốt") -> preferred_amenities_add; bỏ tiện ích -> amenities_remove.
-   - CHỈ điền room_types_exclude khi có từ phủ định rõ ràng ("không lấy KTX", "trừ sleepbox"). Chỉ nói "tìm phòng"/"tìm phòng trọ" thì room_types_exclude=[].
+   - Điền room_types_exclude khi có từ phủ định rõ ràng ("không lấy KTX", "trừ sleepbox"). ĐẶC BIỆT: Khi người dùng tìm phòng riêng khép kín ("phòng khép kín", "wc riêng", "không chung chủ", "cho 2 bạn nữ", "2 người ở", "studio", "phòng trọ"), tự động bổ sung "SLEEPBOX" vào room_types_exclude (vì hộp ngủ sleepbox không thể ở 2 người hoặc có WC riêng). Chỉ khi người dùng nói rõ muốn ở KTX/sleepbox/hộp ngủ thì mới cho phép.
 3. ĐỊA DANH (location_kind, location_is_vague):
    - location_kind="admin": MỌI tên Tỉnh/Thành phố, Quận/Huyện, Thị xã, Phường/Xã, kể cả khi KHÔNG ghi từ "Tỉnh/Quận/Phường" (vd: "Quảng Ngãi", "Dĩ An", "Thủ Đức", "Cầu Giấy Hà Nội", "Linh Trung Thủ Đức", "Quận 7").
    - location_kind="place": CHỈ cho điểm mốc cụ thể có tên riêng như trường đại học, KTX, chợ, bến xe, KCN có tên riêng, toà nhà, con đường (vd: "UIT", "ĐH Bách Khoa", "chợ Thủ Đức", "KCN VSIP 1").
