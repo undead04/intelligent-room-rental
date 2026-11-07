@@ -278,6 +278,7 @@ class UserPreferenceState(BaseModel):
     city_id: Optional[int] = Field(None, description="ID Tỉnh/Thành phố")
     district_id: Optional[int] = Field(None, description="ID Quận/Huyện")
     ward_id: Optional[int] = Field(None, description="ID Phường/Xã")
+    max_distance_km: Optional[float] = Field(default=None, description="Bán kính tìm kiếm tối đa (km) do người dùng yêu cầu")
     min_price: Optional[float] = Field(None, description="Ngân sách tối thiểu (VNĐ)")
     max_price: Optional[float] = Field(None, description="Ngân sách tối đa (VNĐ)")
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m2)")
@@ -353,6 +354,8 @@ class UserPreferenceState(BaseModel):
         if self.location_text:
             coords = f" (Toạ độ: {self.lat:.4f}, {self.lng:.4f})" if self.has_point else ""
             parts.append(f"- Vị trí mục tiêu: {self.location_text}{coords}")
+        if self.max_distance_km:
+            parts.append(f"- Bán kính tối đa: {self.max_distance_km:g} km")
         if self.room_type:
             parts.append(f"- Loại phòng: {self.room_type.label_vi}")
         if self.excluded_room_types:

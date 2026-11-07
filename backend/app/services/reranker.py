@@ -21,11 +21,11 @@ __all__ = ["rerank", "explain_match", "DEFAULT_WEIGHTS"]
 UNKNOWN_SCORE: float = 0.0
 EARTH_RADIUS_KM: float = 6371.0
 DEFAULT_WEIGHTS: Mapping[str, float] = {
-    "price": 0.2,
-    "location": 0.2,
-    "amenity": 0.2,
-    "safety": 0.2,
-    "semantic": 0.2,
+    "location": 0.25,
+    "price": 0.25,
+    "safety": 0.20,
+    "amenity": 0.20,
+    "semantic": 0.10,
 }
 
 # --- Helpers ---
@@ -59,13 +59,14 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return EARTH_RADIUS_KM * 2 * asin(sqrt(a))
 
 
-def _location_fit(dist_km: float, near_km: float = 1.0, far_km: float = 10.0) -> float:
-    """<= near_km -> 1.0, >= far_km -> 0.0, ở giữa giảm tuyến tính."""
+def _location_fit(dist_km: float, near_km: float = 0.8, far_km: float = 5.0) -> float:
+    """<= near_km -> 1.0, >= far_km -> 0.0, ở giữa suy giảm phi tuyến (ratio ** 1.5)."""
     if dist_km <= near_km:
         return 1.0
     if dist_km >= far_km:
         return 0.0
-    return 1.0 - (dist_km - near_km) / (far_km - near_km)
+    ratio = (dist_km - near_km) / (far_km - near_km)
+    return max(0.0, 1.0 - (ratio ** 1.5))
 
 
 def _normalize_amenity(code: object) -> str:
@@ -152,7 +153,10 @@ def _location_part(listing: object, user_pref: object) -> float:
         return UNKNOWN_SCORE
 
     try:
-        return _location_fit(_haversine_km(float(lat), float(lng), float(pref_lat), float(pref_lng))) # type: ignore
+        dist = _haversine_km(float(lat), float(lng), float(pref_lat), float(pref_lng)) # type: ignore
+        max_dist = _get(user_pref, "max_distance_km")
+        far_km = float(max_dist) if max_dist else 5.0
+        return _location_fit(dist, near_km=0.8, far_km=far_km)
     except (ValueError, TypeError):
         return UNKNOWN_SCORE
 

@@ -221,3 +221,31 @@ def test_listing_schemas_validation():
     # Test ListingIdsRequest
     ids_req = ListingIdsRequest(ids=["nhatot_1", "nhatot_2"])
     assert len(ids_req.ids) == 2
+
+
+def test_location_fit_non_linear_and_default_weights():
+    from app.services.reranker import _location_fit, _location_part
+
+    # 1. Kiểm tra DEFAULT_WEIGHTS chuẩn 5 tiêu chí mới
+    assert DEFAULT_WEIGHTS["location"] == 0.25
+    assert DEFAULT_WEIGHTS["price"] == 0.25
+    assert DEFAULT_WEIGHTS["safety"] == 0.20
+    assert DEFAULT_WEIGHTS["amenity"] == 0.20
+    assert DEFAULT_WEIGHTS["semantic"] == 0.10
+    assert sum(DEFAULT_WEIGHTS.values()) == pytest.approx(1.0)
+
+    # 2. Kiểm tra _location_fit phi tuyến
+    assert _location_fit(0.5, near_km=0.8, far_km=5.0) == 1.0
+    assert _location_fit(0.8, near_km=0.8, far_km=5.0) == 1.0
+    assert _location_fit(5.0, near_km=0.8, far_km=5.0) == 0.0
+    assert _location_fit(6.0, near_km=0.8, far_km=5.0) == 0.0
+
+    # Tại trung điểm (ratio = 0.5): 1 - 0.5^1.5 ≈ 0.6464 > 0.5 (ưu tiên vị trí gần hơn mô hình tuyến tính)
+    mid_dist = 0.8 + (5.0 - 0.8) * 0.5  # 2.9 km
+    assert _location_fit(mid_dist, near_km=0.8, far_km=5.0) == pytest.approx(1.0 - (0.5 ** 1.5))
+
+    # 3. Kiểm tra _location_part với max_distance_km tùy chỉnh từ user_pref
+    listing = {"listing": {"lat": 10.87, "lng": 106.80}}
+    pref = {"lat": 10.87, "lng": 106.80, "max_distance_km": 3.0}
+    # Cùng tọa độ -> khoảng cách ~ 0 -> score 1.0
+    assert _location_part(listing, pref) == 1.0

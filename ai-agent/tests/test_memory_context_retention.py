@@ -63,11 +63,11 @@ def test_clear_guardrail_protects_all_six_groups():
 
 
 def test_budget_adjustment_two_way_cheaper_and_higher():
-    """Kiểm tra điều chỉnh ngân sách 2 chiều: 'rẻ hơn' (-15%) và 'đắt hơn/phòng xịn hơn' (+15%)."""
+    """Kiểm tra ưu tiên 2 chiều: 'rẻ hơn' (tăng trọng số giá, giữ nguyên ngân sách) và 'phòng xịn hơn' (tăng trọng số tiện nghi, giữ nguyên ngân sách)."""
     session = SessionData("test_budget_adj")
     session.preferences = UserPreferenceState(location_text="UIT", max_price=4_000_000.0)
 
-    # 1. Người dùng nói "rẻ hơn nữa nha" -> Giảm trần ngân sách 15% (4tr -> 3.4tr)
+    # 1. Người dùng nói "rẻ hơn nữa nha" -> Giữ nguyên ngân sách 4tr, tăng multiplier giá = 2.0
     fake_model = FakeLLM().on(
         TurnAnalysis,
         TurnAnalysis(
@@ -77,14 +77,15 @@ def test_budget_adjustment_two_way_cheaper_and_higher():
         ),
     )
     plan_cheaper = interpret_turn("tìm phòng rẻ hơn nữa nha", session, fake_model)
-    assert plan_cheaper.preferences.max_price == 3_400_000.0
+    assert plan_cheaper.preferences.max_price == 4_000_000.0
     assert plan_cheaper.multipliers.get("price") == 2.0
+    assert any("ưu tiên tìm các phòng có giá rẻ nhất trong ngân sách đã đặt" in exp for exp in plan_cheaper.weight_explanations)
 
-    # 2. Người dùng nói "đắt hơn chút cũng được, phòng xịn hơn" -> Tăng trần ngân sách 15% (3.4tr -> 3.9tr)
-    session.preferences.max_price = 3_400_000.0
+    # 2. Người dùng nói "nới giá lên xíu phòng xịn hơn cũng được" -> Giữ nguyên ngân sách, tăng multiplier tiện nghi = 1.8
     plan_higher = interpret_turn("nới giá lên xíu phòng xịn hơn cũng được", session, fake_model)
-    assert plan_higher.preferences.max_price == 3_900_000.0
+    assert plan_higher.preferences.max_price == 4_000_000.0
     assert plan_higher.multipliers.get("amenity") == 1.8
+    assert any("ưu tiên tìm các phòng có độ tiện nghi cao nhất trong ngân sách" in exp for exp in plan_higher.weight_explanations)
 
 
 def test_session_focus_rank_retention_and_persistence(tmp_path):

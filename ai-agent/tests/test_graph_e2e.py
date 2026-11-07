@@ -78,7 +78,7 @@ def test_empty_results_provide_market_advice_and_update_proposed_budget():
     h = Harness(llm, rooms=[])
     r = h.turn("tìm phòng ở Dĩ An dưới 1tr5")
     assert r.rooms == [] and "chưa tìm thấy" in r.text_reply
-    assert h.session.zero_result_streak == 1 and h.session.proposed_budget == 1_750_000
+    assert h.session.zero_result_streak == 1 and h.session.proposed_budget is None
 
 
 def test_admin_not_in_database():
@@ -278,3 +278,44 @@ def test_multi_turn_skill_advisory_passes_compact_history_and_preserves_kv_cache
     assert len(second_msgs) >= 4
     assert "[Đã cung cấp nội dung tư vấn chuyên sâu từ cẩm nang]" in second_msgs[2][1]
     assert "chủ nhà ghi phạt 100%" in second_msgs[-1][1]
+
+
+def test_adaptive_radius_expansion_when_few_rooms_found():
+    """Kiểm tra thuật toán 2 pha: Khởi đầu 2.5km, nếu thiếu (< 3 phòng) thì tự động nới lỏng sang 3.5km."""
+    def dynamic_rooms(args):
+        rad = args.get("max_distance_km")
+        if rad is not None and rad <= 2.5:
+            return [raw_room(1, 2_400_000, 25)]
+        return [raw_room(1, 2_400_000, 25), raw_room(2, 2_800_000, 21), raw_room(3, 3_000_000, 30)]
+
+    llm = FakeLLM().on("TurnAnalysis", nlu(location_text="UIT", location_kind="place", max_price=3_500_000)).on("Advice", GOOD_ADVICE)
+    h = Harness(llm, rooms=dynamic_rooms)
+    r = h.turn("tìm phòng quanh UIT")
+
+    # Đã gọi search 2 lần: lần 1 bán kính 2.5km, lần 2 nới lên 3.5km
+    assert len(h.search_calls) == 2
+    assert h.search_calls[0]["max_distance_km"] == 2.5
+    assert h.search_calls[1]["max_distance_km"] == 3.5
+    assert len(r.rooms) == 3
+
+    # Kiểm tra event trace ghi nhận sự kiện mở rộng bán kính
+    adaptive_events = [e for e in r.trace_events if e.get("type") == "adaptive_radius_expansion"]
+    assert len(adaptive_events) == 1
+    assert adaptive_events[0]["from_radius"] == 2.5
+    assert adaptive_events[0]["to_radius"] == 3.5
+
+
+def test_fixed_user_max_distance_does_not_expand():
+    """Khi người dùng chỉ định rõ bán kính max_distance_km, hệ thống không tự động nới lỏng dù ít hơn 3 phòng."""
+    def dynamic_rooms(args):
+        return [raw_room(1, 2_400_000, 25)]
+
+    llm = FakeLLM().on("TurnAnalysis", nlu(location_text="UIT", location_kind="place", max_price=3_500_000, max_distance_km=2.0)).on("Advice", GOOD_ADVICE)
+    h = Harness(llm, rooms=dynamic_rooms)
+    r = h.turn("tìm phòng quanh UIT trong vòng 2km")
+
+    # Chỉ gọi đúng 1 lần với bán kính 2.0km của người dùng
+    assert len(h.search_calls) == 1
+    assert h.search_calls[0]["max_distance_km"] == 2.0
+    assert len(r.rooms) == 1
+    assert not any(e.get("type") == "adaptive_radius_expansion" for e in r.trace_events)

@@ -103,11 +103,11 @@ Sau khi Hybrid Search trả về tập ứng viên ban đầu (khoảng 30 - 50 
 
 | Tiêu Chí | Trọng Số Cơ Sở Mặc Định | Cách Thức Đánh Giá |
 | :--- | :--- | :--- |
-| **Price Fit** | `0.20` | Đánh giá mức độ hợp lý thị trường qua ML `price_score` (Conformal Prediction) kết hợp tỷ lệ tiết kiệm ngân sách (`savings_ratio`) nếu có `max_price`. |
-| **Location Fit** | `0.20` | Khoảng cách đường chim bay (Haversine formula) đến toạ độ mong muốn của người dùng (1km $\rightarrow$ 1.0, 10km $\rightarrow$ 0.0). |
-| **Amenity Fit** | `0.20` | Tiện ích bắt buộc đã lọc cứng tại SQL/Grounding (không chấm lặp). Chấm độ khớp tiện ích mềm (`preferred_amenities`) 70% + điểm tổng thể (`amenity_overall`) 30%. |
+| **Location Fit** | `0.25` | Khoảng cách đường chim bay (Haversine formula) đến toạ độ mong muốn của người dùng. Áp dụng suy giảm phi tuyến ($ratio^{1.5}$) trong khoảng `near_km = 0.8` đến `far_km = max_distance_km` (mặc định 5.0km), ưu tiên cao cho cự ly đi bộ. |
+| **Price Fit** | `0.25` | Đánh giá mức độ hợp lý thị trường qua ML `price_score` (Conformal Prediction) kết hợp tỷ lệ tiết kiệm ngân sách (`savings_ratio`) nếu có `max_price`. |
 | **Safety Fit** | `0.20` | Điểm an ninh tổng hợp (`safety_score`) dựa trên camera, bảo vệ, khóa vân tay, khu vực an ninh từ dữ liệu làm giàu của Crawler. |
-| **Semantic Fit** | `0.20` | Điểm tương đồng ngữ nghĩa từ Hybrid Search (`similarity_score` kết hợp Dense Cosine E5-base và Sparse PostgreSQL FTS). |
+| **Amenity Fit** | `0.20` | Tiện ích bắt buộc đã lọc cứng tại SQL/Grounding (không chấm lặp). Chấm độ khớp tiện ích mềm (`preferred_amenities`) 70% + điểm tổng thể (`amenity_overall`) 30%. |
+| **Semantic Fit** | `0.10` | Điểm tương đồng ngữ nghĩa từ Hybrid Search (`similarity_score` kết hợp Dense Cosine E5-base và Sparse PostgreSQL FTS). |
 
 ### Cơ chế Trọng số Động (Dynamic Weights & L1 Normalization):
 - **Luôn kích hoạt:** `price`, `safety`, `semantic`.
@@ -152,7 +152,7 @@ flowchart TD
 Nhằm tối ưu hóa trải nghiệm người dùng và giảm thiểu lượt hỏi lại không cần thiết:
 1. **Proactive Search (Chủ động tìm kiếm):** Khi câu truy vấn đã chứa trường đại học, cơ sở hoặc quận cụ thể (ví dụ: *"Bách Khoa CS1 Q10"*, *"ĐHQG Thủ Đức"*, *"Làng Đại học"*, *"Quận 10 dưới 3 triệu"*), `understand_node` tự động giải tỏa cờ mơ hồ sai lệch (`location_is_vague = False`), tự động suy ra `region_hint="Hồ Chí Minh"` và điều hướng thẳng sang `retrieval_node` để trả danh sách phòng ngay lập tức.
 2. **Disambiguation Gate (Phân biệt đa nghĩa thực sự):** Nếu người dùng chỉ nói mốc liên vùng trơ trọi (ví dụ vỏn vẹn *"ĐH Bách Khoa"* không rõ Hà Nội hay TP.HCM), `geocode_point` trả về `{"ambiguous": True, "candidates": [...]}` để `clarification_node` hỏi lại người dùng một cách chính xác và ngắn gọn.
-3. **Kẹp Bán Kính Địa Lý:** Khi `pref.has_point` có tọa độ mốc, áp đặt cứng `max_distance_km = 5.0` (thay vì thả lỏng 8.0km), đồng thời gửi kèm `district_id` khi tìm theo quận hành chính để chặn triệt để tình trạng gợi ý phòng Quận 5/Quận 10 cho sinh viên Thủ Đức.
+3. **Bán Kính Thích Ứng (Adaptive Radius Retrieval 2 Pha):** Khi `pref.has_point` có tọa độ mốc, khởi đầu tìm kiếm với bán kính cơ sở `base_radius = pref.max_distance_km or 2.5` km. Nếu số phòng hợp lệ sau bước lọc cứng < 3 và người dùng không cố định bán kính, hệ thống tự động nới lỏng sang bán kính 3.5km (và tối đa 5.0km nếu vẫn thiếu phòng), ghi nhận sự kiện `adaptive_radius_expansion` vào trace để câu trả lời cố vấn minh bạch. Khi người dùng chỉ định rõ `max_distance_km`, hệ thống tuân thủ nghiêm ngặt và không tự ý nới lỏng. Gửi kèm `district_id` khi tìm theo quận hành chính để chặn triệt để tình trạng gợi ý phòng Quận 5/Quận 10 cho sinh viên Thủ Đức.
 
 ### 5.2. Tương Thích Hai Chiều Payload LLM (Dual-Mode) & HTTP Resilience:
 1. **Dual-Mode LLM Compatibility:** Tại [`ai-agent/core/llm.py`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/ai-agent/core/llm.py), hệ thống tự động phát hiện endpoint:

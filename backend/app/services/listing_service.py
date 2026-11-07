@@ -308,6 +308,7 @@ class ListingService:
         user_pref: dict[str, object] = {
             "lat": lat,
             "lng": lng,
+            "max_distance_km": max_distance_km,
             "amenities": amenities,
             "preferred_amenities": preferred_amenities,
             "min_price": min_price,

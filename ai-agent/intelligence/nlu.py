@@ -95,6 +95,10 @@ class PreferencePatch(BaseModel):
         None,
         description="Tên Tỉnh/Thành phố hoặc Quận/Huyện đi kèm trong câu hoặc ngữ cảnh (vd: 'Bình Dương' trong 'gần khu công nghiệp ở Bình Dương')",
     )
+    max_distance_km: Optional[float] = Field(
+        None,
+        description="Bán kính tìm kiếm tối đa (km) do người dùng yêu cầu (vd: 'bán kính 2km', 'trong vòng 3 cây số')",
+    )
     min_price: Optional[float] = Field(
         None,
         description="Giá tối thiểu (VNĐ) — CHỈ điền khi người dùng nêu rõ mức sàn 'từ X đến Y' hoặc 'trên X'; BẮT BUỘC để null nếu người dùng nói 'dưới X', 'khoảng X', 'tầm X', 'loanh quanh X'",
@@ -203,6 +207,7 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
     for group in patch.clear:
         if group == "location":
             p.clear_location()
+            p.max_distance_km = None
         elif group == "price":
             p.min_price = p.max_price = None
         elif group == "area":
@@ -222,7 +227,7 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
     elif patch.location_kind and p.location_text and not patch.location_is_vague and p.location_kind is None:
         p.location_kind = patch.location_kind        # cùng địa danh nhưng giờ mới biết loại
 
-    for key in ("min_price", "max_price", "min_area", "max_area"):
+    for key in ("min_price", "max_price", "min_area", "max_area", "max_distance_km"):
         v = getattr(patch, key)
         if v is not None:
             setattr(p, key, v)
