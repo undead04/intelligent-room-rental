@@ -1,32 +1,27 @@
-# 🏛️ Tài Liệu Kiến Trúc Hệ Thống Homigo (Architecture Overview)
+# 🏛️ Tài Liệu Kiến Trúc Hệ Thống (Architecture Hub)
 
-Thư mục này chứa toàn bộ tài liệu kiến trúc kỹ thuật của dự án **Homigo — Hệ thống Hỗ trợ Ra quyết định Tìm kiếm Phòng trọ Thông minh**. 
-
-> [!NOTE]
-> **Quy tắc Đồng bộ Kiến trúc dành cho AI Agent:**  
-> 1. **Khi bắt đầu phiên mới (New Session):** Hãy đọc lướt qua 3 tài liệu cốt lõi bên dưới để nắm bắt chuẩn xác 100% bối cảnh, công nghệ và mô hình dữ liệu của dự án.
-> 2. **Khi có thay đổi kiến trúc:** Bất kỳ thay đổi nào về DB Schema, DTO, luồng ETL, Hybrid Search/Reranker, LangGraph State Machine hoặc Tech Stack đều **bắt buộc** phải được cập nhật đồng bộ ngay vào các file tương ứng trong thư mục này.
+Thư mục này chứa toàn bộ tài liệu kiến trúc kỹ thuật của hệ thống, được module hóa để tối ưu hóa context window cho AI Agent và phòng tránh xung đột git.
 
 ---
 
-## 📚 Danh Mục Tài Liệu Kiến Trúc
+## 📚 Danh Mục Module Kiến Trúc
 
-1. 🛠️ [**Kiến Trúc Công Nghệ (Tech Stack)**](./tech-stack.md)
-   - Phân tách 4 microservices: `backend/` (Port 8000), `ai-agent/` (Port 8001), `frontend/` (Port 3000), và `crawler/`.
-   - Chi tiết dependencies, runtime môi trường ảo, cổng mạng và lệnh khởi chạy từng service.
+1. 🛠️ [**Kiến Trúc Công Nghệ & Bảng Lệnh (Tech Stack)**](./tech-stack.md)
+   - Phân tách 4 microservices: `backend/`, `ai-agent/`, `frontend/`, `crawler/`.
+   - Runtime, môi trường ảo, cổng mạng và bảng lệnh chuẩn.
 
-2. 🏛️ [**Các Nguyên Tắc Thiết Kế Hệ Thống (System Principles)**](./system-principles.md)
-   - Pipeline ETL dữ liệu 6 bước (`Extract -> Clean -> Enrich -> Transform (ML) -> Embed (E5) -> Load (Postgres)`).
-   - Cơ chế Hybrid Search (70% Dense pgvector + 30% Sparse PostgreSQL FTS).
-   - Thuật toán Reranker MCDM 5 tiêu chí (Price, Location, Amenity, Safety, Quality).
-   - LangGraph State Machine 8 nodes và nguyên tắc Tool Partitioning.
-   - Cơ chế chống ảo giác hai tầng (Crawler `verify_evidence` & AI-Agent `verify_node` Self-RAG).
-   - Chu trình đồng bộ vòng đời tin hết hạn (Listing Lifecycle Sync).
+2. 🧩 **Các Module Nguyên Lý Hệ Thống (Modular Principles):**
+   - 🔄 [`modules/etl-pipeline.md`](./modules/etl-pipeline.md): Pipeline ETL 6 bước, Staging SQLite WAL, Crawler concurrency.
+   - 🔍 [`modules/search-and-ranking.md`](./modules/search-and-ranking.md): Hybrid Search 70/30, Haversine filter, MCDM Reranker 5 tiêu chí.
+   - 🤖 [`modules/ai-agent-graph.md`](./modules/ai-agent-graph.md): LangGraph State Machine 8 nodes, Tool Partitioning, Self-RAG Grounding.
+   - 📜 *(Tài liệu tổng hợp cũ)*: [`system-principles.md`](./system-principles.md).
 
-3. 🗄️ [**Mô Hình Dữ Liệu (Data Models & Database Schema)**](./data-models.md)
+3. 🗄️ [**Mô Hình Dữ Liệu (Data Models & Schemas)**](./data-models.md)
    - Sơ đồ quan hệ thực thể ERD chi tiết (PostgreSQL).
-   - Cấu trúc các bảng: `listings`, `listing_embeddings`, `cities`, `districts`, `wards`, `room_types`, `users`.
-   - Bảng Staging SQLite: `raw_listings` (chế độ WAL).
-   - Chuẩn Taxonomy 17 tiện ích, an ninh & lối sống chuẩn hóa (`Canonical Taxonomy`).
-   - Khế ước dữ liệu DTO mẫu giữa Backend và Frontend/AI-Agent.
+   - Cấu trúc các bảng: `listings`, `listing_embeddings`, `room_types`...
+   - Taxonomy 17 tiện ích chuẩn hóa.
 
+4. ⭐️ [**Lịch Sử Quyết Định Kiến Trúc (Architecture Decision Records - ADR)**](./decisions/)
+   - [`decisions/0001-hybrid-search-70-30.md`](./decisions/0001-hybrid-search-70-30.md): Tại sao chọn Hybrid Search 70/30.
+   - [`decisions/0002-mcdm-reranker-5-pillars.md`](./decisions/0002-mcdm-reranker-5-pillars.md): Tại sao chọn Reranker 5 tiêu chí.
+   - [`decisions/0003-langgraph-tool-partitioning.md`](./decisions/0003-langgraph-tool-partitioning.md): Tại sao chọn State Machine 8 nodes.

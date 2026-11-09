@@ -1,22 +1,24 @@
 # 🎯 Quy Chuẩn Viết Spec, Chia Mốc & Triển Khai Tính Năng (Spec & Milestones)
 
-Tài liệu này quy định các nguyên tắc bắt buộc dành cho AI Agent khi lập tài liệu đặc tả kỹ thuật (Spec), chia nhỏ mốc triển khai và thực thi từng mốc tính năng trong dự án (tham chiếu bối cảnh cụ thể tại [`AGENTS.md`](../../AGENTS.md)).
+Tài liệu này quy định các nguyên tắc bắt buộc dành cho AI Agent khi lập tài liệu đặc tả kỹ thuật (Spec), chia nhỏ mốc triển khai và thực thi từng mốc tính năng trong bất kỳ dự án phần mềm nào (tham chiếu bối cảnh cụ thể tại [`AGENTS.md`](../../AGENTS.md) và [`docs/architecture/`](../../docs/architecture/README.md)).
 
 ---
 
-## 1. 📋 Quy Chuẩn Viết Spec & Chia Mốc Triển Khai (Milestones)
+## 1. 📋 Quy Chuẩn Viết Spec & Khảo Sát Docs (Milestones)
 
-Khi tiếp nhận yêu cầu tính năng mới hoặc đọc tài liệu đặc tả trong `docs/`:
+Khi tiếp nhận yêu cầu tính năng mới, gõ `/plan` hoặc đọc tài liệu đặc tả trong `docs/`:
 
-1. **Checklist Bắt Buộc Để Theo Dõi Tiến Độ (Progress Tracking Checklist):**
-   - Trong tài liệu Spec luôn phải có bảng phân công checklist công việc chi tiết dạng `[ ]` theo từng tầng kiến trúc / module được quy định trong [`AGENTS.md`](../../AGENTS.md).
-   - **Cập nhật trạng thái liên tục:** Mỗi khi một đầu việc hoặc một mốc hoàn thành, Agent phải cập nhật chuyển `[ ]` thành `[x]` ngay trong tài liệu Spec để người dùng và các phiên làm việc sau nhìn vào là biết chính xác:
-     + Việc nào đã làm xong (`[x]`).
-     + Dự án đang làm tới đâu / tiến độ hiện tại.
-     + Còn lại những việc nào chưa làm (`[ ]`).
-2. **Quy Tắc Cổng Phê Duyệt (Milestone Gate):**
+1. **Khảo Sát Docs & Đánh Giá Hiện Trạng:**
+   - Đọc kỹ toàn bộ `docs/features/` và `docs/architecture/` liên quan đến mốc.
+   - So sánh spec với codebase hiện tại để xác định chính xác các API, models, components, hoặc pipeline cần xây dựng hay nâng cấp.
+
+2. **Checklist Bắt Buộc Để Theo Dõi Tiến Độ (Progress Tracking Checklist):**
+   - Trong tài liệu Spec/Plan luôn phải có bảng phân công checklist công việc chi tiết dạng `[ ]` theo từng tầng kiến trúc / module được quy định trong [`AGENTS.md`](../../AGENTS.md).
+   - **Cập nhật trạng thái liên tục:** Mỗi khi một đầu việc hoặc một mốc hoàn thành, Agent phải cập nhật chuyển `[ ]` thành `[x]` ngay trong tài liệu Spec để người dùng và các phiên làm việc sau nhìn vào là biết chính xác tiến độ.
+
+3. **Quy Tắc Cổng Phê Duyệt (Milestone Gate):**
    - **TUYỆT ĐỐI CHƯA ĐƯỢC VIẾT CODE NGAY.**
-   - Agent phải xuất bảng danh sách các **Mốc triển khai (Milestones) tuần tự** ra trước để người dùng xem xét và bấm duyệt.
+   - Agent phải xuất bảng danh sách các **Mốc triển khai (Milestones) tuần tự** kèm kế hoạch kiểm thử ra trước để người dùng xem xét và bấm duyệt.
 
 ---
 
@@ -40,8 +42,8 @@ Mỗi mốc được chia ra **BẮT BUỘC** phải nêu rõ đủ 3 nội dung
 
 ### 2.4. Quy Tắc Phân Công Sub-Agents Vào Plan (Sub-Agent Allocation Gate)
 - Mọi bản kế hoạch triển khai (Implementation Plan Artifact có nút **Proceed**) **BẮT BUỘC phải gắn thẻ danh tính Sub-agent phụ trách cho từng bước**:
-  + `[codebase-researcher]`: Khảo sát, đọc codebase, tra cứu tài liệu Context7 MCP.
-  + `[core-developer]`: Viết code tính năng, tự đọc log sửa lỗi (Self-healing).
+  + `[codebase-researcher]`: Khảo sát, đọc codebase, tra cứu tài liệu Context7 MCP, đối chiếu spec `docs/` và phân tích rủi ro.
+  + `[core-developer]`: Viết code tính năng, sửa bug, tự đọc log sửa lỗi (Self-healing), tuân thủ tech stack và cập nhật docs/architecture/.
   + `[quality-tester]`: Viết Black-box test (4 nhóm test cases) và chạy kiểm thử.
 - **Cam kết thực thi khi bấm Proceed:** Khi người dùng bấm nút **Proceed**, Agent chính **BẮT BUỘC phải kích hoạt tool `invoke_subagent`** để triệu hồi tuần tự các Sub-agents chạy ngầm theo đúng phân công trong Plan, tuyệt đối không được tự ý ôm đồm làm một mình.
 
@@ -57,11 +59,12 @@ Agent phải thực hiện theo đúng trình tự sau:
 2. **Lập bảng Implementation Plan (Artifact) phân công Sub-Agents:**
    - Tạo file kế hoạch triển khai kèm cờ `RequestFeedback: true` để người dùng duyệt qua nút **Proceed**.
    - **Bắt buộc phân công rõ danh tính Sub-Agent trong từng bước:** `[codebase-researcher]` (khảo sát), `[core-developer]` (viết code), `[quality-tester]` (kiểm thử). Khi người dùng bấm **Proceed**, Agent chính bắt buộc phải gọi đúng tool `invoke_subagent` theo kế hoạch, không được tự ý làm một mình.
-3. **Kiểm soát phạm vi tuyệt đối (Strict Scope Control):**
+3. **Kiểm soát phạm vi tuyệt đối & Quy tắc Commit (Strict Scope & Commit Control):**
    - **CHỈ TẬP TRUNG 100% VÀO PHẠM VI CỦA MỐC X.**
    - **TUYỆT ĐỐI KHÔNG** đụng vào code, schema hay các file thuộc phạm vi của các mốc sau.
+   - **Chỉ commit những file mình đã sửa:** Sử dụng `git add <file-cụ-thể>`, cấm `git add .` bừa bãi.
 4. **Đồng bộ Tài liệu Kiến trúc (`docs/architecture/`):**
    - Nếu Mốc X có thay đổi đến Database Schema, DTO/Contract, luồng xử lý cốt lõi, cấu trúc module hoặc dependencies, bắt buộc cập nhật ngay vào `docs/architecture/` trước khi đóng mốc.
 5. **Cập nhật tiến độ Spec:** Chuyển các đầu việc hoàn thành từ `[ ]` $\rightarrow$ `[x]` trong tài liệu đặc tả.
-6. **Lưu trữ & Bàn giao:** Kích hoạt chuyên biệt skill [`.gemini/skills/github-workflow/SKILL.md`](../skills/github-workflow/SKILL.md) để dừng lại chờ người dùng nghiệm thu (Waiting Gate) và chỉ thực hiện commit/push/merge khi có lệnh.
+6. **Lưu trữ & Bàn giao:** Kích hoạt chuyên biệt skill [`.agents/skills/github-workflow/SKILL.md`](../skills/github-workflow/SKILL.md) để dừng lại chờ người dùng nghiệm thu (Waiting Gate) và chỉ thực hiện commit/push/merge khi có lệnh.
 

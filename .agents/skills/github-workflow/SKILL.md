@@ -36,9 +36,12 @@ Quy tắc cốt lõi: **Agent chỉ là trợ lý gõ lệnh Git ở local. Đi�
 
 - **Khi người dùng ra lệnh duyệt** (ví dụ: *"OK duyệt commit & gộp vào main"*, *"Duyệt Mốc X, đẩy lên main luôn nhé"*, *"Push PR đi"*):
   Agent **TỰ ĐỘNG CHẠY TRỌN VẸN CHU TRÌNH KHÉP KÍN (End-to-End Pipeline)** trong một lượt:
-  1. **Commit tại local:**
+  1. **Commit tại local (Chỉ commit đúng file đã sửa):**
      ```bash
-     git add <cac-file-thay-doi>
+     # TUYỆT ĐỐI CẤM: git add . hoặc git add -A
+     # BẮT BUỘC: git add từng file cụ thể đã chỉnh sửa hoặc tạo mới
+     git status
+     git add <file-1> <file-2> ...
      git commit -m "feat/fix/docs: <thông điệp rõ ràng>"
      ```
   2. **Push nhánh lên remote:**
