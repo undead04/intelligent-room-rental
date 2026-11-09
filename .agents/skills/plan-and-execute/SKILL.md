@@ -18,9 +18,11 @@ Khi người dùng yêu cầu lập kế hoạch hoặc gõ `/plan`:
 
 ### BƯỚC 1: Khảo Sát Codebase & Đối Chiếu Tài Liệu Đặc Tả (`docs/`)
 1. **Đọc kỹ `AGENTS.md`:** Nắm vững Tech stack, quy tắc code, bảng lệnh chuẩn của các dịch vụ/modules.
-2. **Quét toàn bộ tài liệu đặc tả trong `docs/features/` và `docs/architecture/`:**
-   - Đọc các tài liệu đặc tả kiến trúc: `docs/architecture/tech-stack.md`, `docs/architecture/system-principles.md`, `docs/architecture/data-models.md`.
-   - Nắm rõ luồng xử lý cốt lõi, kiến trúc hệ thống, nguyên tắc nghiệp vụ và ràng buộc an toàn.
+2. **Quét tài liệu kiến trúc & đặc tả tương ứng trong `docs/`:**
+   - **Kiến trúc tổng thể & Modules:** `docs/architecture/tech-stack.md`, `docs/architecture/modules/`, `docs/architecture/data-models.md`, `docs/architecture/design-system.md`.
+   - **Khế ước giao tiếp:** `docs/contracts/` (API Specs, Schema/DTO giữa các services).
+   - **Tính năng mới:** `docs/features/` (đối chiếu các spec trong `backlog/`, `in-progress/`, `released/`).
+   - **Sự cố & bảo trì:** `docs/maintenance/` (nếu là task sửa bug, đối chiếu `docs/maintenance/in-progress/` hoặc các issue đã giải quyết trong `resolved/`).
    - **Đối chiếu khoảng trống kỹ thuật & phạm vi:** Xác định chính xác các API endpoint, Database Model/Schema, Core Logic Node hoặc Frontend Component cần phát triển/sửa đổi.
 
 ### BƯỚC 2: 3 Nguyên Tắc Bắt Buộc Khi Chia Mốc
@@ -61,7 +63,7 @@ Khi người dùng yêu cầu lập kế hoạch hoặc gõ `/plan`:
 ### Trình tự 3 bước:
 1. **Triệu hồi `codebase-researcher`:**
    - Dùng `invoke_subagent` với `TypeName: "codebase-researcher"`, `Role: "Codebase Researcher"`.
-   - Prompt: Khảo sát các module/file liên quan trong Mốc X, đối chiếu spec `docs/architecture/` và `docs/features/`, báo cáo rủi ro kỹ thuật.
+   - Prompt: Khảo sát các module/file liên quan trong Mốc X, đối chiếu spec `docs/architecture/`, `docs/contracts/` và `docs/features/` (hoặc `docs/maintenance/`), báo cáo rủi ro kỹ thuật.
 2. **Triệu hồi `core-developer`:**
    - Dùng `invoke_subagent` với `TypeName: "core-developer"`, `Role: "Core Developer"`.
    - Prompt: Nhận kết quả từ researcher, viết code theo đúng Tech Stack, tự đọc log terminal sửa lỗi (Self-healing).

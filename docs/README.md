@@ -11,8 +11,9 @@ docs/
 ├── architecture/                 # 1. 🏛️ KIẾN TRÚC TỔNG THỂ & QUYẾT ĐỊNH THIẾT KẾ
 │   ├── README.md                 # - Tổng quan kiến trúc & các quy tắc đồng bộ
 │   ├── tech-stack.md             # - Danh sách công nghệ, ports, runtime, bảng lệnh
-│   ├── system-principles.md      # - Nguyên lý luồng dữ liệu, thuật toán lõi, ETL, Reranker
+│   ├── modules/                  # - Các module nguyên lý kỹ thuật lõi (ETL, Search, AI Agent)
 │   ├── data-models.md            # - Sơ đồ ERD, Database Schemas, Taxonomy 17 tiện ích
+│   ├── design-system.md          # - Design system, màu sắc tokens & UI components
 │   └── decisions/                # ⭐️ Architecture Decision Records (ADRs)
 │       ├── 0001-hybrid-search-70-30.md
 │       ├── 0002-mcdm-reranker-5-pillars.md

@@ -87,8 +87,9 @@ flowchart TD
 
 ---
 
-## 3. ⚡ Bảng Lệnh Khởi Chạy Chuẩn
+## 3. ⚡ Bảng Lệnh Chuẩn (Standard Commands)
 
+### 3.1. Khởi Chạy Từng Dịch Vụ
 ```powershell
 # 1. Khởi chạy CSDL PostgreSQL (Docker)
 docker start homigo-postgres
@@ -107,5 +108,20 @@ cd frontend; npm run dev
 
 # (Tùy chọn) Kích hoạt chạy ngay Demo cào dữ liệu tức thì (không cần đợi đến giờ hẹn)
 .\crawler\.venv\Scripts\python.exe crawler/scheduler.py --run-now update --pages 1 --no-clean
+```
+
+### 3.2. Kiểm Thử & Kiểm Tra Lỗi (Verification)
+```powershell
+# Kiểm thử AI Agent
+.\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
+
+# Kiểm thử Backend
+.\backend\.venv\Scripts\pytest.exe backend/tests -q
+
+# Kiểm thử Crawler & ETL
+.\crawler\.venv\Scripts\pytest.exe crawler/tests -q
+
+# Kiểm tra Type-check & Lint cho Frontend
+cd frontend; npm run lint; npx tsc --noEmit; cd ..
 ```
 
