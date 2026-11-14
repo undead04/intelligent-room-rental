@@ -630,3 +630,56 @@ class TestSpiderLifecycleIntegration:
                 assert max_concurrent_regions_seen > 1, "Các vùng không chạy đồng thời!"
 
         asyncio.run(_run())
+
+    def test_spider_run_routes_all_regions_through_semaphore(self, nhatot_spider, monkeypatch):
+        """spider.run(region='all') tự động đi qua async_crawl_regions với Semaphore giới hạn concurrency."""
+        import threading
+        from crawler.config import settings
+
+        monkeypatch.setattr(settings, "CRAWL_MAX_CONCURRENT_REGIONS", 2)
+        active = 0
+        max_seen = 0
+        called_regions = []
+        lock = threading.Lock()
+
+        def mock_crawl(pages=5, mode="resume", region="all"):
+            nonlocal active, max_seen
+            with lock:
+                called_regions.append(region)
+                active += 1
+                max_seen = max(max_seen, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            return 3
+
+        with patch.object(nhatot_spider, "crawl", side_effect=mock_crawl):
+            nhatot_spider.run(mode="update", pages=1, region="all", auto_clean=False)
+
+        assert set(called_regions) == set(settings.REGIONS.keys())
+        assert 1 < max_seen <= 2, f"Concurrency vượt quá CRAWL_MAX_CONCURRENT_REGIONS: {max_seen}"
+
+    def test_staging_db_and_checkpoint_concurrent_writes(self, nhatot_spider, temp_staging_db, tmp_path, monkeypatch):
+        """Nhiều thread vùng ghi đồng thời vào StagingDatabase và checkpoint JSON không bị race condition hay corrupt."""
+        import concurrent.futures
+        import json
+        from crawler.spiders import base as base_mod
+
+        monkeypatch.setattr(base_mod, "RAW_DATA_DIR", tmp_path)
+        nhatot_spider.raw_dir = str(tmp_path)
+
+        def _worker(idx: int) -> None:
+            temp_staging_db.save_listing({"list_id": f"conc_{idx}_a", "title": f"Tin {idx}A"}, source="nhatot")
+            temp_staging_db.save_listing({"list_id": f"conc_{idx}_b", "title": f"Tin {idx}B"}, source="nhatot")
+            nhatot_spider.save_checkpoint(offset=idx * 50, region="hcm")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(_worker, range(8)))
+
+        records = temp_staging_db.get_raw_listings(source="nhatot")
+        assert len(records) == 16
+        ckpt_path = tmp_path / "checkpoint_nhatot_hcm.json"
+        assert ckpt_path.exists()
+        ckpt_data = json.loads(ckpt_path.read_text(encoding="utf-8"))
+        assert ckpt_data["region"] == "hcm"
+        assert isinstance(ckpt_data["last_offset"], int)

@@ -46,10 +46,10 @@ Tài liệu này là **Hiến pháp làm việc cốt lõi** dành cho mọi AI 
 
 ---
 
-## 5. 🧩 Cơ Chế Vận Hành Rules, Skills & Sub-Agents (`.agents/`)
+## 5. 🧩 Cơ Chế Vận Hành Rules, Skills & Orchestrator (`.agents/`)
 
-1. **Kích hoạt Skills tự động:** Hệ thống tự động nhận diện danh mục kỹ năng trong `.agents/skills/`. Khi gặp tác vụ tương ứng (migration DB, quy trình GitHub, kiểm thử độc lập, bảo mật...), Agent tự động áp dụng hướng dẫn từ skill tương ứng mà không cần liệt kê thủ công trong tài liệu này.
-2. **Phối hợp Sub-Agents 3 bước:** Khi triển khai tính năng phức tạp hoặc khi người dùng bấm nút **Proceed**, phối hợp tuần tự 3 vai trò:
-   - 🔍 [`codebase-researcher`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/.agents/agents/codebase-researcher.md) (Read-only): Khảo sát codebase, tra cứu tài liệu và đề xuất giải pháp.
-   - 💻 [`core-developer`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/.agents/agents/core-developer.md) (Write Code): Lập trình, self-healing và cập nhật tài liệu kiến trúc.
-   - 🧪 [`quality-tester`](file:///c:/UIT/Lab/Đồ Án tốt nghiệp/.agents/agents/quality-tester.md) (Test): Viết Black-box test độc lập và chạy test suite nghiệm thu.
+1. **Kích hoạt Skills tự động (`.agents/skills/`):** Hệ thống tự động nhận diện danh mục kỹ năng trong `.agents/skills/`. Khi gặp tác vụ tương ứng (migration DB, quy trình GitHub, kiểm thử độc lập [`rigorous-testing`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghi%E1%BB%87p/.agents/skills/rigorous-testing/SKILL.md), bảo mật...), Agent tự động áp dụng hướng dẫn từ skill tương ứng ngay trong phiên chính.
+2. **Luồng Thực Thi Tinh Gọn (Orchestrator-First — Không lạm dụng Sub-Agents):**
+   - **Pha Lập Kế Hoạch (Planning Model):** Trực tiếp khảo sát `docs/architecture/` và mã nguồn, chia mốc theo lát cắt dọc (*Vertical Slice*), tạo Implementation Plan Artifact (khi cần duyệt trước) và bàn giao qua `exit_plan_mode`.
+   - **Pha Thực Thi & Kiểm Thử (Execution Model):** Trực tiếp viết code, tự sửa lỗi qua terminal log (*Self-healing*), đồng bộ `docs/architecture/`, và áp dụng skill `rigorous-testing` để viết/chạy Black-box test (4 nhóm) ngay trong phiên chính.
+   - **Quy tắc tiết kiệm Token:** **Không gọi lặp `invoke_subagent` tuần tự 3 bước** (`codebase-researcher` $\rightarrow$ `core-developer` $\rightarrow$ `quality-tester`) cho các task đã có Orchestrator điều phối. Chỉ dùng [`.agents/agents/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghi%E1%BB%87p/.agents/agents/README.md) khi cần khảo sát diện rộng độc lập (*context isolation*) hoặc khi người dùng chủ động yêu cầu `/teamwork`.

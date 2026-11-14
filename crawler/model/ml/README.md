@@ -13,11 +13,13 @@ crawler/model/ml/
 ├── models.py                    # LightGBM + XGBoost Blend, Weighted SpatialTE, Mondrian CQR & InputGuard
 ├── price_evaluator.py           # Service suy luận (Inference) tính price_score theo lô/đơn lẻ
 ├── train_price_model.py         # Script huấn luyện Optuna 5-Fold Stratified CV & xuất artifacts
-├── artifacts/                   # Thư mục lưu model đã huấn luyện
-│   ├── rent_pipeline.joblib     # Trọng số ensemble (LightGBM + XGBoost) & MondrianPriceInterval
-│   ├── guard.joblib             # Bộ lọc ngoại lai InputGuard Toàn Quốc thích ứng theo loại phòng
-│   └── training_metrics.json    # Báo cáo chỉ số đánh giá (MAE, RMSE, R², Conformal Coverage)
-└── notebooks/                   # Jupyter Notebooks thực nghiệm & EDA
+├── evaluate_model.py            # Script EDA, giải trình chọn đặc trưng (Ablation) & đánh giá mô hình
+└── artifacts/                   # Thư mục lưu model & báo cáo đánh giá
+    ├── rent_pipeline.joblib     # Trọng số ensemble (LightGBM + XGBoost) & MondrianPriceInterval
+    ├── guard.joblib             # Bộ lọc ngoại lai InputGuard Toàn Quốc thích ứng theo loại phòng
+    ├── training_metrics.json    # Tóm tắt chỉ số khi train (MAE, RMSE, R², Conformal Coverage)
+    ├── evaluation_report.json   # Số liệu chi tiết EDA, Feature Importance, Ablation & Segment Eval
+    └── evaluation_report.md     # Báo cáo phân tích & đánh giá trực quan tiếng Việt
 ```
 
 *(Danh mục tọa độ 48 trung tâm đô thị & 50 cụm đại học lớn trên toàn quốc được tách độc lập tại [`crawler/config/poi_locations.json`](../../config/poi_locations.json)).*
@@ -54,14 +56,23 @@ Mỗi tin đăng được trích xuất thành vector 19 đặc trưng cốt lõ
 | **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6659$** | **Tăng $\times 2,14$ lần (+35,48 điểm %)** |
 | **$R^2$ Score (Không gian Log-Price)** | — | **$0.7220$** | Giải thích $> 72,2\%$ phương sai |
 | **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$82,5\%$** | Đạt chuẩn $[78\%, 85\%]$ |
-| :--- | :---: | :---: | :---: |
-| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$599.972\ \text{VNĐ}$** | **$-40,3\%$ sai số** |
-| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$859.532\ \text{VNĐ}$** | **$-42,7\%$ sai số** |
-| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6664$** | **$\times 2,14$ lần (+35,5 điểm %)** |
-| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7248$** | Giải thích $> 72\%$ phương sai |
-| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$83,0\%$** | Đạt chuẩn $[78\%, 85\%]$ |
 
-### 2.5. Công Thức Tính Điểm Hợp Lý Giá (`price_score`)
+### 2.5. Phân Tích Dữ Liệu (EDA), Giải Trình Đặc Trưng & Đánh Giá Chi Tiết
+Xem báo cáo đầy đủ được sinh tự động tại [`artifacts/evaluation_report.md`](./artifacts/evaluation_report.md) và [`artifacts/evaluation_report.json`](./artifacts/evaluation_report.json):
+- **Phễu làm sạch (EDA Funnel):** Từ **10.430** tin gốc $\rightarrow$ loại **3** tin lỗi tọa độ ngoài Việt Nam (`10.427`) $\rightarrow$ loại **734** tin ngoài ngưỡng diện tích/giá/đơn giá theo từng loại phòng $\rightarrow$ **9.693 tin sạch (92,93%)**. Phân bố gồm `ROOM` (5.940 - 61,28%), `STUDIO` (2.114 - 21,81%), `APARTMENT` (1.174 - 12,11%), `SLEEPBOX` (351 - 3,62%) và `WHOLE_HOUSE` (114 - 1,18%).
+- **Lý do chọn 19 Features + `SpatialTE` (29 cột vào cây):**
+  - `area_m2` vs `log_area` có $\text{Spearman} = 1.0000$; `n_amenities` vs `amenity_overall` có $\text{Pearson} = 0.9462$ $\rightarrow$ Loại biến đa cộng tuyến, giữ `amenity_density`.
+  - **7 cờ bị cắt (`PRUNED_LOW_IMPACT_FLAGS`)** đều có `Mutual Info <= 0.0107` và đã được tóm tắt trong `amenity_overall` (`is_kitchen`: $r = +0.726$) & `safety_score` (`is_camera`: $r = +0.742$, `is_fingerprint_lock`: $r = +0.720$).
+  - **Ablation Study (Holdout Test 15%, zero-leakage):** Cấu hình `4_Pruned_19_With_SpatialTE` (29 cột) đạt `MAE = 602.648 đ`, `R² = 0.6669`, **vượt trội** cả khi giữ đủ 26 đặc trưng (`MAE = 603.455 đ`, `R² = 0.6654`) và khi bỏ `SpatialTE` (`MAE = 604.912 đ`, `R² = 0.6625`).
+  - **Top 5 Ensemble Gain (`rent_pipeline.joblib`):** `room_type_id` (25,00%), `area_m2` (18,39%), `is_furniture` (13,55%), `nb20_logy_mean` (7,62%), `furnishing_code` (3,92%).
+- **So sánh Holdout 15% (1.454 mẫu) & Tổng quát hóa Toàn Quốc:**
+  - `Baseline (Room-Type Median)`: `MAE = 944.079 đ`, `MdAPE = 20,93%`, `R² = 0.2510`.
+  - `LightGBM`: `MAE = 600.658 đ`, `R² = 0.6667`, `R²_log = 0.7207`.
+  - `XGBoost`: `MAE = 601.623 đ`, `R² = 0.6667`, `R²_log = 0.7219`.
+  - **`Ensemble Blend (LGBM + XGB)`:** `MAE = 598.769 đ`, `MdAPE = 12,45%`, `RMSE = 856.392 đ`, **`R² = 0.6689`**, **`R²_log = 0.7235`**.
+  - Theo địa lý: TP.HCM đạt `R² = 0.6638` (`83,2%` coverage) và Tỉnh/TP khác đạt `R² = 0.7083` (`83,0%` coverage). Mondrian Conformal toàn cục đạt **83,15%** (kỳ vọng 80%).
+
+### 2.6. Công Thức Tính Điểm Hợp Lý Giá (`price_score`)
 Trong không gian logarit $\ell(x) = \ln(1 + x)$:
 $$\mu = \frac{\ell(P_{\text{low}}) + \ell(P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ell(P_{\text{high}}) - \ell(P_{\text{low}})}{2}, 10^{-6}\right)$$
 $$z = \frac{\ell(P_{\text{actual}}) - \mu}{\sigma}$$
@@ -75,12 +86,15 @@ $$\text{PriceScore}_{100} = \text{clip}(50 - 25 \cdot z,\ 0,\ 100), \quad \text{
 
 ## 🚀 3. Hướng Dẫn Sử Dụng
 
-### 3.1. Trích Xuất Đặc Trưng & Huấn Luyện Lại Mô Hình
+### 3.1. Trích Xuất Đặc Trưng, Phân Tích EDA & Đánh Giá / Huấn Luyện Mô Hình
 ```powershell
 # 1. Kiểm tra trích xuất đặc trưng và cập nhật file cache Parquet
 .\crawler\.venv\Scripts\python.exe -m crawler.model.ml.feature_extractor
 
-# 2. Huấn luyện mô hình và xuất artifacts (.joblib, training_metrics.json)
+# 2. Chạy phân tích EDA, giải trình chọn đặc trưng (Ablation) & đánh giá toàn diện mô hình
+.\crawler\.venv\Scripts\python.exe -m crawler.model.ml.evaluate_model
+
+# 3. Huấn luyện mô hình và xuất artifacts (.joblib, training_metrics.json)
 .\crawler\.venv\Scripts\python.exe -m crawler.model.ml.train_price_model
 ```
 

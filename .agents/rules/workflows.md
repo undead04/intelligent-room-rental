@@ -33,12 +33,10 @@ Khi tiếp nhận yêu cầu tính năng mới, gõ `/plan` hoặc đọc tài l
      + Danh sách file chính sẽ tạo hoặc chỉnh sửa.
      + Cách kiểm chứng thực tế: Câu lệnh terminal cụ thể (theo Bảng lệnh chuẩn trong `AGENTS.md`) hoặc thao tác trên giao diện để người dùng tự tay xác nhận.
 
-### 4. 🤖 Quy Tắc Phân Công Sub-Agents Vào Implementation Plan (Nút Proceed):
-- Mọi bản kế hoạch triển khai (Implementation Plan Artifact có nút **Proceed**) **BẮT BUỘC phải gắn thẻ danh tính Sub-agent phụ trách cho từng bước**:
-  + `[codebase-researcher]`: Khảo sát, đọc codebase, tra cứu tài liệu Context7 MCP, đối chiếu spec `docs/` và phân tích rủi ro.
-  + `[core-developer]`: Viết code tính năng, sửa bug, tự đọc log sửa lỗi (Self-healing), tuân thủ tech stack và cập nhật `docs/architecture/`.
-  + `[quality-tester]`: Viết Black-box test (4 nhóm test cases) và chạy kiểm thử.
-- **Cam kết thực thi khi bấm Proceed:** Khi người dùng bấm nút **Proceed**, Agent chính **BẮT BUỘC phải kích hoạt tool `invoke_subagent`** để triệu hồi tuần tự các Sub-agents chạy ngầm theo đúng phân công trong Plan, tuyệt đối không được tự ý ôm đồm làm một mình.
+### 4. ⚡ Quy Tắc Thực Thi Tinh Gọn Theo Kiến Trúc Orchestrator (Planner → Executor):
+- Trong chế độ **Orchestrator 2 pha (Plan & Execute)**, **Planning Model** đảm nhiệm toàn bộ vai trò khảo sát & thiết kế kiến trúc, còn **Execution Model** trực tiếp đảm nhiệm viết code, *Self-healing*, đồng bộ `docs/architecture/` và viết/chạy Black-box test (4 nhóm theo skill [`rigorous-testing`](../skills/rigorous-testing/SKILL.md)) ngay trong phiên chính.
+- **Không bắt buộc gắn thẻ hoặc gọi `invoke_subagent` tuần tự 3 con** (`[codebase-researcher]`, `[core-developer]`, `[quality-tester]`) khi bấm **Proceed**, giúp tránh đọc lặp codebase tốn gấp 2–3 lần token và tránh giới hạn quyền ghi file của sandbox subagent.
+- Chỉ gọi subagent khi cần tách biệt ngữ cảnh khảo sát diện rộng (*context isolation*) hoặc khi người dùng chủ động yêu cầu `/teamwork`.
 
 ### 5. 🚀 Quy Chuẩn Triển Khai Từng Mốc (`/plan: [MỐC X]`):
 1. **Đọc lại tài liệu liên quan:** Đọc lại spec, `AGENTS.md`, `docs/architecture/`, `docs/contracts/` và các file mã nguồn liên quan trực tiếp đến Mốc X.

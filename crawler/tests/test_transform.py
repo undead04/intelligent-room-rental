@@ -280,4 +280,106 @@ def test_room_type_canonical_resolution():
     assert rec_default["room_type_id"] == 1
 
 
+def test_parse_chotot_item_bedrooms_and_bathrooms_variants():
+    from crawler.utils.parser import parse_chotot_item
+
+    # 1. Happy path: trường rooms / toilets trực tiếp từ API Chợ Tốt
+    parsed = parse_chotot_item({
+        "list_id": 1001,
+        "subject": "Nhà nguyên căn 2PN 2WC",
+        "price": 6000000,
+        "size": 45,
+        "rooms": 2,
+        "toilets": 2,
+    })
+    assert parsed["bedrooms"] == 2
+    assert parsed["bathrooms"] == 2
+
+    # 2. Fallback từ feature_params (seo_structure / compare) dạng chuỗi
+    parsed_feat = parse_chotot_item({
+        "list_id": 1002,
+        "subject": "Căn hộ 3 phòng ngủ",
+        "price": 9000000,
+        "size": 65,
+        "feature_params": {
+            "seo_structure": {
+                "items": [
+                    {"id": "rooms", "value": "3 phòng ngủ"},
+                    {"id": "toilets", "value": "2 phòng"},
+                ]
+            }
+        },
+    })
+    assert parsed_feat["bedrooms"] == 3
+    assert parsed_feat["bathrooms"] == 2
+
+    # 3. Biên / rỗng / boolean -> chuẩn hóa thành None (không lưu 0 hay True=1)
+    parsed_edge = parse_chotot_item({
+        "list_id": 1003,
+        "price": 2500000,
+        "size": 20,
+        "rooms": 0,
+        "toilets": True,
+        "bedrooms": -1,
+    })
+    assert parsed_edge["bedrooms"] is None
+    assert parsed_edge["bathrooms"] is None
+
+
+def test_transformer_bedrooms_bathrooms_priority_and_db_columns():
+    from crawler.etl.db_models import Listing as CrawlerListing
+
+    transformer = ListingTransformer(enable_price_evaluator=False)
+
+    # 1. Không có LLM numeric -> giữ nguyên fallback từ raw parser
+    rec_raw = transformer.clean_record({
+        "listing_id": "nhatot_b1",
+        "price_vnd": 4500000,
+        "area_m2": 35,
+        "bedrooms": 2,
+        "bathrooms": 1,
+    })
+    assert rec_raw["bedrooms"] == 2
+    assert rec_raw["bathrooms"] == 1
+    assert rec_raw["num_bedrooms"] == 2
+    assert rec_raw["num_bathrooms"] == 1
+    assert "2 phòng ngủ" in rec_raw["embedding_text"]
+
+    # 2. Có LLM numeric hợp lệ (>0) -> ưu tiên hơn raw fallback; LLM None -> giữ fallback raw
+    rec_llm = transformer.clean_record(
+        {
+            "listing_id": "nhatot_b2",
+            "price_vnd": 7500000,
+            "area_m2": 60,
+            "bedrooms": 1,
+            "bathrooms": 2,
+        },
+        report={"room_type": "APARTMENT", "numeric": {"bedrooms": 3, "bathrooms": None}},
+    )
+    assert rec_llm["bedrooms"] == 3
+    assert rec_llm["num_bedrooms"] == 3
+    assert rec_llm["bathrooms"] == 2
+    assert rec_llm["num_bathrooms"] == 2
+    assert "3 phòng ngủ" in rec_llm["embedding_text"]
+
+    # 3. Giá trị <= 0 bị loại về None
+    rec_zero = transformer.clean_record(
+        {
+            "listing_id": "nhatot_b3",
+            "price_vnd": 3000000,
+            "area_m2": 22,
+            "bedrooms": 0,
+            "bathrooms": -2,
+        },
+        report={"room_type": "ROOM", "numeric": {"bedrooms": 0, "bathrooms": None}},
+    )
+    assert rec_zero["bedrooms"] is None
+    assert rec_zero["bathrooms"] is None
+    assert "num_bedrooms" not in rec_zero
+
+    # 4. Persistence schema checks: ORM column tồn tại trên crawler Listing
+    assert "bedrooms" in CrawlerListing.__table__.columns
+    assert "bathrooms" in CrawlerListing.__table__.columns
+
+
 

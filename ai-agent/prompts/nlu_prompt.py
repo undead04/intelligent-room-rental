@@ -62,7 +62,7 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
    - Vị trí gần ("sát bên", "đi bộ được tới trường", "rất gần") -> priorities.location.
    - An ninh ("an ninh tốt", "khu an ninh", "an toàn", "nữ ở một mình") -> priorities.safety.
    - Tiện nghi ("full nội thất xịn", "đầy đủ tiện nghi cao cấp") -> priorities.amenity.
-6. SỐ NGƯỜI Ở: Nếu người dùng nêu số người ở ("2 người ở", "ở ghép 3 bạn") mà schema không có trường riêng, đưa thông tin này vào semantic_query; không tự quy đổi thành diện tích hay giá.
+6. SỐ NGƯỜI Ở & PHÒNG NGỦ: Nếu người dùng nêu số người ở ("2 người ở", "ở ghép 3 bạn") nhưng KHÔNG nói số phòng ngủ, đưa thông tin này vào semantic_query và để min_bedrooms=null (không tự quy đổi sang diện tích, giá hay số phòng ngủ). CHỈ điền min_bedrooms khi người dùng nói rõ số phòng ngủ ("2 phòng ngủ", "ít nhất 2 PN", "nhà 3 phòng ngủ").
 7. ĐA MỆNH LỆNH (is_multi_intent):
    - Đặt true CHỈ khi người dùng gộp >= 2 mệnh lệnh thuộc các nhánh khác nhau trong cùng một câu (vd: vừa tìm phòng mới kèm tiêu chí vừa hỏi hợp đồng bằng skill_slug; hoặc vừa hỏi chi tiết phòng cũ vừa đổi tiêu chí tìm phòng).
    - Khi gộp: intent là nhánh CHÍNH (hành động đầu tiên người dùng nêu), các tiêu chí còn lại vẫn bóc tách đầy đủ.

@@ -49,6 +49,8 @@ class ListingResponse(BaseModel):
     url: Optional[str] = None
     price_vnd: Optional[float] = None
     area_m2: Optional[float] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
     address_raw: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
@@ -101,6 +103,8 @@ class ListingFilterParams(BaseModel):
     max_price: Optional[float] = Field(None, ge=0, description="Giá cao nhất (VND)")
     min_area: Optional[float] = Field(None, ge=0, description="Diện tích nhỏ nhất (m2)")
     max_area: Optional[float] = Field(None, ge=0, description="Diện tích lớn nhất (m2)")
+    min_bedrooms: Optional[int] = Field(None, ge=1, description="Số phòng ngủ tối thiểu")
+    min_bathrooms: Optional[int] = Field(None, ge=1, description="Số phòng vệ sinh tối thiểu")
 
     @model_validator(mode="after")
     def validate_ranges(self) -> "ListingFilterParams":
@@ -167,6 +171,8 @@ class VectorSearchBody(BaseModel):
     max_price: Optional[float] = Field(None, ge=0, description="Giá tối đa (VNĐ)")
     min_area: Optional[float] = Field(None, ge=0, description="Diện tích tối thiểu (m2)")
     max_area: Optional[float] = Field(None, ge=0, description="Diện tích tối đa (m2)")
+    min_bedrooms: Optional[int] = Field(None, ge=1, description="Số phòng ngủ tối thiểu")
+    min_bathrooms: Optional[int] = Field(None, ge=1, description="Số phòng vệ sinh tối thiểu")
     limit: int = Field(default=5, ge=1, le=100, description="Số lượng kết quả trả về")
     offset: int = Field(default=0, ge=0, description="Số lượng kết quả bỏ qua")
 

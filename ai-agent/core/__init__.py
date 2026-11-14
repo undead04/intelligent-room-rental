@@ -2,7 +2,6 @@
 
 from core.config import (
     MODEL_CALL_LIMIT,
-    RECURSION_LIMIT,
     TOOL_CALL_LIMIT,
     Settings,
     load_settings,
@@ -34,7 +33,6 @@ __all__ = [
     "load_settings",
     "MODEL_CALL_LIMIT",
     "TOOL_CALL_LIMIT",
-    "RECURSION_LIMIT",
     "PROJECT_ROOT",
     "ENV_PATH",
     "DATA_DIR",

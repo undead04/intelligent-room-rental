@@ -238,3 +238,24 @@ def test_default_deps_wires_core_functions_and_accepts_a_persistent_store(tmp_pa
     assert d.search_rooms is ht.search_rooms_api and d.geocode is ht.geocode_point and d.admin_lookup is ht.admin_lookup and d.consult_skill is ht.consult_skill
     assert d.sessions is store and d.decision_system_prompt == "RULES" and callable(d.market_fetcher)
     assert d.advice_system_prompt == "ADVICE"
+
+
+def test_search_rooms_api_min_bedrooms_and_compact_detail(be):
+    be.rooms = [{"listing": {"id": "house_2pn", "bedrooms": 2, "bathrooms": 2}}]
+    ht.search_rooms_api({"query": "nhà 2 phòng ngủ", "min_bedrooms": 2, "min_bathrooms": None})
+    body = be.calls[-1][3]
+    assert body["min_bedrooms"] == 2
+    assert "min_bathrooms" not in body
+
+    ht.search_rooms.invoke({"query": "tìm nhà 3 phòng ngủ", "min_bedrooms": 3})
+    assert be.calls[-1][3]["min_bedrooms"] == 3
+
+    compact = ht.compact_listing_detail({
+        "id": "house_2pn",
+        "title": "Nhà 2PN 2WC",
+        "price_vnd": 7_500_000,
+        "area_m2": 55.0,
+        "bedrooms": 2,
+        "bathrooms": 2,
+    })
+    assert compact["bedrooms"] == 2 and compact["bathrooms"] == 2

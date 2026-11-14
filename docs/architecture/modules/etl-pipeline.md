@@ -57,13 +57,15 @@ flowchart TD
 ```
 
 1. **Verify Bất Đồng Bộ Tốc Độ Cao (`async_verify`):**
-   - Vòng lặp `asyncio.gather(*tasks)` kết hợp `asyncio.Semaphore(max_concurrency=5..8)`.
+   - Vòng lặp `asyncio.gather(*tasks)` kết hợp `asyncio.Semaphore(settings.VERIFY_MAX_CONCURRENCY)` (mặc định `5`).
    - **Anti-ban Jitter** ngẫu nhiên (0.1s – 0.3s) giữa các request để phân tán xung nhịp tải.
-   - Dùng `asyncio.Lock()` bảo vệ từ điển `stats` và bọc ghi SQLite qua `asyncio.to_thread` (tránh lỗi `database is locked`).
+   - Dùng `asyncio.Lock()` bảo vệ từ điển `stats` và `StagingDatabase._write_lock` (`threading.RLock`) bảo vệ ghi SQLite WAL an toàn đa luồng.
    - Rút ngắn thời gian quét 100 tin từ **~150 giây (2.5 phút)** xuống còn **~12 – 15 giây** (tăng tốc gấp 10 lần).
 2. **Cào Song Song Đa Vùng Độc Lập (`async_crawl_regions`):**
-   - Hỗ trợ cào đồng thời nhiều tỉnh thành qua `Semaphore(max_concurrent_regions=2..3)`.
-   - Mỗi vùng duy trì file Checkpoint riêng biệt (`checkpoint_nhatot_{region}.json`).
-3. **Tương Thích Ngược 100% (Backward Compatibility):**
-   - Cung cấp shim wrapper an toàn cho `verify()` và `crawl()` cũ bằng `ThreadPoolExecutor` khi môi trường đã có event loop sẵn.
+   - `BaseSpider.run()` tự động kích hoạt `async_crawl` khi spider con ghi đè, giúp chế độ `--region all` chạy `async_crawl_regions` qua `asyncio.Semaphore(settings.CRAWL_MAX_CONCURRENT_REGIONS)` (mặc định `2`).
+   - Mỗi vùng duy trì file Checkpoint riêng biệt (`checkpoint_nhatot_{region}.json`) ghi nguyên tử qua `os.replace` dưới `threading.Lock`.
+   - Giai đoạn LLM Extraction (`crawler/model/llm/pipeline.py`) cố tình giữ **tuần tự** (sequential) để tránh vượt ngưỡng rate limit của Gemini API.
+3. **Tương Thích Ngược & Khôi Phục Trường Số Phòng (`bedrooms`, `bathrooms`):**
+   - `parse_chotot_item()` và `ListingTransformer.clean_record()` bóc tách đồng thời `bedrooms`/`bathrooms` (ưu tiên `LLM numeric` nếu hợp lệ `> 0`, fallback về raw parser) và nạp UPSERT xuống cột `bedrooms`, `bathrooms` của PostgreSQL `listings`.
+   - Cung cấp shim wrapper `_run_coro_sync` an toàn cho `verify()` và `run()` khi môi trường đã có sẵn event loop.
 

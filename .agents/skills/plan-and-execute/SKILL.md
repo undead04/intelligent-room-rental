@@ -1,6 +1,6 @@
 ---
 name: plan-and-execute
-description: Quy chuẩn bắt buộc khi người dùng yêu cầu lập kế hoạch (plan), chia mốc (milestones), triển khai tính năng mới hoặc gõ /plan. Tự động đọc tài liệu docs/, đối chiếu kiến trúc hệ thống, tạo Implementation Plan Artifact kèm cờ RequestFeedback (nút Proceed), phân công 3 Sub-Agents rõ ràng ([codebase-researcher], [core-developer], [quality-tester]), và cam kết kích hoạt invoke_subagent tuần tự khi người dùng bấm Proceed.
+description: Quy chuẩn khi người dùng yêu cầu lập kế hoạch (plan), chia mốc (milestones), triển khai tính năng mới hoặc gõ /plan. Tự động đọc tài liệu docs/, đối chiếu kiến trúc hệ thống, tạo Implementation Plan Artifact kèm cờ RequestFeedback (nút Proceed) và thực thi trực tiếp theo kiến trúc Orchestrator (Planner -> Executor + rigorous-testing) tiết kiệm token.
 ---
 
 # Skill: Lập Kế Hoạch & Triển Khai Tính Năng (Plan & Execution Protocol)
@@ -47,29 +47,23 @@ Khi người dùng yêu cầu lập kế hoạch hoặc gõ `/plan`:
     "RequestFeedback": true
   }
   ```
-- **Bắt buộc phân công Sub-Agents vào từng bước của Plan:**
-  - `[codebase-researcher]`: Khảo sát, đọc codebase, tra cứu tài liệu Context7 MCP, đối chiếu spec `docs/` và phân tích rủi ro.
-  - `[core-developer]`: Viết code tính năng, sửa bug, tự đọc log sửa lỗi (Self-healing), tuân thủ tech stack và cập nhật docs/architecture/.
-  - `[quality-tester]`: Viết Black-box test (4 nhóm test cases) và chạy kiểm thử.
+- **Nội dung bắt buộc trong từng bước của Plan:**
+  - Thứ tự các bước rõ ràng kèm **Files / Symbols cần tạo hoặc chỉnh sửa**.
+  - **Edge cases / Pitfalls cần tránh** (schema, backward compatibility, zero/null checks).
+  - **Lệnh Verification cụ thể** (trích từ [`docs/architecture/tech-stack.md`](../../../docs/architecture/tech-stack.md)).
 
 ---
 
-## 2. Quy Trình Thực Thi Sau Khi Người Dùng Bấm PROCEED (Execution Protocol)
+## 2. Quy Trình Thực Thi Sau Khi Người Dùng Bấm PROCEED (Orchestrator Execution Protocol)
 
 > [!IMPORTANT]
-> **CAM KẾT THỰC THI (Sub-Agent Allocation Gate):**
-> Khi người dùng bấm nút **Proceed**, Agent chính **BẮT BUỘC phải gọi tool `invoke_subagent`** để triệu hồi tuần tự các Sub-agents chạy ngầm theo đúng phân công trong Plan, tuyệt đối không được tự ý ôm đồm làm một mình!
+> **THỰC THI TINH GỌN TRONG PHIÊN CHÍNH:**
+> Trong chế độ Orchestrator (Planner $\rightarrow$ Executor), Agent trực tiếp triển khai code và kiểm thử theo Plan đã duyệt; **không gọi lặp `invoke_subagent` tuần tự 3 bước** trừ khi người dùng chủ động yêu cầu `/teamwork` hoặc cần khảo sát độc lập (*context isolation*).
 
-### Trình tự 3 bước:
-1. **Triệu hồi `codebase-researcher`:**
-   - Dùng `invoke_subagent` với `TypeName: "codebase-researcher"`, `Role: "Codebase Researcher"`.
-   - Prompt: Khảo sát các module/file liên quan trong Mốc X, đối chiếu spec `docs/architecture/`, `docs/contracts/` và `docs/features/` (hoặc `docs/maintenance/`), báo cáo rủi ro kỹ thuật.
-2. **Triệu hồi `core-developer`:**
-   - Dùng `invoke_subagent` với `TypeName: "core-developer"`, `Role: "Core Developer"`.
-   - Prompt: Nhận kết quả từ researcher, viết code theo đúng Tech Stack, tự đọc log terminal sửa lỗi (Self-healing).
-3. **Triệu hồi `quality-tester`:**
-   - Dùng `invoke_subagent` với `TypeName: "quality-tester"`, `Role: "Quality Tester"`.
-   - Prompt: Viết test Black-box theo Spec bao phủ đủ 4 nhóm test cases, chạy lệnh test kiểm chứng pass 100%.
+### Trình tự 3 giai đoạn trong phiên chính:
+1. **Giai đoạn 1 — Lập trình & Self-Healing:** Thực thi tuần tự các bước trong Plan (hoặc bàn giao qua `exit_plan_mode`), tuân thủ Tech Stack, Scope Control và tự đọc log terminal sửa lỗi đến khi sạch.
+2. **Giai đoạn 2 — Kiểm thử Độc Lập (`rigorous-testing`):** Áp dụng trực tiếp skill [`.agents/skills/rigorous-testing/SKILL.md`](../rigorous-testing/SKILL.md) viết Black-box test bao phủ đủ 4 nhóm (*Happy Path, Boundary/Edge, State Mutation/Concurrency, Persistence*) và chạy lệnh kiểm thử chuẩn tại [`docs/architecture/tech-stack.md`](../../../docs/architecture/tech-stack.md) đạt **100% pass**.
+3. **Giai đoạn 3 — Đồng bộ Kiến trúc & Manual Commit Gate:** Cập nhật `docs/architecture/` nếu có thay đổi schema/DTO/luồng thuật toán, báo cáo kết quả và dừng tại Waiting Gate chờ người dùng duyệt.
 
 ---
 

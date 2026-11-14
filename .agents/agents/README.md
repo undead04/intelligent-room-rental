@@ -1,6 +1,10 @@
-# 🤖 ĐỘI NGŨ SUB-AGENTS (AI TEAMWORK)
+# 🤖 ĐỘI NGŨ SUB-AGENTS (On-Demand / `/teamwork` Personas)
 
-Hệ thống được trang bị 3 Sub-Agents chuyên biệt hóa cao, tự động đọc cấu hình dự án từ [`AGENTS.md`](../../AGENTS.md) và [`docs/architecture/`](../../docs/architecture/README.md) để phối hợp làm việc trên bất kỳ dự án phần mềm nào:
+> [!IMPORTANT]
+> **Chế độ mặc định — Orchestrator-First:** Trong các phiên làm việc thông thường với **Orchestrator (Planner $\rightarrow$ Executor)**, Planning Model và Execution Model đã trực tiếp đảm nhận việc khảo sát, viết code, self-healing và áp dụng skill `rigorous-testing` ngay trong phiên chính để tiết kiệm token và tránh giới hạn ghi file của sandbox subagent.
+> Các định nghĩa bên dưới được giữ lại làm **On-Demand Personas** khi cần *context isolation* (khảo sát diện rộng độc lập) hoặc khi người dùng chủ động kích hoạt `/teamwork`.
+
+Hệ thống được trang bị 3 Sub-Agents chuyên biệt hóa cao, tự động đọc cấu hình dự án từ [`AGENTS.md`](../../AGENTS.md) và [`docs/architecture/`](../../docs/architecture/README.md) khi được điều phối theo yêu cầu:
 
 ---
 

@@ -54,6 +54,8 @@ def synthesize_structured_query(pref: UserPreferenceState) -> str:
     parts.append(rt_label)
     if pref.location_text:
         parts.append(f"khu vực {pref.location_text}")
+    if pref.min_bedrooms is not None:
+        parts.append(f"từ {pref.min_bedrooms} phòng ngủ")
     for a in pref.amenities:
         lbl = amenity_label(a)
         if lbl and norm_key(lbl) not in norm_key(", ".join(parts)):
@@ -83,6 +85,7 @@ def build_query(
     has_structured = bool(
         pref.room_type
         or pref.location_text
+        or pref.min_bedrooms is not None
         or pref.amenities
         or pref.preferred_amenities
         or pref.special_requirements
@@ -194,7 +197,7 @@ def make_retrieval_node(deps: Deps):
                 "weights": weights or None,
                 "limit": OVERFETCH_LIMIT if (pref.excluded_room_types or pref.allowed_room_types) else RESULT_LIMIT,
             }
-            for key in ("city_id", "district_id", "ward_id"):
+            for key in ("city_id", "district_id", "ward_id", "min_bedrooms"):
                 if getattr(pref, key) is not None:
                     search_args[key] = getattr(pref, key)
             if pref.allowed_room_types:

@@ -4,7 +4,6 @@ from typing import Any, Optional
 
 from langgraph.graph import END, START, StateGraph
 
-from core import RECURSION_LIMIT
 from domain.schemas import AgentResponse
 from graph.deps import Deps
 from graph.nodes.advisory import make_advisory_node
@@ -55,5 +54,5 @@ def run_turn(
     state: dict[str, Any] = {"user_message": user_message, "trace_events": []}
     if session_id:
         state["session_id"] = session_id
-    run_config = {"recursion_limit": RECURSION_LIMIT, **(config or {})}
+    run_config = config or {}
     return graph.invoke(state, config=run_config)["final_response"]

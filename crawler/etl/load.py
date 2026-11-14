@@ -51,6 +51,9 @@ class DataLoader:
         Base.metadata.create_all(bind=engine)
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE room_types ADD COLUMN IF NOT EXISTS code VARCHAR(50);"))
+            conn.execute(text("ALTER TABLE listings ADD COLUMN IF NOT EXISTS bedrooms INTEGER;"))
+            conn.execute(text("ALTER TABLE listings ADD COLUMN IF NOT EXISTS bathrooms INTEGER;"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_listings_bedrooms ON listings (bedrooms);"))
             # Đảm bảo cột vector có kích thước xác định (768 chiều) để pgvector hỗ trợ HNSW index
             try:
                 conn.execute(text("ALTER TABLE listing_embeddings ALTER COLUMN vector TYPE vector(768);"))
@@ -215,6 +218,8 @@ class DataLoader:
                     "price_million_per_m2": r.get("price_million_per_m2"),
                     "deposit": r.get("deposit"),
                     "furnishing_code": r.get("furnishing_code"),
+                    "bedrooms": r.get("bedrooms"),
+                    "bathrooms": r.get("bathrooms"),
                     "address_raw": r.get("address_raw"),
                     "lat": r.get("lat"),
                     "lng": r.get("lng"),

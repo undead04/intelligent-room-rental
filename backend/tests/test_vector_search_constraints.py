@@ -841,3 +841,230 @@ def test_vector_search_endpoint_invalid_room_types_returns_422():
         assert body.get("status") == 422
         assert body.get("success") is False
 
+
+def test_bedrooms_bathrooms_filters_and_api_endpoints():
+    """Kiểm thử end-to-end lọc min_bedrooms / min_bathrooms từ schema, repository tới REST & Vector Search API."""
+    from app.schemas.listing import ListingFilterParams
+
+    # 1. Schema validation: min_bedrooms/min_bathrooms >= 1
+    with pytest.raises(ValidationError):
+        ListingFilterParams(min_bedrooms=0)
+    with pytest.raises(ValidationError):
+        VectorSearchBody(query="căn hộ", min_bathrooms=0)
+
+    local_session = SessionLocal()
+    city = local_session.query(City).first()
+    assert city is not None
+    unit_vec = [1.0 / math.sqrt(768)] * 768
+    test_ids = ["test_bed_1pn", "test_bed_3pn", "test_bed_null"]
+
+    # Pre-clean phòng trường hợp dữ liệu test cũ còn sót
+    local_session.query(ListingEmbedding).filter(ListingEmbedding.listing_id.in_(test_ids)).delete(synchronize_session=False)
+    local_session.query(Listing).filter(Listing.id.in_(test_ids)).delete(synchronize_session=False)
+    local_session.commit()
+
+    dist = District(city_id=city.id, name="__TEST_BEDROOM_DIST__")
+    local_session.add(dist)
+    local_session.flush()
+    ward = Ward(district_id=dist.id, name="__TEST_BEDROOM_WARD__")
+    local_session.add(ward)
+    local_session.flush()
+
+    try:
+        listings = [
+            Listing(
+                id="test_bed_1pn",
+                title="Căn hộ mini 1PN 1WC test",
+                price_vnd=4000000.0,
+                area_m2=28.0,
+                bedrooms=1,
+                bathrooms=1,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=3,
+                is_active=True,
+                status="active",
+            ),
+            Listing(
+                id="test_bed_3pn",
+                title="Nhà nguyên căn 3PN 2WC nhiều người test",
+                price_vnd=9000000.0,
+                area_m2=75.0,
+                bedrooms=3,
+                bathrooms=2,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=5,
+                is_active=True,
+                status="active",
+            ),
+            Listing(
+                id="test_bed_null",
+                title="Phòng trọ chưa khai báo số phòng test",
+                price_vnd=3000000.0,
+                area_m2=20.0,
+                bedrooms=None,
+                bathrooms=None,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                is_active=True,
+                status="active",
+            ),
+        ]
+        for obj in listings:
+            local_session.add(obj)
+            local_session.add(
+                ListingEmbedding(
+                    listing_id=obj.id,
+                    vector=unit_vec,
+                    dimension=768,
+                    model_name="intfloat/multilingual-e5-base",
+                )
+            )
+        local_session.commit()
+
+        # 2. Repository filter tests (SQL + Vector Search)
+        repo = ListingRepository(local_session)
+        found_2pn = repo.search(
+            search=None, city_id=city.id, district_id=dist.id, ward_id=ward.id,
+            room_type_id=None, min_price=None, max_price=None, min_area=None, max_area=None,
+            min_bedrooms=2, order_by="price_vnd", sort_desc=False, limit=10, offset=0,
+        )
+        assert [x.id for x in found_2pn] == ["test_bed_3pn"]
+        assert repo.count(
+            search=None, city_id=city.id, district_id=dist.id, ward_id=ward.id,
+            room_type_id=None, min_price=None, max_price=None, min_area=None, max_area=None,
+            min_bathrooms=2,
+        ) == 1
+
+        vec_res = repo.vector_search(
+            query_vector=unit_vec, query_text="nhà nguyên căn 3PN",
+            city_id=city.id, district_id=dist.id, ward_id=ward.id,
+            min_bedrooms=2, min_bathrooms=2, limit=10,
+        )
+        assert [item["listing"].id for item in vec_res] == ["test_bed_3pn"]
+
+        # 3. REST & Vector Search Live TestClient verification
+        with TestClient(app) as client:
+            res_list = client.get(f"/api/v1/listings/?district_id={dist.id}&min_bedrooms=2")
+            assert res_list.status_code == 200
+            items = res_list.json()["data"]
+            assert len(items) == 1
+            assert items[0]["id"] == "test_bed_3pn"
+            assert items[0]["bedrooms"] == 3 and items[0]["bathrooms"] == 2
+
+            res_vec = client.post(
+                "/api/v1/listings/vector-search",
+                json={"query": "nhà 3 phòng ngủ nhiều người", "district_id": dist.id, "min_bedrooms": 2, "limit": 5},
+            )
+            assert res_vec.status_code == 200
+            vec_items = res_vec.json()["data"]
+            assert len(vec_items) == 1
+            assert vec_items[0]["listing"]["id"] == "test_bed_3pn"
+            assert vec_items[0]["listing"]["bedrooms"] == 3
+            assert vec_items[0]["listing"]["bathrooms"] == 2
+    finally:
+        local_session.rollback()
+        local_session.query(ListingEmbedding).filter(ListingEmbedding.listing_id.in_(test_ids)).delete(synchronize_session=False)
+        local_session.query(Listing).filter(Listing.id.in_(test_ids)).delete(synchronize_session=False)
+        local_session.query(Ward).filter(Ward.id == ward.id).delete(synchronize_session=False)
+        local_session.query(District).filter(District.id == dist.id).delete(synchronize_session=False)
+        local_session.commit()
+        local_session.close()
+
+
+def test_no_shared_landlord_self_managed_equivalence_isolated():
+    """Kiểm tra tương đương ngữ nghĩa: free_hours + fingerprint_lock thỏa mãn no_shared_landlord ở tầng Repository."""
+    local_session = SessionLocal()
+    unit_vec = (np.ones(768, dtype=float) / math.sqrt(768.0)).tolist()
+    test_ids = ["test_nsl_explicit", "test_nsl_self_managed", "test_nsl_missing"]
+
+    city = local_session.query(City).first()
+    assert city is not None
+    dist = District(city_id=city.id, name="__TEST_NSL_EQUIV_DIST__")
+    local_session.add(dist)
+    local_session.flush()
+    ward = Ward(district_id=dist.id, name="__TEST_NSL_EQUIV_WARD__")
+    local_session.add(ward)
+    local_session.flush()
+    local_session.commit()
+
+    try:
+        items = [
+            Listing(
+                id="test_nsl_explicit",
+                title="Phòng không chung chủ trực tiếp",
+                price_vnd=3_500_000.0,
+                area_m2=25.0,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                concept_scores={"no_shared_landlord": 1.0, "free_hours": 0.0, "fingerprint_lock": 0.0},
+                is_active=True,
+                status="active",
+            ),
+            Listing(
+                id="test_nsl_self_managed",
+                title="Tòa nhà giờ tự do khóa vân tay",
+                price_vnd=3_600_000.0,
+                area_m2=26.0,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                concept_scores={"no_shared_landlord": 0.0, "free_hours": 1.0, "fingerprint_lock": 1.0},
+                is_active=True,
+                status="active",
+            ),
+            Listing(
+                id="test_nsl_missing",
+                title="Phòng chỉ có giờ tự do nhưng không vân tay",
+                price_vnd=3_400_000.0,
+                area_m2=25.0,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                concept_scores={"no_shared_landlord": 0.0, "free_hours": 1.0, "fingerprint_lock": 0.0},
+                is_active=True,
+                status="active",
+            ),
+        ]
+        for obj in items:
+            local_session.add(obj)
+            local_session.add(
+                ListingEmbedding(
+                    listing_id=obj.id,
+                    vector=unit_vec,
+                    dimension=768,
+                    model_name="intfloat/multilingual-e5-base",
+                )
+            )
+        local_session.commit()
+
+        repo = ListingRepository(local_session)
+        res = repo.vector_search(
+            query_vector=unit_vec,
+            query_text="phòng không chung chủ",
+            city_id=city.id,
+            district_id=dist.id,
+            ward_id=ward.id,
+            amenities=["no_shared_landlord"],
+            limit=10,
+        )
+        matched_ids = {row["listing"].id for row in res}
+        assert matched_ids == {"test_nsl_explicit", "test_nsl_self_managed"}
+    finally:
+        local_session.rollback()
+        local_session.query(ListingEmbedding).filter(ListingEmbedding.listing_id.in_(test_ids)).delete(synchronize_session=False)
+        local_session.query(Listing).filter(Listing.id.in_(test_ids)).delete(synchronize_session=False)
+        local_session.query(Ward).filter(Ward.id == ward.id).delete(synchronize_session=False)
+        local_session.query(District).filter(District.id == dist.id).delete(synchronize_session=False)
+        local_session.commit()
+        local_session.close()
+

@@ -104,6 +104,8 @@ class RoomItem(BaseModel):
     price: str = Field(..., description="Giá hiển thị (ví dụ: '2.8 triệu/tháng')")
     priceNum: float = Field(0.0, description="Giá số nguyên/thực (VNĐ)")
     area_m2: Optional[float] = Field(None, description="Diện tích (m²)")
+    bedrooms: Optional[int] = Field(None, description="Số phòng ngủ (None nếu backend không cung cấp)")
+    bathrooms: Optional[int] = Field(None, description="Số phòng vệ sinh (None nếu backend không cung cấp)")
     room_type: Optional[RoomType] = Field(None, description="Loại phòng (None nếu backend không cho biết)")
     address: str = Field("", description="Địa chỉ phòng (rỗng nếu backend không có)")
     distance: str = Field("", description="Khoảng cách tới điểm tìm kiếm (rỗng nếu không xác định được)")
@@ -210,6 +212,15 @@ class RoomItem(BaseModel):
         if resolved_rt is None and listing.get("room_type_id") is not None:
             resolved_rt = normalize_room_type(listing.get("room_type_id"))
 
+        def _parse_pos_int(val: Any) -> Optional[int]:
+            if val is None or isinstance(val, bool):
+                return None
+            try:
+                num = int(float(val))
+                return num if num > 0 else None
+            except (TypeError, ValueError):
+                return None
+
         return cls(
             id=str(listing.get("id", f"room-{rank}")),
             rank=rank,
@@ -219,6 +230,8 @@ class RoomItem(BaseModel):
             price=price_str,
             priceNum=price_vnd,
             area_m2=area_f,
+            bedrooms=_parse_pos_int(listing.get("bedrooms")),
+            bathrooms=_parse_pos_int(listing.get("bathrooms")),
             room_type=resolved_rt,
             address=listing.get("address_raw") or "",
             distance=dist_str,
@@ -299,6 +312,7 @@ class UserPreferenceState(BaseModel):
     max_price: Optional[float] = Field(None, description="Ngân sách tối đa (VNĐ)")
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m2)")
     max_area: Optional[float] = Field(None, description="Diện tích tối đa (m2)")
+    min_bedrooms: Optional[int] = Field(None, description="Số phòng ngủ tối thiểu")
     room_type: Optional[RoomType] = Field(None, description="Loại phòng muốn tìm")
     allowed_room_types: list[RoomType] = Field(
         default_factory=list,
@@ -393,6 +407,8 @@ class UserPreferenceState(BaseModel):
             lo = f"{self.min_area:g}" if self.min_area else "?"
             hi = f"{self.max_area:g}" if self.max_area else "?"
             parts.append(f"- Diện tích: {lo}–{hi} m²")
+        if self.min_bedrooms is not None:
+            parts.append(f"- Số phòng ngủ tối thiểu: {self.min_bedrooms} PN")
         if self.amenities:
             parts.append(f"- Tiện ích BẮT BUỘC: {', '.join(f'{a.label_vi} ({a.value})' for a in self.amenities)}")
         if self.preferred_amenities:

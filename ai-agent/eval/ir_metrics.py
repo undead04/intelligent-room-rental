@@ -172,6 +172,14 @@ def _check_single_amenity(
         if any(concept_scores.get(c, 0.0) >= score_threshold for c in ("safe_area", "camera", "fingerprint_lock", "guard")):
             return True
 
+    # Trường hợp tòa nhà tự quản (giờ tự do + khóa vân tay) đồng nghĩa không chung chủ
+    if code == "no_shared_landlord":
+        if (
+            concept_scores.get("free_hours", 0.0) >= score_threshold
+            and concept_scores.get("fingerprint_lock", 0.0) >= score_threshold
+        ):
+            return True
+
     # 2. Kiểm tra qua từ khóa trong tags & title
     search_text = (title + " " + " ".join(tags)).lower()
     keywords = _AMENITY_KEYWORDS_MAP.get(code, (code,))

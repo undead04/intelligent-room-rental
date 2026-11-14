@@ -1,0 +1,1476 @@
+{
+  "generated_at": "2026-11-14 11:29:44",
+  "elapsed_s": 11.5,
+  "eda": {
+    "funnel": {
+      "raw_total": 10430,
+      "after_geo_total": 10427,
+      "dropped_geo_count": 3,
+      "dropped_rule_count": 734,
+      "clean_total": 9693,
+      "retention_rate_pct": 92.93,
+      "rule_rejection_reasons": {
+        "area_oor": 710,
+        "price_oor": 22,
+        "ppm_oor": 690
+      }
+    },
+    "overall_distributions": {
+      "price_vnd": {
+        "count": 9693,
+        "mean": 3826347.3209,
+        "std": 1515089.3713,
+        "min": 400000.0,
+        "p05": 1550000.0,
+        "p25": 2900000.0,
+        "median": 3700000.0,
+        "p75": 4500000.0,
+        "p95": 6500000.0,
+        "max": 15000000.0,
+        "skewness": 1.0672
+      },
+      "log1p_price": {
+        "count": 9693,
+        "mean": 15.0767,
+        "std": 0.4174,
+        "min": 12.8992,
+        "p05": 14.2538,
+        "p25": 14.8802,
+        "median": 15.1238,
+        "p75": 15.3196,
+        "p95": 15.6873,
+        "max": 16.5236,
+        "skewness": -0.6326
+      },
+      "area_m2": {
+        "count": 9693,
+        "mean": 27.0581,
+        "std": 10.3261,
+        "min": 10.0,
+        "p05": 15.0,
+        "p25": 20.0,
+        "median": 25.0,
+        "p75": 30.0,
+        "p95": 44.4,
+        "max": 157.0,
+        "skewness": 2.6506
+      },
+      "ppm_vnd": {
+        "count": 9693,
+        "mean": 148853.2609,
+        "std": 52658.4902,
+        "min": 8333.3333,
+        "p05": 66666.6667,
+        "p25": 116666.6667,
+        "median": 144000.0,
+        "p75": 177777.7778,
+        "p95": 240000.0,
+        "max": 480000.0,
+        "skewness": 0.6371
+      },
+      "dist_nearest_hub_km": {
+        "count": 9693,
+        "mean": 2.6767,
+        "std": 1.6529,
+        "min": 0.01,
+        "p05": 0.81,
+        "p25": 1.61,
+        "median": 2.45,
+        "p75": 3.31,
+        "p95": 5.44,
+        "max": 30.71,
+        "skewness": 3.4061
+      },
+      "dist_nearest_uni_km": {
+        "count": 9693,
+        "mean": 2.7858,
+        "std": 2.7411,
+        "min": 0.05,
+        "p05": 0.52,
+        "p25": 1.29,
+        "median": 2.2,
+        "p75": 3.59,
+        "p95": 6.71,
+        "max": 95.52,
+        "skewness": 11.5236
+      },
+      "amenity_overall": {
+        "count": 9693,
+        "mean": 0.3709,
+        "std": 0.2569,
+        "min": 0.0,
+        "p05": 0.0,
+        "p25": 0.15,
+        "median": 0.35,
+        "p75": 0.6,
+        "p95": 0.85,
+        "max": 1.0,
+        "skewness": 0.4264
+      },
+      "safety_score": {
+        "count": 9693,
+        "mean": 0.1996,
+        "std": 0.2342,
+        "min": 0.0,
+        "p05": 0.0,
+        "p25": 0.0,
+        "median": 0.15,
+        "p75": 0.4,
+        "p95": 0.7,
+        "max": 1.0,
+        "skewness": 1.0169
+      }
+    },
+    "room_type_breakdown": [
+      {
+        "room_type_id": 1,
+        "name": "ROOM (Phòng trọ)",
+        "count": 5940,
+        "share_pct": 61.28,
+        "price_median_vnd": 3400000.0,
+        "price_mean_vnd": 3468731.0,
+        "area_median_m2": 25.0,
+        "ppm_median_vnd": 140000.0,
+        "amenity_overall_mean": 0.354,
+        "safety_score_mean": 0.182
+      },
+      {
+        "room_type_id": 2,
+        "name": "STUDIO (Căn hộ mini)",
+        "count": 2114,
+        "share_pct": 21.81,
+        "price_median_vnd": 4300000.0,
+        "price_mean_vnd": 4438610.0,
+        "area_median_m2": 28.0,
+        "ppm_median_vnd": 156000.0,
+        "amenity_overall_mean": 0.385,
+        "safety_score_mean": 0.222
+      },
+      {
+        "room_type_id": 3,
+        "name": "APARTMENT (Chung cư)",
+        "count": 1174,
+        "share_pct": 12.11,
+        "price_median_vnd": 4800000.0,
+        "price_mean_vnd": 5166596.0,
+        "area_median_m2": 30.0,
+        "ppm_median_vnd": 152087.0,
+        "amenity_overall_mean": 0.388,
+        "safety_score_mean": 0.227
+      },
+      {
+        "room_type_id": 4,
+        "name": "SLEEPBOX (KTX/Ở ghép)",
+        "count": 351,
+        "share_pct": 3.62,
+        "price_median_vnd": 1500000.0,
+        "price_mean_vnd": 1541140.0,
+        "area_median_m2": 30.0,
+        "ppm_median_vnd": 50000.0,
+        "amenity_overall_mean": 0.532,
+        "safety_score_mean": 0.32
+      },
+      {
+        "room_type_id": 5,
+        "name": "WHOLE_HOUSE (Nhà nguyên căn)",
+        "count": 114,
+        "share_pct": 1.18,
+        "price_median_vnd": 3800000.0,
+        "price_mean_vnd": 4340167.0,
+        "area_median_m2": 35.0,
+        "ppm_median_vnd": 121717.0,
+        "amenity_overall_mean": 0.306,
+        "safety_score_mean": 0.076
+      }
+    ],
+    "city_breakdown": [
+      {
+        "city": "Tp Hồ Chí Minh",
+        "count": 8814,
+        "share_pct": 90.93,
+        "price_median_vnd": 3700000.0,
+        "area_median_m2": 25.0,
+        "ppm_median_vnd": 145436.0
+      },
+      {
+        "city": "Hà Nội",
+        "count": 424,
+        "share_pct": 4.37,
+        "price_median_vnd": 3500000.0,
+        "area_median_m2": 25.0,
+        "ppm_median_vnd": 140000.0
+      },
+      {
+        "city": "Bình Dương",
+        "count": 139,
+        "share_pct": 1.43,
+        "price_median_vnd": 2500000.0,
+        "area_median_m2": 25.0,
+        "ppm_median_vnd": 100000.0
+      },
+      {
+        "city": "Đà Nẵng",
+        "count": 136,
+        "share_pct": 1.4,
+        "price_median_vnd": 3950000.0,
+        "area_median_m2": 25.0,
+        "ppm_median_vnd": 150000.0
+      },
+      {
+        "city": "Cần Thơ",
+        "count": 97,
+        "share_pct": 1.0,
+        "price_median_vnd": 2500000.0,
+        "area_median_m2": 25.0,
+        "ppm_median_vnd": 100000.0
+      },
+      {
+        "city": "Bà Rịa - Vũng Tàu",
+        "count": 15,
+        "share_pct": 0.15,
+        "price_median_vnd": 2800000.0,
+        "area_median_m2": 25.0,
+        "ppm_median_vnd": 104167.0
+      },
+      {
+        "city": "Lâm Đồng",
+        "count": 13,
+        "share_pct": 0.13,
+        "price_median_vnd": 3000000.0,
+        "area_median_m2": 30.0,
+        "ppm_median_vnd": 106250.0
+      },
+      {
+        "city": "Long An",
+        "count": 12,
+        "share_pct": 0.12,
+        "price_median_vnd": 1850000.0,
+        "area_median_m2": 20.0,
+        "ppm_median_vnd": 80464.0
+      }
+    ],
+    "binary_flag_prevalence": [
+      {
+        "feature": "is_private_wc",
+        "status": "KEPT_19",
+        "prevalence_pct": 19.13,
+        "corr_log_price": -0.0927,
+        "median_price_diff_vnd": -200000.0
+      },
+      {
+        "feature": "is_aircon",
+        "status": "KEPT_19",
+        "prevalence_pct": 38.88,
+        "corr_log_price": -0.0197,
+        "median_price_diff_vnd": -100000.0
+      },
+      {
+        "feature": "is_mezzanine",
+        "status": "KEPT_19",
+        "prevalence_pct": 27.48,
+        "corr_log_price": -0.0572,
+        "median_price_diff_vnd": -300000.0
+      },
+      {
+        "feature": "is_kitchen",
+        "status": "PRUNED_7",
+        "prevalence_pct": 35.92,
+        "corr_log_price": 0.0357,
+        "median_price_diff_vnd": 100000.0
+      },
+      {
+        "feature": "is_fridge",
+        "status": "KEPT_19",
+        "prevalence_pct": 18.33,
+        "corr_log_price": 0.0704,
+        "median_price_diff_vnd": 400000.0
+      },
+      {
+        "feature": "is_washing_machine",
+        "status": "KEPT_19",
+        "prevalence_pct": 31.2,
+        "corr_log_price": 0.0519,
+        "median_price_diff_vnd": 200000.0
+      },
+      {
+        "feature": "is_window_balcony",
+        "status": "KEPT_19",
+        "prevalence_pct": 48.36,
+        "corr_log_price": 0.2277,
+        "median_price_diff_vnd": 600000.0
+      },
+      {
+        "feature": "is_furniture",
+        "status": "KEPT_19",
+        "prevalence_pct": 60.11,
+        "corr_log_price": 0.337,
+        "median_price_diff_vnd": 1000000.0
+      },
+      {
+        "feature": "is_parking",
+        "status": "PRUNED_7",
+        "prevalence_pct": 44.12,
+        "corr_log_price": -0.0217,
+        "median_price_diff_vnd": -100000.0
+      },
+      {
+        "feature": "is_elevator",
+        "status": "KEPT_19",
+        "prevalence_pct": 19.94,
+        "corr_log_price": 0.1624,
+        "median_price_diff_vnd": 500000.0
+      },
+      {
+        "feature": "is_free_hours",
+        "status": "KEPT_19",
+        "prevalence_pct": 50.12,
+        "corr_log_price": -0.0587,
+        "median_price_diff_vnd": -200000.0
+      },
+      {
+        "feature": "is_no_shared_landlord",
+        "status": "PRUNED_7",
+        "prevalence_pct": 33.31,
+        "corr_log_price": 0.0389,
+        "median_price_diff_vnd": 100000.0
+      },
+      {
+        "feature": "is_pet_allowed",
+        "status": "PRUNED_7",
+        "prevalence_pct": 4.45,
+        "corr_log_price": 0.0515,
+        "median_price_diff_vnd": 300000.0
+      },
+      {
+        "feature": "is_fingerprint_lock",
+        "status": "PRUNED_7",
+        "prevalence_pct": 31.07,
+        "corr_log_price": 0.0296,
+        "median_price_diff_vnd": 100000.0
+      },
+      {
+        "feature": "is_camera",
+        "status": "PRUNED_7",
+        "prevalence_pct": 18.36,
+        "corr_log_price": -0.037,
+        "median_price_diff_vnd": -100000.0
+      },
+      {
+        "feature": "is_guard",
+        "status": "KEPT_19",
+        "prevalence_pct": 6.79,
+        "corr_log_price": -0.0137,
+        "median_price_diff_vnd": -100000.0
+      },
+      {
+        "feature": "is_safe_area",
+        "status": "PRUNED_7",
+        "prevalence_pct": 30.95,
+        "corr_log_price": -0.0206,
+        "median_price_diff_vnd": -100000.0
+      }
+    ]
+  },
+  "feature_selection": {
+    "candidate_feature_stats": [
+      {
+        "feature": "room_type_id",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.0831,
+        "spearman_log_price": 0.2582,
+        "mutual_info": 0.1979,
+        "ensemble_gain_pct": 25.0
+      },
+      {
+        "feature": "area_m2",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.3279,
+        "spearman_log_price": 0.4588,
+        "mutual_info": 0.2266,
+        "ensemble_gain_pct": 18.39
+      },
+      {
+        "feature": "is_furniture",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.337,
+        "spearman_log_price": 0.3719,
+        "mutual_info": 0.0679,
+        "ensemble_gain_pct": 13.55
+      },
+      {
+        "feature": "nb20_logy_mean",
+        "role": "SPATIAL_TE",
+        "pearson_log_price": 0.4238,
+        "spearman_log_price": 0.4262,
+        "mutual_info": 0.356,
+        "ensemble_gain_pct": 7.62
+      },
+      {
+        "feature": "furnishing_code",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.3168,
+        "spearman_log_price": -0.3376,
+        "mutual_info": 0.0768,
+        "ensemble_gain_pct": 3.92
+      },
+      {
+        "feature": "nb20_logppm_mean",
+        "role": "SPATIAL_TE",
+        "pearson_log_price": 0.379,
+        "spearman_log_price": 0.3875,
+        "mutual_info": 0.1706,
+        "ensemble_gain_pct": 3.32
+      },
+      {
+        "feature": "lng",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.0648,
+        "spearman_log_price": 0.1776,
+        "mutual_info": 0.2012,
+        "ensemble_gain_pct": 2.39
+      },
+      {
+        "feature": "nb20_logy_std",
+        "role": "SPATIAL_TE",
+        "pearson_log_price": 0.0168,
+        "spearman_log_price": 0.0648,
+        "mutual_info": 0.284,
+        "ensemble_gain_pct": 1.75
+      },
+      {
+        "feature": "nb5_logy_mean",
+        "role": "SPATIAL_TE",
+        "pearson_log_price": 0.3897,
+        "spearman_log_price": 0.3861,
+        "mutual_info": 0.2215,
+        "ensemble_gain_pct": 1.71
+      },
+      {
+        "feature": "is_aircon",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.0197,
+        "spearman_log_price": -0.0314,
+        "mutual_info": 0.0064,
+        "ensemble_gain_pct": 1.63
+      },
+      {
+        "feature": "nb20_dist_km",
+        "role": "SPATIAL_TE",
+        "pearson_log_price": -0.1219,
+        "spearman_log_price": -0.1284,
+        "mutual_info": 0.1144,
+        "ensemble_gain_pct": 1.62
+      },
+      {
+        "feature": "lat_lng_diff",
+        "role": "DERIVED",
+        "pearson_log_price": -0.0219,
+        "spearman_log_price": -0.1833,
+        "mutual_info": 0.2034,
+        "ensemble_gain_pct": 1.55
+      },
+      {
+        "feature": "lat_lng_sum",
+        "role": "DERIVED",
+        "pearson_log_price": -0.0061,
+        "spearman_log_price": 0.0642,
+        "mutual_info": 0.1902,
+        "ensemble_gain_pct": 1.48
+      },
+      {
+        "feature": "is_window_balcony",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.2277,
+        "spearman_log_price": 0.2303,
+        "mutual_info": 0.0268,
+        "ensemble_gain_pct": 1.47
+      },
+      {
+        "feature": "lat",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.0145,
+        "spearman_log_price": -0.0827,
+        "mutual_info": 0.1918,
+        "ensemble_gain_pct": 1.36
+      },
+      {
+        "feature": "is_elevator",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.1624,
+        "spearman_log_price": 0.1543,
+        "mutual_info": 0.0291,
+        "ensemble_gain_pct": 1.31
+      },
+      {
+        "feature": "dist_nearest_uni_km",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.2374,
+        "spearman_log_price": -0.2566,
+        "mutual_info": 0.1535,
+        "ensemble_gain_pct": 1.27
+      },
+      {
+        "feature": "is_mezzanine",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.0572,
+        "spearman_log_price": -0.1068,
+        "mutual_info": 0.0366,
+        "ensemble_gain_pct": 1.26
+      },
+      {
+        "feature": "nb5_logppm_mean",
+        "role": "SPATIAL_TE",
+        "pearson_log_price": 0.3193,
+        "spearman_log_price": 0.324,
+        "mutual_info": 0.1577,
+        "ensemble_gain_pct": 1.25
+      },
+      {
+        "feature": "amenity_density",
+        "role": "DERIVED",
+        "pearson_log_price": 0.0175,
+        "spearman_log_price": 0.0015,
+        "mutual_info": 0.1323,
+        "ensemble_gain_pct": 1.04
+      },
+      {
+        "feature": "is_guard",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.0137,
+        "spearman_log_price": -0.0133,
+        "mutual_info": 0.0,
+        "ensemble_gain_pct": 1.01
+      },
+      {
+        "feature": "amenity_overall",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.0657,
+        "spearman_log_price": 0.0536,
+        "mutual_info": 0.0409,
+        "ensemble_gain_pct": 0.92
+      },
+      {
+        "feature": "dist_nearest_hub_km",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.1793,
+        "spearman_log_price": -0.1707,
+        "mutual_info": 0.1269,
+        "ensemble_gain_pct": 0.89
+      },
+      {
+        "feature": "nb5_dist_km",
+        "role": "SPATIAL_TE",
+        "pearson_log_price": -0.112,
+        "spearman_log_price": -0.0948,
+        "mutual_info": 0.0503,
+        "ensemble_gain_pct": 0.89
+      },
+      {
+        "feature": "safety_score",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.0142,
+        "spearman_log_price": -0.0097,
+        "mutual_info": 0.0164,
+        "ensemble_gain_pct": 0.8
+      },
+      {
+        "feature": "is_fridge",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.0704,
+        "spearman_log_price": 0.1091,
+        "mutual_info": 0.0127,
+        "ensemble_gain_pct": 0.72
+      },
+      {
+        "feature": "is_private_wc",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.0927,
+        "spearman_log_price": -0.0977,
+        "mutual_info": 0.0084,
+        "ensemble_gain_pct": 0.71
+      },
+      {
+        "feature": "is_washing_machine",
+        "role": "KEPT_19",
+        "pearson_log_price": 0.0519,
+        "spearman_log_price": 0.0683,
+        "mutual_info": 0.0025,
+        "ensemble_gain_pct": 0.6
+      },
+      {
+        "feature": "is_free_hours",
+        "role": "KEPT_19",
+        "pearson_log_price": -0.0587,
+        "spearman_log_price": -0.0694,
+        "mutual_info": 0.001,
+        "ensemble_gain_pct": 0.58
+      },
+      {
+        "feature": "is_no_shared_landlord",
+        "role": "PRUNED_FLAG",
+        "pearson_log_price": 0.0389,
+        "spearman_log_price": 0.0253,
+        "mutual_info": 0.0107,
+        "ensemble_gain_pct": null
+      },
+      {
+        "feature": "is_fingerprint_lock",
+        "role": "PRUNED_FLAG",
+        "pearson_log_price": 0.0296,
+        "spearman_log_price": 0.0249,
+        "mutual_info": 0.0105,
+        "ensemble_gain_pct": null
+      },
+      {
+        "feature": "is_kitchen",
+        "role": "PRUNED_FLAG",
+        "pearson_log_price": 0.0357,
+        "spearman_log_price": 0.0405,
+        "mutual_info": 0.0021,
+        "ensemble_gain_pct": null
+      },
+      {
+        "feature": "is_camera",
+        "role": "PRUNED_FLAG",
+        "pearson_log_price": -0.037,
+        "spearman_log_price": -0.0357,
+        "mutual_info": 0.0018,
+        "ensemble_gain_pct": null
+      },
+      {
+        "feature": "is_parking",
+        "role": "PRUNED_FLAG",
+        "pearson_log_price": -0.0217,
+        "spearman_log_price": -0.0347,
+        "mutual_info": 0.0,
+        "ensemble_gain_pct": null
+      },
+      {
+        "feature": "is_pet_allowed",
+        "role": "PRUNED_FLAG",
+        "pearson_log_price": 0.0515,
+        "spearman_log_price": 0.0452,
+        "mutual_info": 0.0,
+        "ensemble_gain_pct": null
+      },
+      {
+        "feature": "is_safe_area",
+        "role": "PRUNED_FLAG",
+        "pearson_log_price": -0.0206,
+        "spearman_log_price": -0.0191,
+        "mutual_info": 0.0,
+        "ensemble_gain_pct": null
+      }
+    ],
+    "multicollinearity": {
+      "area_vs_log_area": {
+        "pearson_r": 0.9443,
+        "spearman_rho": 1.0,
+        "decision": "Giữ area_m2, loại log_area vì cây quyết định bất biến với phép biến đổi đơn điệu (Spearman = 1.0)."
+      },
+      "n_amenities_vs_amenity_overall": {
+        "pearson_r": 0.9462,
+        "spearman_rho": 0.945,
+        "decision": "Giữ amenity_overall + amenity_density, loại n_amenities để tránh phân tán Gain trên cây."
+      },
+      "pruned_flags_summary": [
+        {
+          "feature": "is_kitchen",
+          "prevalence_pct": 35.92,
+          "corr_log_price": 0.0357,
+          "corr_amenity_overall": 0.7257,
+          "corr_safety_score": 0.1024,
+          "mutual_info": 0.0021
+        },
+        {
+          "feature": "is_parking",
+          "prevalence_pct": 44.12,
+          "corr_log_price": -0.0217,
+          "corr_amenity_overall": 0.2666,
+          "corr_safety_score": 0.2354,
+          "mutual_info": 0.0
+        },
+        {
+          "feature": "is_no_shared_landlord",
+          "prevalence_pct": 33.31,
+          "corr_log_price": 0.0389,
+          "corr_amenity_overall": 0.1017,
+          "corr_safety_score": 0.2479,
+          "mutual_info": 0.0107
+        },
+        {
+          "feature": "is_pet_allowed",
+          "prevalence_pct": 4.45,
+          "corr_log_price": 0.0515,
+          "corr_amenity_overall": 0.0461,
+          "corr_safety_score": -0.0016,
+          "mutual_info": 0.0
+        },
+        {
+          "feature": "is_fingerprint_lock",
+          "prevalence_pct": 31.07,
+          "corr_log_price": 0.0296,
+          "corr_amenity_overall": 0.1396,
+          "corr_safety_score": 0.7204,
+          "mutual_info": 0.0105
+        },
+        {
+          "feature": "is_camera",
+          "prevalence_pct": 18.36,
+          "corr_log_price": -0.037,
+          "corr_amenity_overall": 0.1648,
+          "corr_safety_score": 0.7419,
+          "mutual_info": 0.0018
+        },
+        {
+          "feature": "is_safe_area",
+          "prevalence_pct": 30.95,
+          "corr_log_price": -0.0206,
+          "corr_amenity_overall": 0.0517,
+          "corr_safety_score": 0.4476,
+          "mutual_info": 0.0
+        }
+      ]
+    },
+    "production_feature_importance": {
+      "features": [
+        {
+          "feature": "room_type_id",
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "lgb_gain_pct": 26.7,
+          "xgb_gain_pct": 23.3,
+          "ensemble_gain_pct": 25.0,
+          "lgb_split_pct": 5.39,
+          "xgb_split_pct": 4.0
+        },
+        {
+          "feature": "area_m2",
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "lgb_gain_pct": 25.95,
+          "xgb_gain_pct": 10.83,
+          "ensemble_gain_pct": 18.39,
+          "lgb_split_pct": 9.69,
+          "xgb_split_pct": 7.59
+        },
+        {
+          "feature": "is_furniture",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 6.48,
+          "xgb_gain_pct": 20.62,
+          "ensemble_gain_pct": 13.55,
+          "lgb_split_pct": 1.29,
+          "xgb_split_pct": 1.1
+        },
+        {
+          "feature": "nb20_logy_mean",
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "lgb_gain_pct": 9.92,
+          "xgb_gain_pct": 5.32,
+          "ensemble_gain_pct": 7.62,
+          "lgb_split_pct": 6.1,
+          "xgb_split_pct": 6.54
+        },
+        {
+          "feature": "furnishing_code",
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "lgb_gain_pct": 2.62,
+          "xgb_gain_pct": 5.21,
+          "ensemble_gain_pct": 3.92,
+          "lgb_split_pct": 2.67,
+          "xgb_split_pct": 1.75
+        },
+        {
+          "feature": "nb20_logppm_mean",
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "lgb_gain_pct": 4.13,
+          "xgb_gain_pct": 2.51,
+          "ensemble_gain_pct": 3.32,
+          "lgb_split_pct": 5.47,
+          "xgb_split_pct": 6.41
+        },
+        {
+          "feature": "lng",
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "lgb_gain_pct": 2.93,
+          "xgb_gain_pct": 1.84,
+          "ensemble_gain_pct": 2.39,
+          "lgb_split_pct": 5.37,
+          "xgb_split_pct": 5.04
+        },
+        {
+          "feature": "nb20_logy_std",
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "lgb_gain_pct": 2.27,
+          "xgb_gain_pct": 1.23,
+          "ensemble_gain_pct": 1.75,
+          "lgb_split_pct": 6.66,
+          "xgb_split_pct": 6.62
+        },
+        {
+          "feature": "nb5_logy_mean",
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "lgb_gain_pct": 2.0,
+          "xgb_gain_pct": 1.43,
+          "ensemble_gain_pct": 1.71,
+          "lgb_split_pct": 4.95,
+          "xgb_split_pct": 5.68
+        },
+        {
+          "feature": "is_aircon",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.48,
+          "xgb_gain_pct": 2.78,
+          "ensemble_gain_pct": 1.63,
+          "lgb_split_pct": 0.48,
+          "xgb_split_pct": 1.06
+        },
+        {
+          "feature": "nb20_dist_km",
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "lgb_gain_pct": 1.87,
+          "xgb_gain_pct": 1.36,
+          "ensemble_gain_pct": 1.62,
+          "lgb_split_pct": 4.19,
+          "xgb_split_pct": 3.91
+        },
+        {
+          "feature": "lat_lng_diff",
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "lgb_gain_pct": 1.73,
+          "xgb_gain_pct": 1.37,
+          "ensemble_gain_pct": 1.55,
+          "lgb_split_pct": 4.66,
+          "xgb_split_pct": 4.6
+        },
+        {
+          "feature": "lat_lng_sum",
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "lgb_gain_pct": 1.53,
+          "xgb_gain_pct": 1.44,
+          "ensemble_gain_pct": 1.48,
+          "lgb_split_pct": 4.47,
+          "xgb_split_pct": 4.42
+        },
+        {
+          "feature": "is_window_balcony",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.59,
+          "xgb_gain_pct": 2.35,
+          "ensemble_gain_pct": 1.47,
+          "lgb_split_pct": 0.97,
+          "xgb_split_pct": 0.99
+        },
+        {
+          "feature": "lat",
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "lgb_gain_pct": 1.48,
+          "xgb_gain_pct": 1.24,
+          "ensemble_gain_pct": 1.36,
+          "lgb_split_pct": 4.7,
+          "xgb_split_pct": 4.94
+        },
+        {
+          "feature": "is_elevator",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.47,
+          "xgb_gain_pct": 2.14,
+          "ensemble_gain_pct": 1.31,
+          "lgb_split_pct": 0.94,
+          "xgb_split_pct": 0.95
+        },
+        {
+          "feature": "dist_nearest_uni_km",
+          "group": "Khoảng cách POI Đô thị & Đại học",
+          "lgb_gain_pct": 1.42,
+          "xgb_gain_pct": 1.12,
+          "ensemble_gain_pct": 1.27,
+          "lgb_split_pct": 4.88,
+          "xgb_split_pct": 4.87
+        },
+        {
+          "feature": "is_mezzanine",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.49,
+          "xgb_gain_pct": 2.03,
+          "ensemble_gain_pct": 1.26,
+          "lgb_split_pct": 0.86,
+          "xgb_split_pct": 0.95
+        },
+        {
+          "feature": "nb5_logppm_mean",
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "lgb_gain_pct": 1.44,
+          "xgb_gain_pct": 1.05,
+          "ensemble_gain_pct": 1.25,
+          "lgb_split_pct": 5.5,
+          "xgb_split_pct": 5.77
+        },
+        {
+          "feature": "amenity_density",
+          "group": "Điểm Ngữ nghĩa LLM & Mật độ",
+          "lgb_gain_pct": 1.16,
+          "xgb_gain_pct": 0.91,
+          "ensemble_gain_pct": 1.04,
+          "lgb_split_pct": 4.89,
+          "xgb_split_pct": 4.78
+        },
+        {
+          "feature": "is_guard",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.2,
+          "xgb_gain_pct": 1.81,
+          "ensemble_gain_pct": 1.01,
+          "lgb_split_pct": 0.6,
+          "xgb_split_pct": 0.5
+        },
+        {
+          "feature": "amenity_overall",
+          "group": "Điểm Ngữ nghĩa LLM & Mật độ",
+          "lgb_gain_pct": 0.76,
+          "xgb_gain_pct": 1.07,
+          "ensemble_gain_pct": 0.92,
+          "lgb_split_pct": 2.01,
+          "xgb_split_pct": 3.2
+        },
+        {
+          "feature": "dist_nearest_hub_km",
+          "group": "Khoảng cách POI Đô thị & Đại học",
+          "lgb_gain_pct": 0.92,
+          "xgb_gain_pct": 0.85,
+          "ensemble_gain_pct": 0.89,
+          "lgb_split_pct": 3.89,
+          "xgb_split_pct": 4.7
+        },
+        {
+          "feature": "nb5_dist_km",
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "lgb_gain_pct": 0.87,
+          "xgb_gain_pct": 0.91,
+          "ensemble_gain_pct": 0.89,
+          "lgb_split_pct": 3.45,
+          "xgb_split_pct": 3.21
+        },
+        {
+          "feature": "safety_score",
+          "group": "Điểm Ngữ nghĩa LLM & Mật độ",
+          "lgb_gain_pct": 0.65,
+          "xgb_gain_pct": 0.96,
+          "ensemble_gain_pct": 0.8,
+          "lgb_split_pct": 2.73,
+          "xgb_split_pct": 2.72
+        },
+        {
+          "feature": "is_fridge",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.16,
+          "xgb_gain_pct": 1.29,
+          "ensemble_gain_pct": 0.72,
+          "lgb_split_pct": 0.44,
+          "xgb_split_pct": 0.96
+        },
+        {
+          "feature": "is_private_wc",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.33,
+          "xgb_gain_pct": 1.09,
+          "ensemble_gain_pct": 0.71,
+          "lgb_split_pct": 1.04,
+          "xgb_split_pct": 0.79
+        },
+        {
+          "feature": "is_washing_machine",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.19,
+          "xgb_gain_pct": 1.02,
+          "ensemble_gain_pct": 0.6,
+          "lgb_split_pct": 0.68,
+          "xgb_split_pct": 0.88
+        },
+        {
+          "feature": "is_free_hours",
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "lgb_gain_pct": 0.26,
+          "xgb_gain_pct": 0.89,
+          "ensemble_gain_pct": 0.58,
+          "lgb_split_pct": 1.03,
+          "xgb_split_pct": 1.06
+        }
+      ],
+      "group_summary": [
+        {
+          "group": "Quy mô, Loại phòng & Tọa độ",
+          "feature_count": 7,
+          "lgb_gain_pct": 62.94,
+          "xgb_gain_pct": 45.24,
+          "ensemble_gain_pct": 54.09
+        },
+        {
+          "group": "10 Cờ Tiện nghi & An ninh Cốt lõi",
+          "feature_count": 10,
+          "lgb_gain_pct": 9.64,
+          "xgb_gain_pct": 36.02,
+          "ensemble_gain_pct": 22.83
+        },
+        {
+          "group": "SpatialTE (Láng giềng Haversine)",
+          "feature_count": 7,
+          "lgb_gain_pct": 22.51,
+          "xgb_gain_pct": 13.82,
+          "ensemble_gain_pct": 18.16
+        },
+        {
+          "group": "Điểm Ngữ nghĩa LLM & Mật độ",
+          "feature_count": 3,
+          "lgb_gain_pct": 2.57,
+          "xgb_gain_pct": 2.94,
+          "ensemble_gain_pct": 2.76
+        },
+        {
+          "group": "Khoảng cách POI Đô thị & Đại học",
+          "feature_count": 2,
+          "lgb_gain_pct": 2.34,
+          "xgb_gain_pct": 1.97,
+          "ensemble_gain_pct": 2.16
+        }
+      ]
+    },
+    "ablation_study": [
+      {
+        "config_id": "1_Base_19_No_SpatialTE",
+        "description": "Chỉ 19 đặc trưng cơ sở + 3 phái sinh (Không SpatialTE)",
+        "n_features_into_tree": 22,
+        "count": 1454,
+        "mae_vnd": 604912.17,
+        "median_ae_vnd": 438106.01,
+        "rmse_vnd": 864600.88,
+        "mape_pct": 17.15,
+        "mdape_pct": 12.39,
+        "r2_vnd": 0.6625,
+        "r2_log": 0.7165,
+        "within_15pct": 57.57,
+        "within_20pct": 70.56
+      },
+      {
+        "config_id": "2_SpatialTE_Only",
+        "description": "Chỉ 7 đặc trưng láng giềng SpatialTE (k=5, 20)",
+        "n_features_into_tree": 7,
+        "count": 1454,
+        "mae_vnd": 1006822.83,
+        "median_ae_vnd": 749951.18,
+        "rmse_vnd": 1401495.57,
+        "mape_pct": 33.5,
+        "mdape_pct": 19.76,
+        "r2_vnd": 0.1132,
+        "r2_log": 0.1059,
+        "within_15pct": 39.2,
+        "within_20pct": 50.41
+      },
+      {
+        "config_id": "3_Full_26_With_SpatialTE",
+        "description": "Đầy đủ 26 đặc trưng gốc + 3 phái sinh + 7 SpatialTE (Chưa cắt 7 cờ)",
+        "n_features_into_tree": 36,
+        "count": 1454,
+        "mae_vnd": 603454.66,
+        "median_ae_vnd": 461803.89,
+        "rmse_vnd": 860910.53,
+        "mape_pct": 17.14,
+        "mdape_pct": 12.71,
+        "r2_vnd": 0.6654,
+        "r2_log": 0.719,
+        "within_15pct": 57.22,
+        "within_20pct": 69.46
+      },
+      {
+        "config_id": "4_Pruned_19_With_SpatialTE",
+        "description": "Bộ 19 đặc trưng tinh gọn + 3 phái sinh + 7 SpatialTE (Production)",
+        "n_features_into_tree": 29,
+        "count": 1454,
+        "mae_vnd": 602648.12,
+        "median_ae_vnd": 454001.24,
+        "rmse_vnd": 858948.5,
+        "mape_pct": 17.15,
+        "mdape_pct": 12.57,
+        "r2_vnd": 0.6669,
+        "r2_log": 0.7192,
+        "within_15pct": 57.84,
+        "within_20pct": 70.36
+      }
+    ]
+  },
+  "model_evaluation": {
+    "split_info": {
+      "train_size": 8239,
+      "test_size": 1454,
+      "random_state": 42
+    },
+    "model_comparison": {
+      "Baseline (Room-Type Median)": {
+        "count": 1454,
+        "mae_vnd": 944079.09,
+        "median_ae_vnd": 700000.0,
+        "rmse_vnd": 1287991.91,
+        "mape_pct": 28.45,
+        "mdape_pct": 20.93,
+        "r2_vnd": 0.251,
+        "r2_log": 0.3121,
+        "within_15pct": 42.09,
+        "within_20pct": 49.17
+      },
+      "LightGBM (Holdout)": {
+        "count": 1454,
+        "mae_vnd": 600657.71,
+        "median_ae_vnd": 451639.15,
+        "rmse_vnd": 859261.7,
+        "mape_pct": 17.02,
+        "mdape_pct": 12.47,
+        "r2_vnd": 0.6667,
+        "r2_log": 0.7207,
+        "within_15pct": 58.25,
+        "within_20pct": 70.29
+      },
+      "XGBoost (Holdout)": {
+        "count": 1454,
+        "mae_vnd": 601622.58,
+        "median_ae_vnd": 451913.88,
+        "rmse_vnd": 859154.39,
+        "mape_pct": 17.04,
+        "mdape_pct": 12.45,
+        "r2_vnd": 0.6667,
+        "r2_log": 0.7219,
+        "within_15pct": 57.77,
+        "within_20pct": 70.29
+      },
+      "Ensemble Blend (LGBM + XGB)": {
+        "count": 1454,
+        "mae_vnd": 598769.27,
+        "median_ae_vnd": 449141.2,
+        "rmse_vnd": 856391.87,
+        "mape_pct": 16.96,
+        "mdape_pct": 12.45,
+        "r2_vnd": 0.6689,
+        "r2_log": 0.7235,
+        "within_15pct": 58.05,
+        "within_20pct": 70.15
+      }
+    },
+    "conformal_diagnostics": {
+      "target_coverage_pct": 80.0,
+      "empirical_coverage_pct": 83.15,
+      "below_low_pct": 7.84,
+      "above_high_pct": 9.01,
+      "mean_width_vnd": 2132441.0,
+      "median_width_vnd": 1981681.0,
+      "median_rel_width_pct": 53.59,
+      "bin_breakdown": [
+        {
+          "bin": 1,
+          "count": 324,
+          "median_pred_vnd": 2395419.0,
+          "qhat_log": 0.0662,
+          "coverage_pct": 85.49,
+          "median_width_vnd": 1711962.0
+        },
+        {
+          "bin": 2,
+          "count": 248,
+          "median_pred_vnd": 3265491.0,
+          "qhat_log": 0.009,
+          "coverage_pct": 78.23,
+          "median_width_vnd": 1459849.0
+        },
+        {
+          "bin": 3,
+          "count": 316,
+          "median_pred_vnd": 3816374.0,
+          "qhat_log": 0.0333,
+          "coverage_pct": 80.7,
+          "median_width_vnd": 1839605.0
+        },
+        {
+          "bin": 4,
+          "count": 277,
+          "median_pred_vnd": 4366563.0,
+          "qhat_log": 0.0692,
+          "coverage_pct": 85.92,
+          "median_width_vnd": 2320381.0
+        },
+        {
+          "bin": 5,
+          "count": 289,
+          "median_pred_vnd": 5184505.0,
+          "qhat_log": 0.0665,
+          "coverage_pct": 84.78,
+          "median_width_vnd": 2812733.0
+        }
+      ]
+    },
+    "segment_performance": {
+      "by_room_type": [
+        {
+          "room_type": "ROOM (Phòng trọ)",
+          "median_actual_vnd": 3400000.0,
+          "median_pred_vnd": 3465809.0,
+          "count": 891,
+          "mae_vnd": 536767.85,
+          "median_ae_vnd": 419228.5,
+          "rmse_vnd": 722948.48,
+          "mape_pct": 17.15,
+          "mdape_pct": 12.61,
+          "r2_vnd": 0.6261,
+          "r2_log": 0.6472,
+          "within_15pct": 57.01,
+          "within_20pct": 70.15,
+          "conformal_coverage_pct": 84.18,
+          "median_interval_width_vnd": 1916312.0
+        },
+        {
+          "room_type": "STUDIO (Căn hộ mini)",
+          "median_actual_vnd": 4200000.0,
+          "median_pred_vnd": 4429382.0,
+          "count": 317,
+          "mae_vnd": 629752.02,
+          "median_ae_vnd": 506330.32,
+          "rmse_vnd": 871735.89,
+          "mape_pct": 14.27,
+          "mdape_pct": 11.99,
+          "r2_vnd": 0.4399,
+          "r2_log": 0.4832,
+          "within_15pct": 62.46,
+          "within_20pct": 76.03,
+          "conformal_coverage_pct": 83.91,
+          "median_interval_width_vnd": 2098379.0
+        },
+        {
+          "room_type": "APARTMENT (Chung cư)",
+          "median_actual_vnd": 4800000.0,
+          "median_pred_vnd": 4815815.0,
+          "count": 176,
+          "mae_vnd": 937734.65,
+          "median_ae_vnd": 594199.92,
+          "rmse_vnd": 1389060.46,
+          "mape_pct": 18.97,
+          "mdape_pct": 12.32,
+          "r2_vnd": 0.494,
+          "r2_log": 0.5052,
+          "within_15pct": 57.95,
+          "within_20pct": 64.77,
+          "conformal_coverage_pct": 77.27,
+          "median_interval_width_vnd": 2591322.0
+        },
+        {
+          "room_type": "SLEEPBOX (KTX/Ở ghép)",
+          "median_actual_vnd": 1500000.0,
+          "median_pred_vnd": 1646169.0,
+          "count": 53,
+          "mae_vnd": 295539.98,
+          "median_ae_vnd": 222699.05,
+          "rmse_vnd": 377914.77,
+          "mape_pct": 22.18,
+          "mdape_pct": 17.39,
+          "r2_vnd": 0.0721,
+          "r2_log": -0.064,
+          "within_15pct": 49.06,
+          "within_20pct": 54.72,
+          "conformal_coverage_pct": 79.25,
+          "median_interval_width_vnd": 1214219.0
+        },
+        {
+          "room_type": "WHOLE_HOUSE (Nhà nguyên căn)",
+          "median_actual_vnd": 4000000.0,
+          "median_pred_vnd": 3951808.0,
+          "count": 17,
+          "mae_vnd": 706708.87,
+          "median_ae_vnd": 589462.37,
+          "rmse_vnd": 862057.48,
+          "mape_pct": 19.61,
+          "mdape_pct": 14.39,
+          "r2_vnd": 0.4918,
+          "r2_log": 0.4783,
+          "within_15pct": 58.82,
+          "within_20pct": 64.71,
+          "conformal_coverage_pct": 88.24,
+          "median_interval_width_vnd": 3093322.0
+        }
+      ],
+      "by_price_tier": [
+        {
+          "price_tier": "< 2.5 triệu",
+          "median_actual_vnd": 1800000.0,
+          "median_pred_vnd": 1999926.0,
+          "count": 206,
+          "mae_vnd": 505127.37,
+          "median_ae_vnd": 379951.38,
+          "rmse_vnd": 726772.86,
+          "mape_pct": 31.76,
+          "mdape_pct": 22.26,
+          "r2_vnd": -2.1877,
+          "r2_log": -0.692,
+          "within_15pct": 38.83,
+          "within_20pct": 48.06,
+          "conformal_coverage_pct": 68.93,
+          "median_interval_width_vnd": 1707857.0
+        },
+        {
+          "price_tier": "2.5 - 4 triệu",
+          "median_actual_vnd": 3200000.0,
+          "median_pred_vnd": 3463972.0,
+          "count": 635,
+          "mae_vnd": 492429.06,
+          "median_ae_vnd": 417378.27,
+          "rmse_vnd": 629661.38,
+          "mape_pct": 15.63,
+          "mdape_pct": 12.77,
+          "r2_vnd": -1.1598,
+          "r2_log": -0.8065,
+          "within_15pct": 57.48,
+          "within_20pct": 70.55,
+          "conformal_coverage_pct": 90.71,
+          "median_interval_width_vnd": 1749028.0
+        },
+        {
+          "price_tier": "4 - 7 triệu",
+          "median_actual_vnd": 4700000.0,
+          "median_pred_vnd": 4542121.0,
+          "count": 568,
+          "mae_vnd": 601461.84,
+          "median_ae_vnd": 490087.9,
+          "rmse_vnd": 770383.43,
+          "mape_pct": 12.16,
+          "mdape_pct": 10.26,
+          "r2_vnd": -0.1349,
+          "r2_log": -0.3547,
+          "within_15pct": 69.01,
+          "within_20pct": 81.69,
+          "conformal_coverage_pct": 84.33,
+          "median_interval_width_vnd": 2376577.0
+        },
+        {
+          "price_tier": "7 - 12 triệu",
+          "median_actual_vnd": 7895000.0,
+          "median_pred_vnd": 5957341.0,
+          "count": 42,
+          "mae_vnd": 2232800.88,
+          "median_ae_vnd": 2319993.88,
+          "rmse_vnd": 2451941.09,
+          "mape_pct": 26.99,
+          "mdape_pct": 29.96,
+          "r2_vnd": -4.2301,
+          "r2_log": -7.2992,
+          "within_15pct": 16.67,
+          "within_20pct": 21.43,
+          "conformal_coverage_pct": 28.57,
+          "median_interval_width_vnd": 3891118.0
+        },
+        {
+          "price_tier": "> 12 triệu",
+          "median_actual_vnd": 12000000.0,
+          "median_pred_vnd": 6691115.0,
+          "count": 3,
+          "mae_vnd": 6151285.38,
+          "median_ae_vnd": 6108885.19,
+          "rmse_vnd": 6223528.59,
+          "mape_pct": 50.2,
+          "mdape_pct": 47.73,
+          "r2_vnd": -271.3365,
+          "r2_log": -576.7248,
+          "within_15pct": 0.0,
+          "within_20pct": 0.0,
+          "conformal_coverage_pct": 0.0,
+          "median_interval_width_vnd": 5369588.0
+        }
+      ],
+      "by_region": [
+        {
+          "region": "TP.HCM",
+          "median_actual_vnd": 3700000.0,
+          "median_pred_vnd": 3841024.0,
+          "count": 1360,
+          "mae_vnd": 596833.65,
+          "median_ae_vnd": 448986.1,
+          "rmse_vnd": 854064.49,
+          "mape_pct": 16.67,
+          "mdape_pct": 12.37,
+          "r2_vnd": 0.6638,
+          "r2_log": 0.7187,
+          "within_15pct": 58.38,
+          "within_20pct": 70.74,
+          "conformal_coverage_pct": 83.16,
+          "median_interval_width_vnd": 1966434.0
+        },
+        {
+          "region": "Tỉnh / Thành phố khác",
+          "median_actual_vnd": 3150000.0,
+          "median_pred_vnd": 3496969.0,
+          "count": 94,
+          "mae_vnd": 626773.94,
+          "median_ae_vnd": 476085.39,
+          "rmse_vnd": 889383.42,
+          "mape_pct": 21.12,
+          "mdape_pct": 13.92,
+          "r2_vnd": 0.7083,
+          "r2_log": 0.7414,
+          "within_15pct": 53.19,
+          "within_20pct": 61.7,
+          "conformal_coverage_pct": 82.98,
+          "median_interval_width_vnd": 2243840.0
+        }
+      ]
+    },
+    "price_score_summary": {
+      "price_score": {
+        "count": 1454,
+        "mean": 0.4907,
+        "std": 0.174,
+        "min": 0.0,
+        "p05": 0.2287,
+        "p25": 0.36,
+        "median": 0.489,
+        "p75": 0.6128,
+        "p95": 0.7597,
+        "max": 1.0,
+        "skewness": 0.0945
+      },
+      "z_score": {
+        "count": 1454,
+        "mean": 0.0348,
+        "std": 0.7122,
+        "min": -3.17,
+        "p05": -1.0435,
+        "p25": -0.45,
+        "median": 0.04,
+        "p75": 0.56,
+        "p95": 1.09,
+        "max": 3.44,
+        "skewness": -0.1826
+      },
+      "verdict_distribution_pct": {
+        "Hợp lý": 87.83,
+        "Đắt hơn thị trường": 5.23,
+        "Rẻ hơn thị trường": 3.92,
+        "Rất rẻ so với thị trường": 1.58,
+        "Rất đắt so với thị trường": 1.44
+      },
+      "guard_status_distribution_pct": {
+        "ok": 100.0
+      }
+    },
+    "production_cv_summary": [
+      {
+        "model_name": "LightGBM",
+        "n_rounds": 397,
+        "smear": 1.0339,
+        "cv_mae_mean": 634522.1,
+        "cv_rmse_mean": 938271.97,
+        "cv_r2_mean": 0.6164
+      },
+      {
+        "model_name": "XGBoost",
+        "n_rounds": 398,
+        "smear": 1.0347,
+        "cv_mae_mean": 631634.35,
+        "cv_rmse_mean": 935717.06,
+        "cv_r2_mean": 0.6185
+      }
+    ]
+  }
+}
