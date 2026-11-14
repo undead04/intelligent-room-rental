@@ -106,7 +106,7 @@ export const roomTypesApi = {
 };
 
 export const priceStatsApi = {
-  get(params: { city_id?: number; district_id?: number; room_type_id?: number; room_type?: number; last_d?: number } = {}) {
+  get(params: { city_id?: number; district_id?: number; room_type_id?: number; last_d?: number } = {}) {
     return request<PriceStatsDto>(`/listings/price-stats${buildQuery(params)}`);
   },
 };

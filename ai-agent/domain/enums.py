@@ -159,9 +159,13 @@ def normalize_room_type(raw: "RoomType | str | int | None") -> Optional[RoomType
     return _ROOM_TYPE_INDEX.get(norm_key(s))
 
 
-def normalize_room_types(items: Optional[Iterable["RoomType | str | int"]]) -> list[RoomType]:
+def normalize_room_types(items: Optional[Iterable["RoomType | str | int"] | "RoomType | str | int"]) -> list[RoomType]:
+    if items is None:
+        return []
+    if isinstance(items, (RoomType, str, int, bytes)):
+        items = [items]
     out: list[RoomType] = []
-    for x in items or []:
+    for x in items:
         rt = normalize_room_type(x)
         if rt is not None and rt not in out:
             out.append(rt)

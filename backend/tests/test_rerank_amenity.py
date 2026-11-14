@@ -204,7 +204,6 @@ def test_listing_schemas_validation():
     assert body.query == "phòng trọ gần thủ đức"
     assert body.amenities == ["aircon", "mezzanine"]
     assert body.room_type == "STUDIO"
-    assert body.room_type_id == 2  # Tự động map STUDIO -> ID 2
 
     # Test VectorSearchBody validation: min_price > max_price
     with pytest.raises(ValueError, match="min_price không được lớn hơn max_price"):

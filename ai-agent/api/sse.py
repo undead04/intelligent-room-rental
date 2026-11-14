@@ -8,6 +8,7 @@ import time
 from typing import Any, Iterator, Optional
 
 from domain.schemas import AgentResponse
+from graph.tracing import TraceStore, bind_trace_store, reset_trace_store
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +88,14 @@ def stream_graph_events(
     user_message: str,
     effective_session_id: str,
     graph: Any = None,
+    trace_store: Optional[TraceStore] = None,
 ) -> Iterator[str]:
-    """Generator phát SSE thời gian thực qua LangGraph State Machine."""
+    """Generator phát SSE thời gian thực qua LangGraph State Machine (đọc trace cô lập từ TraceStore)."""
     state: dict[str, Any] = {
         "user_message": user_message,
         "session_id": effective_session_id,
-        "trace_events": [],
     }
+    effective_trace_store = trace_store if trace_store is not None else TraceStore(session_id=effective_session_id)
     emitted_event_count = 0
     final_resp: Optional[AgentResponse] = None
 
@@ -101,6 +103,7 @@ def stream_graph_events(
         from graph import build_housing_graph, default_deps
         graph = build_housing_graph(default_deps())
 
+    store_tok = bind_trace_store(effective_trace_store)
     try:
         for chunk in graph.stream(
             state,
@@ -122,8 +125,8 @@ def stream_graph_events(
                 }
                 yield f"event: trace\ndata: {json.dumps(node_step_event, ensure_ascii=False)}\n\n"
 
-                current_events = node_update.get("trace_events") or []
-                if isinstance(current_events, list) and len(current_events) > emitted_event_count:
+                current_events = effective_trace_store.snapshot()
+                if len(current_events) > emitted_event_count:
                     new_events = current_events[emitted_event_count:]
                     for evt in new_events:
                         yield f"event: trace\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
@@ -157,3 +160,5 @@ def stream_graph_events(
             error_message = f"Lỗi xử lý luồng AI: {err_raw}"
         err_event = {"type": "error", "error": error_message}
         yield f"event: error\ndata: {json.dumps(err_event, ensure_ascii=False)}\n\n"
+    finally:
+        reset_trace_store(store_tok)

@@ -6,7 +6,7 @@ from typing import Any, Optional
 from domain.enums import amenity_label
 from domain.schemas import RoomItem, UserPreferenceState
 from graph.deps import Deps
-from graph.tracing import emit_trace, tool_event
+from graph.tracing import emit_trace, resolve_trace_target, tool_event
 from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import sanitize_user_text
 from safety.grounding import verify_context_grounding
@@ -50,7 +50,7 @@ def _infer_session_region_hint(
 def synthesize_structured_query(pref: UserPreferenceState) -> str:
     """Tổng hợp câu truy vấn ngữ nghĩa chuẩn hoá từ trạng thái tích lũy UserPreferenceState."""
     parts: list[str] = []
-    rt_label = pref.room_type.label_vi if pref.room_type else "Phòng trọ"
+    rt_label = ", ".join(r.label_vi for r in pref.allowed_room_types) if pref.allowed_room_types else "Phòng trọ"
     parts.append(rt_label)
     if pref.location_text:
         parts.append(f"khu vực {pref.location_text}")
@@ -83,7 +83,7 @@ def build_query(
     if semantic_query and len(semantic_query.strip()) >= 4:
         return sanitize_user_text(semantic_query).strip()
     has_structured = bool(
-        pref.room_type
+        pref.allowed_room_types
         or pref.location_text
         or pref.min_bedrooms is not None
         or pref.amenities
@@ -101,27 +101,47 @@ def make_retrieval_node(deps: Deps):
         pref = (state.get("preferences") or UserPreferenceState()).model_copy(deep=True)
         multipliers = state.get("multipliers") or {}
         weights = dict(state.get("computed_weights") or {})
-        trace = list(state.get("trace_events") or [])
+        trace = resolve_trace_target(deps).sink()
         retry_count = state.get("retry_count", 0)
         session = deps.sessions.get_or_create_session(state["session_id"])
         vague = state.get("vague_location_info") or {}
         status, candidates = "ok", []
 
-        # 1) định vị
+        # 1) định vị (ghi state_before/state_after vì tool tác động tọa độ/ID hành chính vào preferences)
         if pref.location_text and not pref.has_point and not pref.has_admin:
             region_hint = _infer_session_region_hint(pref, session, vague)
-            args = {"query": pref.location_text, "kind": pref.location_kind}
+            args = {"query": pref.location_text, "kind": pref.location_kind, "region_hint": region_hint}
+
+            def _loc_state() -> dict[str, Any]:
+                return {
+                    "location_text": pref.location_text,
+                    "location_kind": pref.location_kind,
+                    "lat": pref.lat,
+                    "lng": pref.lng,
+                    "city_id": pref.city_id,
+                    "district_id": pref.district_id,
+                    "ward_id": pref.ward_id,
+                }
+
+            def _resolve_and_apply():
+                r = resolve_location(pref.location_text, pref.location_kind, deps.admin_lookup, deps.geocode, region_hint)
+                if r.kind == "admin":
+                    pref.set_location(pref.location_text, kind="admin", **r.ids)
+                elif r.kind == "point":
+                    pref.lat, pref.lng, pref.location_kind = r.lat, r.lng, "place"
+                return r
+
             res = tool_event(
                 trace,
                 "resolve_location",
                 args,
-                lambda: resolve_location(pref.location_text, pref.location_kind, deps.admin_lookup, deps.geocode, region_hint),
+                _resolve_and_apply,
                 lambda r: {"kind": r.kind, "ids": r.ids, "lat": r.lat, "lng": r.lng, "candidates": len(r.candidates)},
+                node="retrieval_node",
+                state_before=_loc_state,
+                state_after=_loc_state,
             )
-            if res.kind == "admin":
-                pref.set_location(pref.location_text, kind="admin", **res.ids)
-            elif res.kind == "point":
-                pref.lat, pref.lng, pref.location_kind = res.lat, res.lng, "place"
+            if res.kind == "point":
                 weights = compute_normalized_weights(pref, multipliers)
             elif res.kind == "admin_not_found":
                 status = "admin_not_found"
@@ -201,12 +221,11 @@ def make_retrieval_node(deps: Deps):
                 if getattr(pref, key) is not None:
                     search_args[key] = getattr(pref, key)
             if pref.allowed_room_types:
-                if len(pref.allowed_room_types) == 1:
-                    search_args["room_type"] = pref.allowed_room_types[0].value
-                else:
-                    search_args["room_types"] = [r.value for r in pref.allowed_room_types]
-            elif pref.room_type is not None:
-                search_args["room_type"] = pref.room_type.value
+                search_args["room_type"] = (
+                    pref.allowed_room_types[0].value
+                    if len(pref.allowed_room_types) == 1
+                    else [r.value for r in pref.allowed_room_types]
+                )
             if pref.excluded_room_types:
                 search_args["excluded_room_types"] = [r.value for r in pref.excluded_room_types]
 
@@ -245,7 +264,6 @@ def make_retrieval_node(deps: Deps):
                 "searched": False,
                 "admin_not_found": False,
                 "ambiguous_candidates": [],
-                "trace_events": trace,
                 "last_search_args": search_args,
             }
 
@@ -273,7 +291,6 @@ def make_retrieval_node(deps: Deps):
             "admin_not_found": status == "admin_not_found",
             "ambiguous_candidates": candidates,
             "retry_count": retry_count,
-            "trace_events": trace,
             "last_search_args": search_args,
             **extra,
         }

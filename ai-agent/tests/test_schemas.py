@@ -22,25 +22,21 @@ def test_assigning_amenities_normalizes():
 
 
 def test_constructor_normalizes():
-    p = UserPreferenceState(amenities=["AC", "camera"], room_type="ktx", excluded_room_types=["studio", "bậy"])
+    p = UserPreferenceState(amenities=["AC", "camera"], allowed_room_types="ktx", excluded_room_types=["studio", "bậy"])
     assert p.amenities == [Amenity.AIRCON, Amenity.CAMERA]
-    assert p.room_type is RoomType.SLEEPBOX
+    assert p.allowed_room_types == [RoomType.SLEEPBOX]
     assert p.excluded_room_types == [RoomType.STUDIO]
 
 
-def test_room_type_assignment_and_id_property():
+def test_allowed_room_types_assignment_normalizes():
     p = UserPreferenceState()
-    assert p.room_type_id is None
-    p.room_type = "SLEEPBOX"
-    assert p.room_type is RoomType.SLEEPBOX and p.room_type_id == 4
-    p.room_type = "không có loại này"
-    assert p.room_type is None and p.room_type_id is None
-
-
-def test_room_type_id_is_read_only():
-    p = UserPreferenceState()
-    with pytest.raises((ValueError, AttributeError, ValidationError)):
-        p.room_type_id = 4  # type: ignore[misc]
+    assert p.allowed_room_types == []
+    p.allowed_room_types = "SLEEPBOX"
+    assert p.allowed_room_types == [RoomType.SLEEPBOX]
+    p.allowed_room_types = ["ROOM", "studio", "bậy"]
+    assert p.allowed_room_types == [RoomType.ROOM, RoomType.STUDIO]
+    p.allowed_room_types = "không có loại này"
+    assert p.allowed_room_types == []
 
 
 def test_has_point_and_has_admin():
@@ -82,7 +78,7 @@ def test_to_context_string():
     assert UserPreferenceState().to_context_string() == "Chưa có tiêu chí nào được thiết lập."
     p = UserPreferenceState(
         location_text="UIT", lat=10.87, lng=106.8, max_price=3_500_000, amenities=["ml"],
-        room_type="studio", excluded_room_types=["ktx"], min_area=20,
+        allowed_room_types=["studio"], excluded_room_types=["ktx"], min_area=20,
     )
     s = p.to_context_string()
     assert "UIT" in s and "3.5 tr/tháng" in s and "aircon" in s
@@ -90,9 +86,9 @@ def test_to_context_string():
 
 
 def test_json_roundtrip_serializes_enums_as_values():
-    p = UserPreferenceState(amenities=["ml"], room_type="ktx")
+    p = UserPreferenceState(amenities=["ml"], allowed_room_types="ktx")
     d = json.loads(p.model_dump_json())
-    assert d["amenities"] == ["aircon"] and d["room_type"] == "SLEEPBOX"
+    assert d["amenities"] == ["aircon"] and d["allowed_room_types"] == ["SLEEPBOX"]
     assert UserPreferenceState.model_validate(d) == p
 
 

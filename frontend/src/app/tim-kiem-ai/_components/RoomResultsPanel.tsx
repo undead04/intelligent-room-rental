@@ -2,80 +2,19 @@
 
 import { useMemo } from "react";
 import RoomResultCard from "@/app/tim-kiem-ai/_components/RoomResultCard";
-import type { RoomItem, UserPreferenceState } from "@/app/tim-kiem-ai/types";
-import {
-  CANONICAL_AMENITIES_MAP,
-  CANONICAL_ROOM_TYPES_MAP,
-} from "@/app/tim-kiem-ai/_constants/aiWorkspace";
+import type { RoomItem } from "@/app/tim-kiem-ai/types";
 
 interface RoomResultsPanelProps {
   rooms: RoomItem[];
   selectedRoomId: string;
-  preferences?: UserPreferenceState | null;
   onSelectRoom: (roomId: string) => void;
 }
 
 export default function RoomResultsPanel({
   rooms,
   selectedRoomId,
-  preferences,
   onSelectRoom,
 }: RoomResultsPanelProps) {
-  // Extract active search tags from AI preferences
-  // const searchTags = useMemo(() => {
-  //   if (!preferences) return [];
-  //   const tags: string[] = [];
-  //   if (preferences.room_type && CANONICAL_ROOM_TYPES_MAP[preferences.room_type]) {
-  //     tags.push(`🏠 ${CANONICAL_ROOM_TYPES_MAP[preferences.room_type]}`);
-  //   }
-  //   if (preferences.location_text) {
-  //     const cleanLoc = preferences.location_text
-  //       .replace(/\s*\((?:ví dụ|vd|vd:)[^)]*\)/gi, "")
-  //       .replace(/^(?:khu vực\s+)?(?:lân cận|quanh)\s+/gi, "")
-  //       .trim();
-  //     if (cleanLoc) {
-  //       tags.push(`📍 ${cleanLoc}`);
-  //     }
-  //   }
-  //   if (preferences.min_price && preferences.max_price) {
-  //     const minTr = (preferences.min_price / 1_000_000).toFixed(1).replace(".0", "");
-  //     const maxTr = (preferences.max_price / 1_000_000).toFixed(1).replace(".0", "");
-  //     tags.push(`💰 ${minTr} - ${maxTr}tr`);
-  //   } else if (preferences.max_price) {
-  //     const priceTr = (preferences.max_price / 1_000_000).toFixed(1).replace(".0", "");
-  //     tags.push(`💰 ≤ ${priceTr}tr`);
-  //   } else if (preferences.min_price) {
-  //     const priceTr = (preferences.min_price / 1_000_000).toFixed(1).replace(".0", "");
-  //     tags.push(`💰 ≥ ${priceTr}tr`);
-  //   }
-  //   if (preferences.min_area || preferences.max_area) {
-  //     if (preferences.min_area && preferences.max_area) {
-  //       tags.push(`📐 ${preferences.min_area}-${preferences.max_area}m²`);
-  //     } else if (preferences.min_area) {
-  //       tags.push(`📐 ≥${preferences.min_area}m²`);
-  //     } else {
-  //       tags.push(`📐 ≤${preferences.max_area}m²`);
-  //     }
-  //   }
-  //   if (preferences.amenities && preferences.amenities.length > 0) {
-  //     preferences.amenities.forEach((a) => {
-  //       const clean = a.trim().toLowerCase();
-  //       const meta = CANONICAL_AMENITIES_MAP[clean];
-  //       if (meta) {
-  //         tags.push(`${meta.emoji} ${meta.label}`);
-  //       } else {
-  //         tags.push(`✨ ${a}`);
-  //       }
-  //     });
-  //   }
-  //   if (preferences.special_requirements && preferences.special_requirements.length > 0) {
-  //     preferences.special_requirements.forEach((r) => {
-  //       tags.push(`🏷️ ${r}`);
-  //     });
-  //   }
-  //   return Array.from(new Set(tags));
-  // }, [preferences]);
-
   // Client-side filtering & sorting of rooms
   const processedRooms = useMemo(() => {
     if (!rooms || rooms.length === 0) return [];

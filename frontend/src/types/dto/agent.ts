@@ -19,8 +19,8 @@ export interface UserPreferenceState {
   city_id?: number;
   district_id?: number;
   ward_id?: number;
-  room_type?: string;
-  room_type_id?: number;
+  allowed_room_types?: string[];
+  excluded_room_types?: string[];
   min_price?: number;
   max_price?: number;
   min_area?: number;

@@ -66,6 +66,104 @@ def nlu_md(results: dict[str, dict]) -> str:
     return md
 
 
+def _fmt_pct(val: Any) -> str:
+    return "N/A" if val is None else f"{float(val) * 100:.1f}%"
+
+
+def _fmt_delta(val: Any) -> str:
+    return "N/A" if val is None else f"{float(val) * 100:+.1f}%"
+
+
+def agent_eval_md(res: dict) -> str:
+    """Định dạng báo cáo đánh giá ổn định pass^k, DoD và Trajectory."""
+    decl = res.get("pre_run_declaration") or {}
+    s = res.get("summary") or {}
+    versions = res.get("versions") or {}
+    ver_str = ", ".join(f"{k}={v}" for k, v in sorted(versions.items())) if versions else "chưa gắn"
+    rows = [
+        ["Tỉ lệ đạt toàn bộ k lần (pass^k)", fmt_rate(s["pass_all_k_rate"])],
+        ["Tỉ lệ đạt trung bình trên từng lượt", fmt_rate(s["mean_pass_rate"])],
+        ["Tỉ lệ đạt Trajectory", fmt_rate(s["trajectory_pass_rate"])],
+        ["Đủ bước bắt buộc (Trajectory Q1)", fmt_rate(s["sufficient_steps_rate"])],
+        ["Không bước cấm/thừa (Trajectory Q2)", fmt_rate(s["no_forbidden_or_redundant_rate"])],
+        ["Tỉ lệ đạt DoD Verifier", fmt_rate(s["dod_pass_rate"])],
+        ["Số case không ổn định", str(s.get("unstable_case_count", 0))],
+        ["Đạt ngưỡng công bố", "ĐẠT" if s.get("meets_threshold") else "KHÔNG ĐẠT"],
+    ]
+    header_info = (
+        f"### Đánh giá ổn định (pass^k) & Trajectory\n\n"
+        f"- **Khai báo trước khi chạy:** `k={decl.get('k')}`, ngưỡng đạt `{_fmt_pct(decl.get('pass_threshold'))}`\n"
+        f"- **Eval set:** `{res.get('dataset_version')}` (digest `{res.get('dataset_digest')}`, {decl.get('n_cases')} cases)\n"
+        f"- **Phiên bản trace:** `{ver_str}`\n\n"
+    )
+    parts = [header_info + _table(rows, ["Chỉ số", "Kết quả"])]
+
+    unstable = res.get("unstable_cases") or []
+    if unstable:
+        lines = ["#### Danh sách case không ổn định & bước khác biệt đầu tiên\n"]
+        for u in unstable:
+            div = u.get("first_divergence") or {}
+            run_ids = ", ".join(str(r) for r in (u.get("run_ids") or []))
+            if div.get("diverged"):
+                div_desc = (
+                    f"bước `{div.get('first_diff_index')}` (`{div.get('step_type')}`, "
+                    f"run `{div.get('run_id_a')}` seq `{div.get('seq_a')}` vs "
+                    f"run `{div.get('run_id_b')}` seq `{div.get('seq_b')}`, "
+                    f"trường lệch: `{', '.join(div.get('diff_fields') or [])}`)"
+                )
+            else:
+                div_desc = "không phát hiện bước lệch cụ thể trong trace"
+            lines.append(
+                f"- **{u['case_id']}** ({u.get('pass_count')}/{u.get('k')} đạt, runs=[{run_ids}]): khác biệt đầu tiên tại {div_desc}."
+            )
+        parts.append("\n".join(lines))
+    else:
+        parts.append("Không có case không ổn định.")
+    return "\n\n".join(parts)
+
+
+def regression_md(reg: dict) -> str:
+    """Định dạng bảng so sánh Regression (Baseline / Current / Delta) và kết luận KEEP/REJECT."""
+    changed = reg.get("changed_versions") or {}
+    changed_desc = (
+        ", ".join(f"`{k}`: `{v.get('baseline')}` -> `{v.get('current')}`" for k, v in sorted(changed.items()))
+        if changed
+        else "Không ghi nhận khác biệt phiên bản prompt/skill/model"
+    )
+    metric_labels = {
+        "pass_all_k_rate": "Tỉ lệ đạt cả k lần (pass^k)",
+        "mean_pass_rate": "Tỉ lệ đạt trung bình",
+        "trajectory_pass_rate": "Tỉ lệ đạt Trajectory",
+        "sufficient_steps_rate": "Đủ bước bắt buộc (Q1)",
+        "no_forbidden_or_redundant_rate": "Không bước cấm/thừa (Q2)",
+        "dod_pass_rate": "Tỉ lệ đạt DoD Verifier",
+    }
+    comp = reg.get("metrics_comparison") or {}
+    rows = [
+        [
+            metric_labels.get(k, k),
+            _fmt_pct(comp[k].get("baseline")),
+            _fmt_pct(comp[k].get("current")),
+            _fmt_delta(comp[k].get("delta")),
+        ]
+        for k in comp
+    ]
+    regressed = reg.get("regressed_cases") or []
+    improved = reg.get("improved_cases") or []
+    reg_str = ", ".join(c["case_id"] for c in regressed) if regressed else "Không có"
+    imp_str = ", ".join(c["case_id"] for c in improved) if improved else "Không có"
+
+    return "\n\n".join([
+        f"### Kiểm định Regression\n\n"
+        f"- **Eval set khóa digest:** `{reg.get('dataset_version')}` (`{reg.get('dataset_digest')}`)\n"
+        f"- **Thay đổi phiên bản:** {changed_desc}",
+        _table(rows, ["Chỉ số", "Baseline", "Current", "Chênh lệch (Delta)"]),
+        f"- **Case chuyển từ Đạt -> Rớt ({len(regressed)}):** {reg_str}\n"
+        f"- **Case chuyển từ Rớt -> Đạt ({len(improved)}):** {imp_str}\n"
+        f"- **Kết luận ({reg.get('decision')}):** {reg.get('decision_rationale')}",
+    ])
+
+
 def ablation_md(res: dict[str, dict]) -> str:
     names = list(res)
     keys = [
@@ -92,6 +190,10 @@ def build_report(results: dict[str, Any]) -> str:
         parts.append(nlu_md(results["nlu"]))
     if "ablation" in results:
         parts.append(ablation_md(results["ablation"]))
+    if "agent_eval" in results:
+        parts.append(agent_eval_md(results["agent_eval"]))
+    if "regression" in results:
+        parts.append(regression_md(results["regression"]))
     return "\n\n".join(parts) + "\n"
 
 

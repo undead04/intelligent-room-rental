@@ -103,13 +103,11 @@ def get_price_stats(
     city_id: int = Query(..., ge=1, description="ID Tỉnh/Thành phố"),
     district_id: Optional[int] = Query(None, ge=1, description="ID Quận/Huyện"),
     room_type_id: Optional[int] = Query(None, ge=1, description="ID loại phòng (dạng số nguyên)"),
-    room_type: Optional[int] = Query(None, ge=1, description="ID loại phòng dạng số (alias của room_type_id)"),
     last_d: Optional[int] = Query(None, ge=1, description="Số ngày gần nhất cần thống kê (vd: 30), mặc định None = toàn thời gian"),
     service: ListingService = Depends(get_listing_service),
 ) -> ResponseDTO[PriceStatsResponse]:
-    eff_room_type_id = room_type_id if room_type_id is not None else room_type
     return ResponseDTO[PriceStatsResponse](
-        data=service.get_price_stats(city_id, district_id, eff_room_type_id, last_d=last_d),
+        data=service.get_price_stats(city_id, district_id, room_type_id, last_d=last_d),
     )
 
 
@@ -152,9 +150,7 @@ def vector_search_listings(
         city_id=body.city_id,
         district_id=body.district_id,
         ward_id=body.ward_id,
-        room_type_id=body.room_type_id,
         room_type=body.room_type,
-        room_types=body.room_types,
         excluded_room_types=body.excluded_room_types,
         min_price=body.min_price,
         max_price=body.max_price,

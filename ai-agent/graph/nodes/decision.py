@@ -7,7 +7,7 @@ from domain.enums import amenity_label
 from domain.schemas import UserPreferenceState
 from graph.deps import Deps
 from graph.replies import _format_nearby_bullets, reply_when_no_rooms
-from graph.tracing import TraceCollector, traced_call
+from graph.tracing import TraceCollector, resolve_trace_target, tool_event, traced_call
 from intelligence.advice import (
     ZeroResultAdvice,
     generate_advice,
@@ -51,7 +51,7 @@ def followup_fallback_reply(room: Optional[Any], details: Optional[dict[str, Any
     return "\n\n".join(msg)
 
 
-def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: list, pref: UserPreferenceState, trace: list) -> tuple[str, list[str]]:
+def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: list, pref: UserPreferenceState, trace: Any) -> tuple[str, list[str]]:
     """Hỏi tiếp về phòng đã đề xuất: agent có công cụ get_listing_detail; trả (văn bản, bằng chứng từ công cụ)."""
     from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
     from tools.housing_tools import compact_listing_detail, dump, fetch_listing_detail
@@ -66,8 +66,14 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
     room_detail_str = ""
 
     if target_room:
-        res = fetch_listing_detail(target_room.id)
-        if res.get("ok") and isinstance(res.get("data"), dict):
+        res = tool_event(
+            trace,
+            "get_listing_detail",
+            {"listing_id": target_room.id},
+            lambda: fetch_listing_detail(target_room.id),
+            node="decision_node",
+        )
+        if isinstance(res, dict) and res.get("ok") and isinstance(res.get("data"), dict):
             compact_detail = compact_listing_detail(res.get("data"))
             room_detail_str = dump({"ok": True, "data": compact_detail})
 
@@ -94,7 +100,7 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
             *hist,
             HumanMessage(content=query_msg),
         ]
-        result = agent.invoke({"messages": messages}, config={"callbacks": [TraceCollector(trace)]})
+        result = agent.invoke({"messages": messages}, config={"callbacks": [TraceCollector(trace, node_name="decision_node")]})
         msgs = result.get("messages", [])
         evidence.extend(_text(m) for m in msgs if isinstance(m, ToolMessage))
         for m in reversed(msgs):
@@ -124,7 +130,13 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
                 f"Câu hỏi của người dùng: \"{state.get('user_message', '')}\"\n\n"
                 "Yêu cầu: Trả lời trực tiếp, rõ ràng, trung thực và thân thiện. Ưu tiên trích xuất chi phí điện, nước, gửi xe và nội quy từ phần mô tả của chủ nhà. Nếu thông tin không có trong bài đăng, nêu rõ và khuyên liên hệ chủ trọ để xác nhận. Không dump lại danh sách các phòng khác."
             )
-            ans = model.invoke([HumanMessage(content=qa_prompt)])
+            ans = traced_call(
+                trace,
+                lambda: model.invoke([HumanMessage(content=qa_prompt)]),
+                message_count=1,
+                node="decision_node",
+                input_data=qa_prompt,
+            )
             ans_text = _text(ans).strip()
             if len(ans_text) > MIN_AGENT_REPLY:
                 return ans_text, evidence
@@ -138,7 +150,7 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
 def make_decision_node(deps: Deps):
     def decision_node(state: dict[str, Any]) -> dict[str, Any]:
         rooms = state.get("retrieved_rooms") or []
-        trace = list(state.get("trace_events") or [])
+        trace = resolve_trace_target(deps).sink()
         session = deps.sessions.get_or_create_session(state["session_id"])
         if not rooms:
             text = ""
@@ -170,17 +182,22 @@ def make_decision_node(deps: Deps):
                         market_str=market_str,
                         neighbor_bullets=neighbor_bullets,
                     )
-                    z_advice = traced_call(trace, lambda: model.with_structured_output(ZeroResultAdvice).invoke([
-                        ("system", deps.base_prompt),
-                        ("human", prompt),
-                    ]))
+                    z_advice = traced_call(
+                        trace,
+                        lambda: model.with_structured_output(ZeroResultAdvice).invoke([
+                            ("system", deps.base_prompt),
+                            ("human", prompt),
+                        ]),
+                        node="decision_node",
+                        input_data=[("system", deps.base_prompt), ("human", prompt)],
+                    )
                     z_advice = z_advice if isinstance(z_advice, ZeroResultAdvice) else ZeroResultAdvice.model_validate(z_advice)
                     text = render_zero_result_advice(z_advice, loc)
                 except Exception:
                     logger.warning("decision_node: LLM sinh lời khuyên 0 phòng gặp lỗi, dùng fallback code", exc_info=True)
             if not text:
                 text = reply_when_no_rooms(state, session)
-            return {"insights": None, "final_text": text, "tool_evidence": [], "trace_events": trace}
+            return {"insights": None, "final_text": text, "tool_evidence": []}
 
         pref = state.get("preferences") or UserPreferenceState()
         insights = build_decision_insights(rooms, state.get("weight_explanations"))
@@ -202,6 +219,13 @@ def make_decision_node(deps: Deps):
                         retry_issues=state.get("answer_issues"),
                         focus_rank=state.get("focus_rank"),
                     ),
+                    node="decision_node",
+                    input_data={
+                        "user_message": state.get("user_message", ""),
+                        "room_count": len(rooms),
+                        "retry_issues": state.get("answer_issues"),
+                        "focus_rank": state.get("focus_rank"),
+                    },
                 ) if model else None
                 text = render_advice(advice, rooms) if advice else ""
         except Exception:
@@ -214,6 +238,6 @@ def make_decision_node(deps: Deps):
                 text = followup_fallback_reply(target_room)
             else:
                 text = template_reply(rooms, insights)
-        return {"insights": insights, "final_text": text, "tool_evidence": evidence, "trace_events": trace}
+        return {"insights": insights, "final_text": text, "tool_evidence": evidence}
 
     return decision_node

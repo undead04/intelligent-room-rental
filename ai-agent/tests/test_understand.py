@@ -61,8 +61,8 @@ def test_needs_clarification_rules():
 
 
 def test_room_type_exclusion_flows_into_preferences():
-    plan, _ = run(TurnAnalysis(intent="refine_search", patch=PreferencePatch(room_types_exclude=["ktx"])), make_session(pref=UserPreferenceState(room_type="ktx"), messages=["x"]))
-    assert plan.preferences.room_type is None and plan.preferences.excluded_room_types == [RoomType.SLEEPBOX]
+    plan, _ = run(TurnAnalysis(intent="refine_search", patch=PreferencePatch(excluded_room_types=["ktx"])), make_session(pref=UserPreferenceState(allowed_room_types=["ktx"]), messages=["x"]))
+    assert plan.preferences.allowed_room_types == [] and plan.preferences.excluded_room_types == [RoomType.SLEEPBOX]
 
 
 # ---------------- các intent khác ----------------

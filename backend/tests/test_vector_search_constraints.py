@@ -400,25 +400,28 @@ def setup_constraint_data(db_session):
 
 def test_vector_search_body_room_types_normalization():
     """Nhóm 1: VectorSearchBody chuẩn hóa đúng tập đa loại phòng string/int, loại bỏ trùng lặp và alias."""
-    # 1. Nhận mã chuỗi chuẩn
-    body1 = VectorSearchBody(query="tìm phòng trọ gần đại học", room_types=["ROOM", "STUDIO"])
-    assert body1.room_types == ["ROOM", "STUDIO"]
+    # 1. Nhận mã chuỗi đơn hoặc danh sách
+    body0 = VectorSearchBody(query="tìm studio", room_type="studio")
+    assert body0.room_type == "STUDIO"
+
+    body1 = VectorSearchBody(query="tìm phòng trọ gần đại học", room_type=["ROOM", "STUDIO"])
+    assert body1.room_type == ["ROOM", "STUDIO"]
 
     # 2. Nhận danh sách ID số
-    body2 = VectorSearchBody(query="tìm phòng", room_types=[1, 2])
-    assert body2.room_types == [1, 2]
+    body2 = VectorSearchBody(query="tìm phòng", room_type=[1, 2])
+    assert body2.room_type == [1, 2]
 
     # 3. Chuẩn hóa alias BOARDING_HOUSE thành ROOM
-    body3 = VectorSearchBody(query="tìm phòng", room_types=["BOARDING_HOUSE", "APARTMENT"])
-    assert body3.room_types == ["ROOM", "APARTMENT"]
+    body3 = VectorSearchBody(query="tìm phòng", room_type=["BOARDING_HOUSE", "APARTMENT"])
+    assert body3.room_type == ["ROOM", "APARTMENT"]
 
     # 4. Loại bỏ phần tử trùng lặp (Deduplication)
-    body4 = VectorSearchBody(query="tìm phòng", room_types=["ROOM", "ROOM", "STUDIO", "STUDIO"])
-    assert body4.room_types == ["ROOM", "STUDIO"]
+    body4 = VectorSearchBody(query="tìm phòng", room_type=["ROOM", "ROOM", "STUDIO", "STUDIO"])
+    assert body4.room_type == ["ROOM", "STUDIO"]
 
 
 def test_repo_vector_search_multi_room_types_filtering(db_session, setup_constraint_data):
-    """Nhóm 1: ListingRepository.vector_search trả về đúng các tin trong room_types cho phép, loại bỏ SLEEPBOX."""
+    """Nhóm 1: ListingRepository.vector_search trả về đúng các tin trong room_type cho phép, loại bỏ SLEEPBOX."""
     repo = ListingRepository(db_session)
     center_lat = setup_constraint_data["center_lat"]
     center_lng = setup_constraint_data["center_lng"]
@@ -431,7 +434,7 @@ def test_repo_vector_search_multi_room_types_filtering(db_session, setup_constra
         lat=center_lat,
         lng=center_lng,
         max_distance_km=1.0,
-        room_types=["ROOM", "STUDIO"],
+        room_type=["ROOM", "STUDIO"],
         limit=20,
     )
 
@@ -452,7 +455,7 @@ def test_repo_vector_search_multi_room_types_filtering(db_session, setup_constra
         lat=center_lat,
         lng=center_lng,
         max_distance_km=1.0,
-        room_types=[3],
+        room_type=[3],
         limit=20,
     )
     apt_ids = [r["listing"].id for r in apt_results]
@@ -600,18 +603,18 @@ def test_vector_search_body_boundary_validation_rejections():
     """Nhóm 2: Kiểm thử validation biên trên VectorSearchBody từ chối các tham số sai lệch."""
     # 1. Từ chối loại phòng không xác định
     with pytest.raises(ValidationError) as exc1:
-        VectorSearchBody(query="tìm phòng", room_types=["UNKNOWN_ROOM_TYPE"])
-    assert "room_types" in str(exc1.value)
+        VectorSearchBody(query="tìm phòng", room_type=["UNKNOWN_ROOM_TYPE"])
+    assert "room_type" in str(exc1.value)
 
-    # 2. Từ chối giá trị boolean lọt vào room_types (vd: [True])
+    # 2. Từ chối giá trị boolean lọt vào room_type (vd: [True])
     with pytest.raises(ValidationError) as exc2:
-        VectorSearchBody(query="tìm phòng", room_types=[True])
-    assert "room_types" in str(exc2.value)
+        VectorSearchBody(query="tìm phòng", room_type=[True])
+    assert "room_type" in str(exc2.value)
 
     # 3. Từ chối ID ngoài khoảng 1..5
     with pytest.raises(ValidationError) as exc3:
-        VectorSearchBody(query="tìm phòng", room_types=[99])
-    assert "room_types" in str(exc3.value)
+        VectorSearchBody(query="tìm phòng", room_type=[99])
+    assert "room_type" in str(exc3.value)
 
     # 4. Từ chối min_price > max_price
     with pytest.raises(ValidationError) as exc4:
@@ -778,7 +781,7 @@ def test_live_server_vector_search_endpoint_haversine_and_room_types(setup_const
             "lat": center_lat,
             "lng": center_lng,
             "max_distance_km": 2.0,
-            "room_types": ["ROOM", "STUDIO"],
+            "room_type": ["ROOM", "STUDIO"],
             "limit": 10,
         }
 
@@ -813,26 +816,26 @@ def test_live_server_vector_search_endpoint_haversine_and_room_types(setup_const
                     f"Phòng {listing_data.get('id')} vượt quá bán kính tròn 2.0 km (thực tế: {calc_dist:.3f} km)"
                 )
 
-        # 3. Xác minh lỗi validation khi truyền room_types không hợp lệ nhận đúng 422 VALIDATION_ERROR (không bị lỗi 500 serialization)
+        # 3. Xác minh lỗi validation khi truyền room_type không hợp lệ nhận đúng 422 VALIDATION_ERROR (không bị lỗi 500 serialization)
         invalid_payload = {
             "query": "phòng trọ",
-            "room_types": ["INVALID_TYPE"],
+            "room_type": ["INVALID_TYPE"],
         }
         res_invalid = client.post("/api/v1/listings/vector-search", json=invalid_payload)
-        assert res_invalid.status_code == 422, f"API phải trả về 422 khi room_types không hợp lệ, thực tế: {res_invalid.status_code}"
+        assert res_invalid.status_code == 422, f"API phải trả về 422 khi room_type không hợp lệ, thực tế: {res_invalid.status_code}"
         invalid_body = res_invalid.json()
         assert invalid_body.get("code") == "VALIDATION_ERROR"
         assert invalid_body.get("success") is False
 
 
 def test_vector_search_endpoint_invalid_room_types_returns_422():
-    """Kiểm tra gửi HTTP POST /api/v1/listings/vector-search với room_types=['INVALID_TYPE']
+    """Kiểm tra gửi HTTP POST /api/v1/listings/vector-search với room_type=['INVALID_TYPE']
     phải nhận đúng status_code == 422 và code == 'VALIDATION_ERROR' (không bị 500 serialization error).
     """
     with TestClient(app) as client:
         invalid_payload = {
             "query": "phòng trọ",
-            "room_types": ["INVALID_TYPE"],
+            "room_type": ["INVALID_TYPE"],
         }
         res = client.post("/api/v1/listings/vector-search", json=invalid_payload)
         assert res.status_code == 422, f"API phải trả về 422, thực tế: {res.status_code}"

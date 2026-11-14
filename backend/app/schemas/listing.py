@@ -157,11 +157,9 @@ class VectorSearchBody(BaseModel):
     city_id: Optional[int] = Field(None, ge=1, description="ID Tỉnh/Thành phố")
     district_id: Optional[int] = Field(None, ge=1, description="ID Quận/Huyện")
     ward_id: Optional[int] = Field(None, ge=1, description="ID Phường/Xã")
-    room_type_id: Optional[int] = Field(None, ge=1, le=5, description="ID loại phòng (1..5)")
-    room_type: Optional[str] = Field(None, description="Mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE)")
-    room_types: Optional[list[str | int]] = Field(
+    room_type: Optional[str | int | list[str | int]] = Field(
         default=None,
-        description="Danh sách các loại phòng cho phép (mã string hoặc ID số, vd: ['ROOM', 'STUDIO'] hoặc [1, 2])",
+        description="Mã hoặc danh sách các loại phòng cho phép (vd: 'STUDIO' hoặc ['ROOM', 'STUDIO'] hoặc [1, 2])",
     )
     excluded_room_types: Optional[list[str | int]] = Field(
         default=None,
@@ -183,54 +181,42 @@ class VectorSearchBody(BaseModel):
             raise ValueError("query không được để trống")
         return v.strip()
 
-    @field_validator("room_type")
+    @field_validator("room_type", mode="before")
     @classmethod
-    def validate_room_type(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            clean = v.value if hasattr(v, "value") else str(v).strip().upper()
-            if clean == "BOARDING_HOUSE":
-                clean = "ROOM"
-            if clean not in ROOM_TYPE_CODE_TO_ID:
-                valid_codes = list(ROOM_TYPE_CODE_TO_ID.keys())
-                raise ValueError(f"room_type '{v}' không hợp lệ. Phải là một trong: {valid_codes}")
-            return clean
-        return v
-
-    @field_validator("room_types", mode="before")
-    @classmethod
-    def validate_room_types(cls, v: Any) -> Optional[list[str | int]]:
+    def validate_room_type(cls, v: Any) -> Optional[str | int | list[str | int]]:
         if v is None:
             return None
-        if not isinstance(v, (list, tuple, set)):
-            raise ValueError("room_types phải là danh sách")
-        normalized: list[str | int] = []
-        for item in v:
+
+        def _norm_one(item: Any) -> str | int:
             if isinstance(item, bool):
-                raise ValueError(f"Giá trị boolean không hợp lệ cho room_types: {item}")
+                raise ValueError(f"Giá trị boolean không hợp lệ cho room_type: {item}")
             if isinstance(item, int):
                 if not (1 <= item <= 5):
                     raise ValueError(f"room_type ID '{item}' không hợp lệ. Phải nằm trong khoảng 1..5.")
-                clean_item: str | int = item
-            else:
-                s_item = item.value if hasattr(item, "value") else str(item).strip()
-                if s_item.isdigit():
-                    int_val = int(s_item)
-                    if not (1 <= int_val <= 5):
-                        raise ValueError(f"room_type ID '{s_item}' không hợp lệ. Phải nằm trong khoảng 1..5.")
-                    clean_item = int_val
-                else:
-                    clean_str = s_item.upper()
-                    if clean_str == "BOARDING_HOUSE":
-                        clean_str = "ROOM"
-                    if clean_str not in ROOM_TYPE_CODE_TO_ID:
-                        valid_codes = list(ROOM_TYPE_CODE_TO_ID.keys())
-                        raise ValueError(f"room_type '{item}' không hợp lệ. Phải là một trong: {valid_codes}")
-                    clean_item = clean_str
+                return item
+            s_item = item.value if hasattr(item, "value") else str(item).strip()
+            if s_item.isdigit():
+                int_val = int(s_item)
+                if not (1 <= int_val <= 5):
+                    raise ValueError(f"room_type ID '{s_item}' không hợp lệ. Phải nằm trong khoảng 1..5.")
+                return int_val
+            clean_str = s_item.upper()
+            if clean_str == "BOARDING_HOUSE":
+                clean_str = "ROOM"
+            if clean_str not in ROOM_TYPE_CODE_TO_ID:
+                valid_codes = list(ROOM_TYPE_CODE_TO_ID.keys())
+                raise ValueError(f"room_type '{item}' không hợp lệ. Phải là một trong: {valid_codes}")
+            return clean_str
 
-            if clean_item not in normalized:
-                normalized.append(clean_item)
+        if isinstance(v, (list, tuple, set)):
+            normalized: list[str | int] = []
+            for item in v:
+                clean_item = _norm_one(item)
+                if clean_item not in normalized:
+                    normalized.append(clean_item)
+            return normalized
 
-        return normalized
+        return _norm_one(v)
 
     @model_validator(mode="after")
     def validate_ranges_and_constraints(self) -> "VectorSearchBody":
@@ -240,17 +226,7 @@ class VectorSearchBody(BaseModel):
         if self.min_area is not None and self.max_area is not None:
             if self.min_area > self.max_area:
                 raise ValueError("min_area không được lớn hơn max_area")
-        # Cách 1: Tự động đồng bộ room_type_id nếu có room_type
-        if self.room_type_id is None and self.room_type is not None:
-            clean = self.room_type.value if hasattr(self.room_type, "value") else str(self.room_type).strip().upper()
-            if clean == "BOARDING_HOUSE":
-                clean = "ROOM"
-            self.room_type_id = ROOM_TYPE_CODE_TO_ID.get(clean)
         return self
-
-
-VectorSearchQueryFilters = VectorSearchBody
-VectorSearchRequest = VectorSearchBody
 
 
 class VectorSearchResult(BaseModel):

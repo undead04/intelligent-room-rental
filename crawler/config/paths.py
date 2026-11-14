@@ -47,10 +47,8 @@ ML_ARTIFACTS_DIR = ML_DIR / "artifacts"
 # SQLite Staging DB lưu trữ dữ liệu thô duy nhất
 STAGING_DB_PATH = RAW_DATA_DIR / "staging.db"
 
-# Checkpoint LLM (Ưu tiên JSONL tốc độ cao, tương thích ngược .json)
+# Checkpoint LLM JSONL tốc độ cao
 LLM_CHECKPOINT_PATH = PROCESSED_DATA_DIR / "checkpoint_reports.jsonl"
-LEGACY_JSON_CHECKPOINT_PATH = PROCESSED_DATA_DIR / "checkpoint_reports.json"
-LEGACY_LLM_CHECKPOINT_PATH = LLM_DIR / "checkpoint.json"
 PROCESSED_PARQUET_PATH = PROCESSED_DATA_DIR / "listings_clean.parquet"
 
 # Tập tin danh mục tọa độ POI trung tâm đô thị & đại học toàn quốc

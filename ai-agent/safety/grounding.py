@@ -15,7 +15,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Iterable, Literal, Optional, Sequence
 
 from pydantic import BaseModel, Field
 
@@ -82,7 +82,7 @@ def check_hard_constraints(
     valid: list[RoomItem] = []
     dropped: list[tuple[str, str]] = []
     excluded = set(pref.excluded_room_types)
-    allowed_types = set(pref.allowed_room_types) if pref.allowed_room_types else ({pref.room_type} if pref.room_type is not None else set())
+    allowed_types = set(pref.allowed_room_types)
 
     for r in rooms:
         reason = None
@@ -168,7 +168,13 @@ def _market_for(
 ):
     city = _search_arg(args, "city_id") or (pref.city_id if pref else None)
     district = _search_arg(args, "district_id") or (pref.district_id if pref else None)
-    rt = normalize_room_type(_search_arg(args, "room_type")) or (pref.room_type if pref else None)
+    rt_arg = _search_arg(args, "room_type")
+    if isinstance(rt_arg, list):
+        rt = normalize_room_type(rt_arg[0]) if len(rt_arg) == 1 else None
+    else:
+        rt = normalize_room_type(rt_arg) or (
+            pref.allowed_room_types[0] if pref and len(pref.allowed_room_types) == 1 else None
+        )
     return fetch_market_stats(
         fetcher,
         city_id=city,
@@ -267,6 +273,46 @@ def backend_market_fetcher(**kw: Any) -> Optional[dict[str, Any]]:
 # 2) ANSWER GROUNDING
 # ===========================================================================
 
+ValidationTier = Literal["schema_format", "business_rule", "external_cross_check"]
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    """Thông báo lỗi có cấu trúc giúp Agent tự sửa đúng trường sai."""
+
+    tier: ValidationTier
+    field: str
+    actual_value: Any
+    expected: str
+    message: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tier": self.tier,
+            "field": self.field,
+            "actual_value": self.actual_value,
+            "expected": self.expected,
+            "message": self.message,
+        }
+
+
+def _make_issue(
+    tier: ValidationTier,
+    field_name: str,
+    actual_value: Any,
+    expected: str,
+    legacy_prefix: str,
+) -> ValidationIssue:
+    msg = f"{legacy_prefix} [Trường sai: {field_name} | Nhận được: {actual_value} | Mong đợi: {expected}]"
+    return ValidationIssue(
+        tier=tier,
+        field=field_name,
+        actual_value=actual_value,
+        expected=expected,
+        message=msg,
+    )
+
+
 @dataclass
 class AnswerGroundingResult:
     is_grounded: bool
@@ -275,6 +321,8 @@ class AnswerGroundingResult:
     checked: int = 0
     verified: int = 0
     corrected_text: Optional[str] = None
+    failed_tier: Optional[ValidationTier] = None
+    validation_errors: list[ValidationIssue] = field(default_factory=list)
 
 
 _AMOUNT_RE = re.compile(
@@ -454,6 +502,231 @@ def _find_referenced_rooms(sub: str, rooms: Sequence[RoomItem]) -> list[RoomItem
     return result
 
 
+def _validate_tier1_schema_format(answer_text: Any) -> list[ValidationIssue]:
+    """Tầng 1 (Chi phí thấp nhất): Kiểm tra kiểu dữ liệu, chuỗi rỗng và vi phạm định dạng Markdown."""
+    if not isinstance(answer_text, str):
+        return [
+            _make_issue(
+                "schema_format",
+                "answer_text",
+                type(answer_text).__name__,
+                "Chuỗi str văn bản tư vấn không rỗng",
+                "Kiểu dữ liệu câu trả lời không hợp lệ.",
+            )
+        ]
+    if not answer_text.strip():
+        return [
+            _make_issue(
+                "schema_format",
+                "answer_text",
+                "<rỗng>",
+                "Chuỗi văn bản tư vấn có nội dung (>= 1 ký tự)",
+                "Câu trả lời rỗng.",
+            )
+        ]
+
+    issues: list[ValidationIssue] = []
+    for v in find_format_violations(answer_text):
+        actual = "| bảng Markdown |" if "bảng" in v else "---"
+        issues.append(
+            _make_issue(
+                "schema_format",
+                "answer_text.format",
+                actual,
+                "Văn bản Markdown dùng danh sách gạch đầu dòng, cấm dùng bảng (|...|) và đường kẻ ngang (---)",
+                v,
+            )
+        )
+    return issues
+
+
+def _validate_tier2_business_rules(
+    answer_text: str,
+    rooms: Sequence[RoomItem],
+    preferences: Optional[UserPreferenceState],
+    *,
+    enforce_room_constraints: bool = False,
+    extra_texts: Sequence[str] = (),
+    extra_amounts: Iterable[float] = (),
+) -> list[ValidationIssue]:
+    """Tầng 2 (Chi phí trung bình - CPU): Kiểm tra ràng buộc cứng phòng & Scope Binding từng thực thể."""
+    issues: list[ValidationIssue] = []
+    extra_refs = _evidence_amounts([], None, extra_texts, extra_amounts)
+
+    if enforce_room_constraints and preferences is not None and rooms:
+        _, dropped = check_hard_constraints(rooms, preferences)
+        for rid, reason in dropped:
+            issues.append(
+                _make_issue(
+                    "business_rule",
+                    f"room[{rid}].constraints",
+                    reason,
+                    "Mọi phòng trong danh sách đề xuất phải thỏa mãn toàn bộ ràng buộc cứng của preferences",
+                    f"Phòng '{rid}' vi phạm ràng buộc cứng: {reason}",
+                )
+            )
+
+    clauses = [p.strip() for p in re.split(r"(?<!\d)[.!?\n]+(?!\d)", answer_text) if p.strip()]
+    comp_keywords = (
+        "rẻ hơn", "re hon", "đắt hơn", "dat hon", "chênh lệch", "chenh lech",
+        "tiết kiệm", "tiet kiem", "bớt", "bot", "nhỏ hơn", "nho hon", "rộng hơn", "rong hon",
+        "chênh", "chenh", "hơn", "hon", "kém", "kem", "so với", "so voi", "còn top", "con top", "trong khi"
+    )
+    seen_msgs: set[str] = set()
+    for clause in clauses:
+        sub_clauses = [clause] if "," not in clause else [c.strip() for c in clause.split(",") if c.strip()]
+        for sub in sub_clauses:
+            m_rooms = _find_referenced_rooms(sub, rooms)
+            if len(m_rooms) != 1:
+                continue
+            target = m_rooms[0]
+            has_comp = any(k in sub.lower() for k in comp_keywords)
+
+            for raw, val in parse_vnd_amounts(sub):
+                matches_target = (
+                    abs(val - target.priceNum) <= AMOUNT_TOLERANCE_VND
+                    or any(abs(val - r) <= AMOUNT_TOLERANCE_VND for r in extra_refs)
+                )
+                if not matches_target and not has_comp:
+                    other_match = [r for r in rooms if r.id != target.id and abs(val - r.priceNum) <= AMOUNT_TOLERANCE_VND]
+                    if other_match:
+                        legacy = (
+                            f"Gán nhầm số tiền: '{raw}' là giá của phòng '{other_match[0].id}', không phải của '{target.id}'."
+                        )
+                        if legacy not in seen_msgs:
+                            seen_msgs.add(legacy)
+                            issues.append(
+                                _make_issue(
+                                    "business_rule",
+                                    f"room[{target.id}].price_vnd",
+                                    raw,
+                                    f"Giá đúng của phòng '{target.id}' là {target.price} ({target.priceNum:,.0f} VND)",
+                                    legacy,
+                                )
+                            )
+
+            for raw, val in parse_areas(sub):
+                matches_target = target.area_m2 and abs(val - target.area_m2) <= AREA_TOLERANCE_M2
+                if not matches_target and not has_comp:
+                    other_match = [
+                        r for r in rooms
+                        if r.id != target.id and r.area_m2 and abs(val - r.area_m2) <= AREA_TOLERANCE_M2
+                    ]
+                    if other_match:
+                        legacy = (
+                            f"Gán nhầm diện tích: '{raw}' là diện tích của phòng '{other_match[0].id}', không phải của '{target.id}'."
+                        )
+                        if legacy not in seen_msgs:
+                            seen_msgs.add(legacy)
+                            issues.append(
+                                _make_issue(
+                                    "business_rule",
+                                    f"room[{target.id}].area_m2",
+                                    raw,
+                                    f"Diện tích đúng của phòng '{target.id}' là {target.area_m2:g} m²",
+                                    legacy,
+                                )
+                            )
+    return issues
+
+
+def _validate_tier3_external_cross_check(
+    answer_text: str,
+    rooms: Sequence[RoomItem],
+    preferences: Optional[UserPreferenceState],
+    *,
+    extra_texts: Sequence[str],
+    extra_amounts: Iterable[float],
+    user_text: str,
+) -> tuple[list[ValidationIssue], int, int]:
+    """Tầng 3 (Chi phí cao nhất): Đối chiếu ID, giá VND, diện tích m2, khoảng cách m với DB/tool evidence."""
+    issues: list[ValidationIssue] = []
+    checked = verified = 0
+
+    # 1. Mã phòng
+    known = {r.id.lower() for r in rooms}
+    known_hint = ", ".join(r.id for r in rooms[:5]) or "không có phòng nào (danh sách rỗng)"
+    for mid in dict.fromkeys(x.group(0) for x in _id_pattern(r.id for r in rooms).finditer(answer_text)):
+        checked += 1
+        if mid.lower() in known:
+            verified += 1
+        else:
+            issues.append(
+                _make_issue(
+                    "external_cross_check",
+                    "answer_text.room_id",
+                    mid,
+                    f"Chỉ dùng mã phòng thuộc dữ liệu DB truy xuất ({known_hint})",
+                    f"Ảo giác mã phòng: '{mid}' không có trong dữ liệu truy xuất.",
+                )
+            )
+
+    # 2. Số tiền
+    refs = _evidence_amounts(rooms, preferences, extra_texts, extra_amounts, user_text=user_text)
+    bad_amounts: list[str] = []
+    for raw, val in parse_vnd_amounts(answer_text):
+        checked += 1
+        if any(abs(val - r) <= AMOUNT_TOLERANCE_VND for r in refs):
+            verified += 1
+        else:
+            bad_amounts.append(raw)
+    if bad_amounts:
+        allowed_prices = ", ".join(dict.fromkeys(r.price for r in rooms[:5] if r.price)) or "số liệu trong tool_evidence"
+        issues.append(
+            _make_issue(
+                "external_cross_check",
+                "answer_text.price_vnd",
+                ", ".join(dict.fromkeys(bad_amounts)),
+                f"Chỉ dùng mức giá/ngân sách khớp DB hoặc tool_evidence ({allowed_prices})",
+                f"Số tiền không khớp dữ liệu gốc: {', '.join(dict.fromkeys(bad_amounts))}",
+            )
+        )
+
+    # 3. Diện tích
+    area_refs = _evidence_areas(rooms, preferences, extra_texts)
+    bad_areas: list[str] = []
+    for raw, val in parse_areas(answer_text):
+        checked += 1
+        if any(abs(val - a) <= AREA_TOLERANCE_M2 for a in area_refs):
+            verified += 1
+        else:
+            bad_areas.append(raw)
+    if bad_areas:
+        allowed_areas = ", ".join(dict.fromkeys(f"{r.area_m2:g}m2" for r in rooms[:5] if r.area_m2)) or "diện tích trong DB"
+        issues.append(
+            _make_issue(
+                "external_cross_check",
+                "answer_text.area_m2",
+                ", ".join(dict.fromkeys(bad_areas)),
+                f"Chỉ dùng diện tích khớp DB ({allowed_areas})",
+                f"Diện tích không khớp dữ liệu gốc: {', '.join(dict.fromkeys(bad_areas))}",
+            )
+        )
+
+    # 4. Khoảng cách
+    dist_refs = _evidence_distances(rooms, extra_texts)
+    bad_dist: list[str] = []
+    for raw, val in parse_distances(answer_text):
+        checked += 1
+        if any(abs(val - d) <= max(DISTANCE_ABS_TOL_M, DISTANCE_REL_TOL * d) for d in dist_refs):
+            verified += 1
+        else:
+            bad_dist.append(raw)
+    if bad_dist:
+        allowed_dists = ", ".join(dict.fromkeys(r.distance for r in rooms[:5] if r.distance)) or "khoảng cách từ tọa độ DB"
+        issues.append(
+            _make_issue(
+                "external_cross_check",
+                "answer_text.distance_m",
+                ", ".join(dict.fromkeys(bad_dist)),
+                f"Chỉ dùng khoảng cách khớp DB ({allowed_dists})",
+                f"Khoảng cách không khớp dữ liệu gốc: {', '.join(dict.fromkeys(bad_dist))}",
+            )
+        )
+
+    return issues, checked, verified
+
+
 def verify_answer_grounding(
     answer_text: str,
     rooms: Sequence[RoomItem],
@@ -462,113 +735,69 @@ def verify_answer_grounding(
     extra_texts: Iterable[str] = (),
     extra_amounts: Iterable[float] = (),
     user_text: str = "",
+    enforce_room_constraints: bool = False,
+    short_circuit: bool = True,
 ) -> AnswerGroundingResult:
-    """Kiểm câu trả lời bằng CODE: mã phòng, số tiền, diện tích, định dạng.
+    """Kiểm câu trả lời theo 3 tầng chi phí tăng dần & dừng ngay ở tầng không đạt (Short-circuit).
 
-    extra_texts: nội dung ToolMessage trong lượt (get_listing_detail...) -> số liệu từ đó là hợp lệ.
-    user_text: câu của người dùng; số họ tự nêu ("trong bán kính 1km") được phép lặp lại trong câu trả lời.
-    extra_amounts: các số tiền hệ thống vừa đề xuất (ví dụ proposed_budget) -> được phép xuất hiện.
+    Tầng 1 (schema_format): Kiểu chuỗi, rỗng, cấm bảng Markdown / đường kẻ ngang.
+    Tầng 2 (business_rule): Ràng buộc cứng trên phòng & Scope Binding từng phòng (không tráo giá/diện tích).
+    Tầng 3 (external_cross_check): Đối chiếu mã phòng, VND, m2, khoảng cách với DB & tool_evidence.
     """
-    if not (answer_text or "").strip():
-        return AnswerGroundingResult(False, 0.0, ["Câu trả lời rỗng."])
+    t1 = _validate_tier1_schema_format(answer_text)
+    if t1 and short_circuit:
+        return AnswerGroundingResult(
+            is_grounded=False,
+            groundedness_score=0.0,
+            issues=[e.message for e in t1],
+            checked=0,
+            verified=0,
+            failed_tier="schema_format",
+            validation_errors=t1,
+        )
 
-    extra_texts = list(extra_texts) + ([user_text] if user_text else [])
-    issues: list[str] = []
-    checked = verified = 0
-
-    # 1. Mã phòng
-    known = {r.id.lower() for r in rooms}
-    for mid in dict.fromkeys(x.group(0) for x in _id_pattern(r.id for r in rooms).finditer(answer_text)):
-        checked += 1
-        if mid.lower() in known:
-            verified += 1
-        else:
-            issues.append(f"Ảo giác mã phòng: '{mid}' không có trong dữ liệu truy xuất.")
-
-    # 2. Số tiền
-    refs = _evidence_amounts(rooms, preferences, extra_texts, extra_amounts, user_text=user_text)
-    bad_amounts = []
-    for raw, val in parse_vnd_amounts(answer_text):
-        checked += 1
-        if any(abs(val - r) <= AMOUNT_TOLERANCE_VND for r in refs):
-            verified += 1
-        else:
-            bad_amounts.append(raw)
-
-    if bad_amounts:
-        issues.append(f"Số tiền không khớp dữ liệu gốc: {', '.join(dict.fromkeys(bad_amounts))}")
-
-    # 3. Diện tích
-    area_refs = _evidence_areas(rooms, preferences, extra_texts)
-    bad_areas = []
-    for raw, val in parse_areas(answer_text):
-        checked += 1
-        if any(abs(val - a) <= AREA_TOLERANCE_M2 for a in area_refs):
-            verified += 1
-        else:
-            bad_areas.append(raw)
-
-    if bad_areas:
-        issues.append(f"Diện tích không khớp dữ liệu gốc: {', '.join(dict.fromkeys(bad_areas))}")
-
-    # 4. Khoảng cách
-    dist_refs = _evidence_distances(rooms, extra_texts)
-    bad_dist = []
-    for raw, val in parse_distances(answer_text):
-        checked += 1
-        if any(abs(val - d) <= max(DISTANCE_ABS_TOL_M, DISTANCE_REL_TOL * d) for d in dist_refs):
-            verified += 1
-        else:
-            bad_dist.append(raw)
-
-    if bad_dist:
-        issues.append(f"Khoảng cách không khớp dữ liệu gốc: {', '.join(dict.fromkeys(bad_dist))}")
-
-    # 5. Kiểm tra ràng buộc thuộc tính theo phạm vi thực thể (Scope Binding)
-    clauses = [p.strip() for p in re.split(r"(?<!\d)[.!?\n]+(?!\d)", answer_text) if p.strip()]
-    comp_keywords = (
-        "rẻ hơn", "re hon", "đắt hơn", "dat hon", "chênh lệch", "chenh lech",
-        "tiết kiệm", "tiet kiem", "bớt", "bot", "nhỏ hơn", "nho hon", "rộng hơn", "rong hon",
-        "chênh", "chenh", "hơn", "hon", "kém", "kem", "so với", "so voi", "còn top", "con top", "trong khi"
+    all_extra_texts = list(extra_texts) + ([user_text] if user_text else [])
+    t2 = _validate_tier2_business_rules(
+        answer_text if isinstance(answer_text, str) else "",
+        rooms,
+        preferences,
+        enforce_room_constraints=enforce_room_constraints,
+        extra_texts=all_extra_texts,
+        extra_amounts=extra_amounts,
     )
-    scope_issues = []
-    for clause in clauses:
-        sub_clauses = [clause] if "," not in clause else [c.strip() for c in clause.split(",") if c.strip()]
-        for sub in sub_clauses:
-            m_rooms = _find_referenced_rooms(sub, rooms)
-            if len(m_rooms) == 1:
-                target = m_rooms[0]
-                has_comp = any(k in sub.lower() for k in comp_keywords)
+    if t2 and short_circuit:
+        return AnswerGroundingResult(
+            is_grounded=False,
+            groundedness_score=0.0,
+            issues=[e.message for e in t2],
+            checked=0,
+            verified=0,
+            failed_tier="business_rule",
+            validation_errors=t2,
+        )
 
-                for raw, val in parse_vnd_amounts(sub):
-                    matches_target = abs(val - target.priceNum) <= AMOUNT_TOLERANCE_VND
-                    if not matches_target and not has_comp:
-                        other_match = [r for r in rooms if r.id != target.id and abs(val - r.priceNum) <= AMOUNT_TOLERANCE_VND]
-                        if other_match:
-                            scope_issues.append(
-                                f"Gán nhầm số tiền: '{raw}' là giá của phòng '{other_match[0].id}', không phải của '{target.id}'."
-                            )
+    t3, checked, verified = _validate_tier3_external_cross_check(
+        answer_text if isinstance(answer_text, str) else "",
+        rooms,
+        preferences,
+        extra_texts=all_extra_texts,
+        extra_amounts=extra_amounts,
+        user_text=user_text,
+    )
 
-                for raw, val in parse_areas(sub):
-                    matches_target = target.area_m2 and abs(val - target.area_m2) <= AREA_TOLERANCE_M2
-                    if not matches_target and not has_comp:
-                        other_match = [r for r in rooms if r.id != target.id and r.area_m2 and abs(val - r.area_m2) <= AREA_TOLERANCE_M2]
-                        if other_match:
-                            scope_issues.append(
-                                f"Gán nhầm diện tích: '{raw}' là diện tích của phòng '{other_match[0].id}', không phải của '{target.id}'."
-                            )
-
-    if scope_issues:
-        issues.extend(dict.fromkeys(scope_issues))
-
-    issues.extend(find_format_violations(answer_text))
+    combined = [*t1, *t2, *t3]
+    failed_tier: Optional[ValidationTier] = (
+        t1[0].tier if t1 else (t2[0].tier if t2 else (t3[0].tier if t3 else None))
+    )
     score = 1.0 if checked == 0 else round(verified / checked, 3)
     return AnswerGroundingResult(
-        is_grounded=not issues,
-        groundedness_score=score if not issues else min(score, 0.99),
-        issues=issues,
+        is_grounded=not combined,
+        groundedness_score=score if not combined else min(score, 0.99),
+        issues=[e.message for e in combined],
         checked=checked,
         verified=verified,
+        failed_tier=failed_tier,
+        validation_errors=combined,
     )
 
 

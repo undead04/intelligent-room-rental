@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional
 
 from core import MODEL_CALL_LIMIT, TOOL_CALL_LIMIT
 from domain.budget import MarketFetcher
+from graph.tracing import PROMPT_VERSION, SKILL_VERSION, TraceStore, get_active_trace_store, resolve_versions
 from safety.grounding import MAX_GROUNDING_RETRIES
 from safety.guardrails import GuardrailResult, check_guardrails
 from tools.location_service import AdminLookup
@@ -33,10 +34,31 @@ class Deps:
     decision_agent: Optional[Callable[[], Any]] = None                  # factory -> agent.invoke({"messages": [...]}, config=...)
     guard: Callable[[str], GuardrailResult] = check_guardrails
     enable_critic: bool = False
+    trace_store: Optional[TraceStore] = None
+    prompt_version: str = PROMPT_VERSION
+    skill_version: str = SKILL_VERSION
+    model_version: str = ""
     # --- công tắc cho ablation (mặc định = cấu hình đầy đủ) ---
     constrained_generation: bool = True           # False: kết quả mới cũng do agent viết tự do
     verify_answers: bool = True                   # False: vẫn ĐO lỗi (issues) nhưng không retry/không thay thế câu trả lời
     max_answer_retries: int = MAX_GROUNDING_RETRIES
+
+    def versions(self) -> dict[str, str]:
+        """Trả về thông tin phiên bản prompt/skill/model để gắn vào từng span trace."""
+        return resolve_versions(
+            prompt_version=self.prompt_version,
+            skill_version=self.skill_version,
+            model_version=self.model_version or None,
+        )
+
+    def get_trace_store(self) -> TraceStore:
+        """Lấy TraceStore cô lập đang hoạt động cho lượt chạy hiện tại."""
+        active = get_active_trace_store()
+        if active is not None:
+            return active
+        if self.trace_store is not None:
+            return self.trace_store
+        return TraceStore(versions=self.versions())
 
 
 def default_deps(*, enable_critic: bool = False, sessions: Any = None) -> Deps:

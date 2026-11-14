@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from graph.deps import Deps
-from graph.tracing import traced_call, tool_event
+from graph.tracing import resolve_trace_target, traced_call, tool_event
 from intelligence.nlu import sanitize_user_text
 from prompts.advisory_prompt import build_advisory_prompt
 
@@ -24,12 +24,18 @@ def make_advisory_node(deps: Deps):
     def advisory_node(state: dict[str, Any]) -> dict[str, Any]:
         slug = state.get("matched_skill") or ""
         query = sanitize_user_text(state.get("user_message", ""))
-        trace = list(state.get("trace_events") or [])
-        out = {"retrieved_rooms": [], "needs_clarification": False, "trace_events": trace}
+        trace = resolve_trace_target(deps).sink()
+        out = {"retrieved_rooms": [], "needs_clarification": False}
 
         try:
-            res = tool_event(trace, "consult_housing_skill", {"skill_name": slug}, lambda: deps.consult_skill(slug, query),
-                             lambda r: {"ok": bool(r.get("ok"))})
+            res = tool_event(
+                trace,
+                "consult_housing_skill",
+                {"skill_name": slug, "query": query},
+                lambda: deps.consult_skill(slug, query),
+                lambda r: {"ok": bool(r.get("ok"))},
+                node="advisory_node",
+            )
         except Exception:
             res = {}
         guide = str(res.get("instructions") or "") if res.get("ok") else ""
@@ -52,7 +58,13 @@ def make_advisory_node(deps: Deps):
             msgs.append((role, _msg_text(m)))
         msgs.append(("human", f"<user_message>\n{query}\n</user_message>"))
         try:
-            reply = traced_call(trace, lambda: model.invoke(msgs))
+            reply = traced_call(
+                trace,
+                lambda: model.invoke(msgs),
+                message_count=len(msgs),
+                node="advisory_node",
+                input_data=msgs,
+            )
             text = _msg_text(reply).strip()
         except Exception:
             logger.warning("advisory_node: LLM lỗi", exc_info=True)

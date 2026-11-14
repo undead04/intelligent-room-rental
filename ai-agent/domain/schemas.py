@@ -2,7 +2,7 @@
 
 Các đặc điểm chính:
   - Tiện ích / loại phòng là enum (domain.enums), UserPreferenceState tự chuẩn hoá khi gán (validate_assignment).
-  - room_type_id là property chỉ đọc, suy ra từ room_type.
+  - allowed_room_types / excluded_room_types gom gọn bộ lọc loại phòng về 2 trường chuẩn hoá danh sách RoomType.
   - UserPreferenceState.set_location(): đổi vị trí => xoá toạ độ/ID cũ ở MỘT chỗ.
   - RoomItem: chuẩn hoá diện tích (area_m2), điểm phù hợp %, phân biệt thẻ xác thực và thẻ suy đoán ML (inferred_tags).
   - GroundingReport: báo cáo kiểm định 2 tầng (Context Grounding & Answer Grounding) kèm vết retry.
@@ -313,10 +313,9 @@ class UserPreferenceState(BaseModel):
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m2)")
     max_area: Optional[float] = Field(None, description="Diện tích tối đa (m2)")
     min_bedrooms: Optional[int] = Field(None, description="Số phòng ngủ tối thiểu")
-    room_type: Optional[RoomType] = Field(None, description="Loại phòng muốn tìm")
     allowed_room_types: list[RoomType] = Field(
         default_factory=list,
-        description="Tập các loại phòng được phép (khi người dùng chấp nhận nhiều loại, vd: ['ROOM', 'STUDIO'])",
+        description="Danh sách loại phòng được phép (1 hoặc nhiều loại, vd: ['ROOM'], ['ROOM', 'STUDIO'])",
     )
     excluded_room_types: list[RoomType] = Field(
         default_factory=list, description="Loại phòng người dùng đã loại trừ ('không lấy ktx')"
@@ -336,14 +335,9 @@ class UserPreferenceState(BaseModel):
         v = v.strip(" ,.-")
         return v or None
 
-    @field_validator("room_type", mode="before")
-    @classmethod
-    def _clean_room_type(cls, v: Any) -> Optional[RoomType]:
-        return normalize_room_type(v)
-
     @field_validator("excluded_room_types", "allowed_room_types", mode="before")
     @classmethod
-    def _clean_excluded(cls, v: Any) -> list[RoomType]:
+    def _clean_room_types(cls, v: Any) -> list[RoomType]:
         return normalize_room_types(v)
 
     @field_validator("amenities", "preferred_amenities", mode="before")
@@ -352,11 +346,6 @@ class UserPreferenceState(BaseModel):
         return normalize_amenities(v)
 
     # -- thuộc tính suy ra ---------------------------------------------------
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def room_type_id(self) -> Optional[int]:
-        return self.room_type.type_id if self.room_type else None
-
     @property
     def has_point(self) -> bool:
         """Có toạ độ điểm mốc (đo được khoảng cách)."""
@@ -391,9 +380,7 @@ class UserPreferenceState(BaseModel):
             parts.append(f"- Vị trí mục tiêu: {self.location_text}{coords}")
         if self.max_distance_km:
             parts.append(f"- Bán kính tối đa: {self.max_distance_km:g} km")
-        if self.room_type:
-            parts.append(f"- Loại phòng: {self.room_type.label_vi}")
-        if self.allowed_room_types and (not self.room_type or self.allowed_room_types != [self.room_type]):
+        if self.allowed_room_types:
             parts.append(f"- Loại phòng cho phép: {', '.join(r.label_vi for r in self.allowed_room_types)}")
         if self.excluded_room_types:
             parts.append(f"- Không lấy loại: {', '.join(r.label_vi for r in self.excluded_room_types)}")
@@ -486,10 +473,6 @@ class GroundingReport(BaseModel):
     )
 
     # --- Cơ chế tự sửa sai (Self-Correction Retry Loop) & Fallback ---
-    context_retries: Optional[int] = Field(
-        None,
-        description="Số lần đã thử lại ở tầng Retrieval (giữ cho tương thích ngược schema)",
-    )
     answer_retries: Optional[int] = Field(
         None,
         description="Số lần đã bắt LLM viết lại câu trả lời (Self-Correction) do phát hiện ảo giác dữ liệu",
@@ -511,6 +494,30 @@ class GroundingReport(BaseModel):
     enforced: Optional[bool] = Field(
         None,
         description="Cờ thực thi: True = bắt buộc retry/fallback khi có lỗi; False = chế độ ablation chỉ đo đạc tỷ lệ lỗi mà không ngắt luồng",
+    )
+
+    # --- DoD Verifier & Validation 3 tầng ---
+    failed_tier: Optional[Literal["schema_format", "business_rule", "external_cross_check"]] = Field(
+        None,
+        description="Tầng kiểm định đầu tiên bị lỗi (short-circuit): schema_format -> business_rule -> external_cross_check",
+    )
+    validation_errors: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Danh sách lỗi có cấu trúc gồm tier, field, actual_value, expected, message",
+    )
+    exit_action: Optional[
+        Literal["pass", "retry", "ask_user", "fallback_template", "stop_and_report", "bypassed_unforced"]
+    ] = Field(
+        None,
+        description="Quyết định tiếp theo của ứng dụng sau khi chạy Verifier",
+    )
+    verifier_output: Optional[dict[str, Any]] = Field(
+        None,
+        description="Kết quả chuẩn hóa của DoD Verifier: {'passed': bool, 'failures': [...]}",
+    )
+    dod_report: Optional[dict[str, Any]] = Field(
+        None,
+        description="Báo cáo chi tiết toàn bộ điều kiện DoD đã kiểm định",
     )
 
 

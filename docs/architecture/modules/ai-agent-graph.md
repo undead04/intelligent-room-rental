@@ -20,9 +20,9 @@ flowchart TD
     
     retrieval_node --> decision_node
     
-    decision_node --> verify_node["7. verify_node (Self-RAG)<br/>Kiểm chứng thông tin đối chiếu với DB"]
-    verify_node -->|Grounding fail (retry <= 2)| decision_node
-    verify_node -->|Grounding pass / fallback| formatter_node["8. formatter_node<br/>Định dạng Markdown / UI components"]
+    decision_node --> verify_node["7. verify_node (Validation + DoD Verifier)<br/>Validation 3 tầng & kiểm định DoD độc lập"]
+    verify_node -->|"Retry câu trả lời (retry <= 2)"| decision_node
+    verify_node -->|"Pass / fallback / ask_user / stop_and_report"| formatter_node["8. formatter_node<br/>Định dạng Markdown / UI & đọc TraceStore"]
     
     clarification_node --> formatter_node
     advisory_node --> formatter_node
@@ -54,12 +54,25 @@ flowchart TD
 
 ---
 
-## 3. Cơ Chế Chống Ảo Giác Hai Tầng (Anti-Hallucination)
+## 3. Cơ Chế Chống Ảo Giác, Trace Cô Lập & DoD Verifier
 
 1. **Tầng 2A - Lọc Ràng Buộc Cứng Bằng Mã Lệnh (`check_hard_constraints`):**
-   - 100% bằng code Python thuần (ngân sách $\pm 2\%$, diện tích, khoảng cách Haversine mặt cầu, tập loại phòng `allowed_room_types`, tiện ích bắt buộc).
+   - 100% bằng code Python thuần (ngân sách $\pm 2\%$, diện tích, khoảng cách Haversine mặt cầu, bộ lọc 2 trường loại phòng `allowed_room_types` & `excluded_room_types`, tiện ích bắt buộc).
    - Loại bỏ phòng vi phạm ngay lập tức kèm ghi nhận lý do cụ thể.
-2. **Tầng 2B - Self-RAG Grounding (`verify_node`):**
-   - Đối chiếu phát biểu của câu trả lời với dữ liệu thực tế từ Database.
-   - Nếu phát hiện AI bịa tiện ích $\rightarrow$ Yêu cầu `decision_node` sinh lại (tối đa 2 lần retry).
+2. **Trace Cô Lập Append-Only (`ai-agent/graph/tracing.py` — `TraceStore`):**
+   - **Tách khỏi `HousingAgentState`:** `trace_events` không còn nằm trong State có thể sửa của Agent; mọi Node ghi nối tiếp vào `TraceStore` qua `ContextVar` / `TraceSink` (`bind_trace_store`, `resolve_trace_target`).
+   - **Định dạng JSONL đầy đủ:** Mỗi span có `run_id`, `seq` tăng đơn điệu, `ts`, `type`, `versions` (`prompt`, `skill`, `model`), và `case_id` (khi chạy eval).
+   - **Bao quanh bằng code ứng dụng:** `tool_event` ghi đầy đủ `args`/`result` (không cắt bớt), `error`, `duration_ms`, cùng `state_before`/`state_after` cho tool làm đổi trạng thái; `traced_call` / `TraceCollector` ghi `input`, `output`, `tokens_in`, `tokens_out`, `duration_ms`. API key và PII (SĐT, email, CCCD) được che tự động bởi `redact_sensitive_data`.
+3. **Validation 3 Tầng Theo Chi Phí Tăng Dần (`verify_answer_grounding`):**
+   - **Tầng 1 (`schema_format`):** Kiểm tra kiểu chuỗi, rỗng, vi phạm bảng Markdown (`|...|`) / đường kẻ ngang (`---`). Sai thì dừng ngay (*short-circuit*).
+   - **Tầng 2 (`business_rule`):** Kiểm tra ràng buộc cứng từng phòng và Scope Binding (chống tráo giá/diện tích giữa Top phòng). Sai thì dừng ngay trước Tầng 3.
+   - **Tầng 3 (`external_cross_check`):** Đối chiếu mã phòng, VND, $m^2$, khoảng cách với DB/`tool_evidence`, và chỉ gọi LLM Critic (`critic_answer_validation`) khi cả 3 tầng code đã qua.
+   - Mọi lỗi dùng cấu trúc `ValidationIssue` nêu rõ *trường sai*, *giá trị nhận được*, *dạng mong đợi* để vòng tự sửa có giới hạn (`max_answer_retries = 2`) điều chỉnh.
+4. **DoD & Independent Verifier (`ai-agent/safety/dod_verifier.py` + `verify_node`):**
+   - `derive_dod_spec` suy các điều kiện DoD từ yêu cầu (`intent`, `preferences`, `matched_skill`), gắn rõ `verifier_type` (`state_code` | `trace_code` | `rubric` | `human`), toán tử, ngưỡng + đơn vị đo (hoặc `unverifiable_reason`).
+   - `verify_dod` đóng băng đầu vào bằng `deep_freeze` (`MappingProxyType`, `tuple`, `@dataclass(frozen=True)`), đọc trực tiếp trạng thái hệ thống + `trace_store.frozen_snapshot()`, không tin lời tự báo thành công của Agent, và trả định dạng cố định `{"passed": bool, "failures": [...]}`.
+   - `verify_node` ghi riêng một span `verifier_decision` vào `TraceStore` (kèm `verifier_output` và `next_decision`). Khi `passed = false`, hệ thống thực thi hành vi xác định (`retry`, `ask_user`, `fallback_template` thay thế nội dung kể cả luồng follow-up, hoặc `stop_and_report`), tuyệt đối không ghi log rồi vẫn gửi câu báo thành công giả.
+5. **KV-Cache Prefix Protection (`nlu_prompt.py`):**
+   - Toàn bộ quy tắc NLU (gồm Quy tắc số 10 cho `allowed_room_types`, `excluded_room_types`) nằm trong khối tĩnh `NLU_RULES` trước `skills_part` động.
+
 

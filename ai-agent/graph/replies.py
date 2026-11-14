@@ -20,7 +20,12 @@ def _format_nearby_bullets(pref: UserPreferenceState, search_args: dict[str, Any
     city_id = pref.city_id or search_args.get("city_id")
     min_price = pref.min_price or search_args.get("min_price")
     max_price = pref.max_price or search_args.get("max_price")
-    room_type = pref.room_type or search_args.get("room_type")
+    raw_rt = (
+        pref.allowed_room_types[0].value
+        if len(pref.allowed_room_types) == 1
+        else search_args.get("room_type")
+    )
+    room_type = raw_rt if isinstance(raw_rt, str) else None
     amenities = pref.amenities or search_args.get("amenities") or []
     amenity_list = [getattr(a, "value", str(a)) for a in amenities] if amenities else None
 

@@ -37,13 +37,9 @@ class BaseSpider(ABC):
     def load_checkpoint(self, region: str = "all") -> int:
         """Đọc mốc offset đã lưu từ checkpoint"""
         ckpt_file = self.get_checkpoint_file(region)
-        # Hỗ trợ backward compatibility với file checkpoint cũ checkpoint_{region}.json
-        legacy_file = os.path.join(os.path.dirname(ckpt_file), f"checkpoint_{region}.json")
-        target_file = ckpt_file if os.path.exists(ckpt_file) else (legacy_file if os.path.exists(legacy_file) else None)
-        
-        if target_file and os.path.exists(target_file):
+        if os.path.exists(ckpt_file):
             try:
-                with open(target_file, "r", encoding="utf-8") as f:
+                with open(ckpt_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     return data.get("last_offset", 0)
             except Exception:

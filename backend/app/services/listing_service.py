@@ -11,7 +11,6 @@ from app.models.location import District, Ward
 from app.repositories.listing_repository import ListingRepository
 from app.schemas.analytics import PriceStatsByArea, PriceStatsGeneral, PriceStatsResponse
 from app.schemas.listing import ListingResponse, VectorSearchResult
-from app.schemas.room_type import ROOM_TYPE_CODE_TO_ID
 from app.services.reranker import _haversine_km, explain_match, rerank
 from app.services.embedding import EmbeddingModel
 
@@ -270,9 +269,7 @@ class ListingService:
         city_id: Optional[int] = None,
         district_id: Optional[int] = None,
         ward_id: Optional[int] = None,
-        room_type_id: Optional[int] = None,
-        room_type: Optional[str] = None,
-        room_types: Optional[list[str | int]] = None,
+        room_type: Optional[str | int | list[str | int]] = None,
         excluded_room_types: Optional[list[Any]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
@@ -287,11 +284,6 @@ class ListingService:
         raw_vector = model_embedding.encode_query(query)
         query_vector: list[float] = raw_vector.tolist() # type: ignore
 
-        # Tự động chuyển đổi room_type (chuỗi như 'ROOM', 'STUDIO') thành room_type_id nếu cần
-        resolved_room_type_id = room_type_id
-        if resolved_room_type_id is None and room_type:
-            resolved_room_type_id = ROOM_TYPE_CODE_TO_ID.get(room_type.strip().upper())
-
         candidate_limit = max(limit * 4, 100) if (lat is not None and lng is not None) else max(limit * 2, 50)
 
         repo_kwargs: dict[str, object] = {
@@ -300,9 +292,7 @@ class ListingService:
             "city_id": city_id,
             "district_id": district_id,
             "ward_id": ward_id,
-            "room_type_id": resolved_room_type_id,
             "room_type": room_type,
-            "room_types": room_types,
             "min_price": min_price,
             "max_price": max_price,
             "min_area": min_area,
@@ -358,9 +348,6 @@ class ListingService:
             "min_price": min_price,
             "max_price": max_price,
             "query": query,
-            "room_type_id": resolved_room_type_id,
-            "room_type": room_type,
-            "room_types": room_types,
         }
 
         reranked = rerank(

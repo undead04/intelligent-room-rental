@@ -52,7 +52,7 @@ from eval.llm_judge import (
     )
 
 # Import HousingAgentService & Domain/Safety Tools
-from service import HousingAgentService
+from api.routes import HousingAgentService
 from domain.enums import normalize_amenities, normalize_room_types
 from domain.schemas import AgentResponse, RoomItem, UserPreferenceState
 from intelligence.nlu import LLMQuotaExceededError, is_daily_quota_exhausted
@@ -286,11 +286,7 @@ def _execute_offline_nlu_search(
     if exp.required_amenities:
         pref.amenities = normalize_amenities(exp.required_amenities)
     if exp.allowed_room_types:
-        rts = normalize_room_types(exp.allowed_room_types)
-        if len(rts) == 1:
-            pref.room_type = rts[0]
-        elif len(rts) >= 2:
-            pref.allowed_room_types = rts
+        pref.allowed_room_types = normalize_room_types(exp.allowed_room_types)
     if exp.forbidden_room_types:
         pref.excluded_room_types = normalize_room_types(exp.forbidden_room_types)
 
@@ -322,9 +318,11 @@ def _execute_offline_nlu_search(
         "limit": 15 if (pref.excluded_room_types or pref.allowed_room_types) else 10,
     }
     if pref.allowed_room_types:
-        search_args["room_types"] = [r.value for r in pref.allowed_room_types]
-    elif pref.room_type is not None:
-        search_args["room_type"] = pref.room_type.value
+        search_args["room_type"] = (
+            pref.allowed_room_types[0].value
+            if len(pref.allowed_room_types) == 1
+            else [r.value for r in pref.allowed_room_types]
+        )
     if pref.excluded_room_types:
         search_args["excluded_room_types"] = [r.value for r in pref.excluded_room_types]
 
