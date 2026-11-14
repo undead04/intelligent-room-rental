@@ -731,3 +731,17 @@ class TestIRMetricsConstraintFailuresAndSummary:
         assert summary["mrr"] == 1.0
         assert summary["mean_ndcg_at_5"] == 1.0
         assert summary["mean_csr"] == 1.0
+
+    def test_no_shared_landlord_self_managed_equivalence(self):
+        """Phòng tòa nhà tự quản (free_hours + fingerprint_lock >= 0.7) thỏa mãn no_shared_landlord."""
+        exp = GroundTruthExpectation(required_amenities=["no_shared_landlord"])
+        r_ok = {
+            "priceNum": 3_500_000.0,
+            "concept_scores": {"no_shared_landlord": 0.0, "free_hours": 1.0, "fingerprint_lock": 1.0},
+        }
+        r_bad = {
+            "priceNum": 3_500_000.0,
+            "concept_scores": {"no_shared_landlord": 0.0, "free_hours": 1.0, "fingerprint_lock": 0.0},
+        }
+        assert evaluate_room_satisfaction(r_ok, exp)["amenities_ok"] is True
+        assert evaluate_room_satisfaction(r_bad, exp)["amenities_ok"] is False

@@ -95,6 +95,12 @@ def check_hard_constraints(
         elif r.area_m2 and pref.max_area and r.area_m2 > pref.max_area:
             reason = f"diện tích {r.area_m2:g}m² lớn hơn yêu cầu"
         elif (
+            (r_bedrooms := getattr(r, "bedrooms", None)) is not None
+            and pref.min_bedrooms is not None
+            and r_bedrooms < pref.min_bedrooms
+        ):
+            reason = f"chỉ có {r_bedrooms} phòng ngủ, ít hơn yêu cầu {pref.min_bedrooms} phòng ngủ"
+        elif (
             (r.room_type is not None and r.room_type in excluded)
             or (getattr(r, "room_type_id", None) == 4 and (RoomType.SLEEPBOX in excluded or any(e.type_id == 4 for e in excluded)))
         ):
@@ -123,6 +129,18 @@ def check_hard_constraints(
                     if has_high or has_kw:
                         continue
                     if sec_scores and all(s < 0.5 for s in sec_scores):
+                        missing_ams.append(am.label_vi)
+                elif am == Amenity.NO_SHARED_LANDLORD:
+                    nsl_score = r.concept_scores.get("no_shared_landlord")
+                    free_score = r.concept_scores.get("free_hours")
+                    fp_score = r.concept_scores.get("fingerprint_lock")
+                    is_self_managed = (
+                        free_score is not None and free_score >= 0.5
+                        and fp_score is not None and fp_score >= 0.5
+                    )
+                    if (nsl_score is not None and nsl_score >= 0.5) or is_self_managed:
+                        continue
+                    if nsl_score is not None and nsl_score < 0.5:
                         missing_ams.append(am.label_vi)
                 else:
                     score = r.concept_scores.get(am.value)

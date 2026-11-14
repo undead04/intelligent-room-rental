@@ -13,10 +13,6 @@ from core import paths
 MODEL_CALL_LIMIT = 8
 # Giới hạn số tool calls trong một lượt chat (ToolCallLimitMiddleware).
 TOOL_CALL_LIMIT = 20
-# Giới hạn số bước của LangGraph (recursion limit), không phải số tool calls.
-RECURSION_LIMIT = 50
-
-
 class Settings(BaseModel):
     """Pydantic Configuration Settings cho Homigo AI Agent."""
 

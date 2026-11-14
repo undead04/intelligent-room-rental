@@ -48,7 +48,7 @@ Mỗi khi viết test cho một Module, Service, API, Pipeline hay UI Component,
 ## 3. Quy Trình Thực Thi:
 1. **Bước 1 — Lập danh sách Test Cases:** Đọc tài liệu Spec và `AGENTS.md`, liệt kê các kịch bản kiểm thử theo đủ 4 nhóm trên trước khi viết code test.
 2. **Bước 2 — Viết Test độc lập:** Tạo/cập nhật file test theo đúng framework kiểm thử của dự án quy định trong `AGENTS.md`.
-3. **Bước 3 — Chạy Test thực tế:** Thực thi đúng câu lệnh chạy test tại Mục 6 của [`AGENTS.md`](../../../AGENTS.md).
+3. **Bước 3 — Chạy Test thực tế:** Thực thi đúng câu lệnh chạy test tại Mục 3.2 của [`docs/architecture/tech-stack.md`](../../../docs/architecture/tech-stack.md).
 4. **Bước 4 — Xử lý khi Test Fail:**
    - Nếu test fail: ĐỌC LẠI SPEC. Nếu bài test phản ánh đúng yêu cầu nghiệp vụ mà code chạy sai $\rightarrow$ **Bắt buộc sửa code trong source, TUYỆT ĐỐI CẤM hạ tiêu chuẩn hoặc sửa assertion của bài test để ép pass.**
 

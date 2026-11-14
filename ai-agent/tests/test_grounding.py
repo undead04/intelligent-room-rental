@@ -268,3 +268,62 @@ def test_rendered_room_lines_pass_distance_check():
     from intelligence.insights import template_reply
     rooms = [_dr(1, "450m"), _dr(2, "1.2 km")]
     assert verify_answer_grounding(template_reply(rooms, None), rooms).is_grounded
+
+
+def test_hard_constraints_min_bedrooms_keeps_missing_and_drops_smaller():
+    r_small = RoomItem.from_backend_result(
+        {"listing": {"id": "bed_1", "title": "1PN", "price_vnd": 4_000_000, "area_m2": 30, "bedrooms": 1, "bathrooms": 1}},
+        rank=1,
+    )
+    r_match = RoomItem.from_backend_result(
+        {"listing": {"id": "bed_2", "title": "2PN", "price_vnd": 6_000_000, "area_m2": 50, "bedrooms": 2, "bathrooms": 2}},
+        rank=2,
+    )
+    r_missing = RoomItem.from_backend_result(
+        {"listing": {"id": "bed_none", "title": "Không ghi PN", "price_vnd": 5_000_000, "area_m2": 45}},
+        rank=3,
+    )
+
+    assert r_small.bedrooms == 1 and r_small.bathrooms == 1
+    assert r_missing.bedrooms is None and r_missing.bathrooms is None
+
+    pref = UserPreferenceState(min_bedrooms=2)
+    valid, dropped = check_hard_constraints([r_small, r_match, r_missing], pref)
+    assert [r.id for r in valid] == ["bed_2", "bed_none"]
+    assert [r.rank for r in valid] == [1, 2]
+    assert len(dropped) == 1 and dropped[0][0] == "bed_1"
+    assert "phòng ngủ" in dropped[0][1]
+
+
+def test_hard_constraints_no_shared_landlord_self_managed_equivalence():
+    from domain.enums import Amenity
+
+    r_self_managed = RoomItem.from_backend_result(
+        {
+            "listing": {
+                "id": "nsl_self",
+                "title": "Tòa nhà tự quản giờ tự do vân tay",
+                "price_vnd": 3_500_000,
+                "area_m2": 25,
+                "concept_scores": {"no_shared_landlord": 0.0, "free_hours": 1.0, "fingerprint_lock": 1.0},
+            }
+        },
+        rank=1,
+    )
+    r_not_self = RoomItem.from_backend_result(
+        {
+            "listing": {
+                "id": "nsl_bad",
+                "title": "Phòng ở chung chủ thiếu vân tay",
+                "price_vnd": 3_500_000,
+                "area_m2": 25,
+                "concept_scores": {"no_shared_landlord": 0.0, "free_hours": 1.0, "fingerprint_lock": 0.0},
+            }
+        },
+        rank=2,
+    )
+
+    pref = UserPreferenceState(amenities=[Amenity.NO_SHARED_LANDLORD])
+    valid, dropped = check_hard_constraints([r_self_managed, r_not_self], pref)
+    assert [r.id for r in valid] == ["nsl_self"]
+    assert [d[0] for d in dropped] == ["nsl_bad"]

@@ -23,6 +23,8 @@ class Listing(Base):
     price_million_per_m2 = Column(Float, nullable=True)
     deposit = Column(Float, nullable=True)
     furnishing_code = Column(Integer, nullable=True)
+    bedrooms = Column(Integer, nullable=True, index=True)
+    bathrooms = Column(Integer, nullable=True)
 
     # Location
     address_raw = Column(String, nullable=True)

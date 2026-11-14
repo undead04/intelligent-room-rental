@@ -298,3 +298,37 @@ def test_sleepbox_auto_exclusion_guardrail():
     res3 = _postprocess(a3, user_text="tìm ký túc xá hoặc sleepbox gần trường")
     assert RoomType.SLEEPBOX not in res3.patch.room_types_exclude
 
+
+def test_patch_min_bedrooms_bounds_clear_and_postprocess():
+    from intelligence.nlu import _postprocess
+
+    # 1. Validator biên: chấp nhận 1..20, bỏ qua 0, âm, quá lớn, boolean
+    assert PreferencePatch(min_bedrooms=2).min_bedrooms == 2
+    for invalid in (0, -1, 21, True):
+        assert PreferencePatch(min_bedrooms=invalid).min_bedrooms is None
+
+    # 2. apply_patch giữ tính bất biến (pure) và clear khi xóa room_type hoặc area
+    pref = UserPreferenceState(location_text="Thủ Đức")
+    updated = apply_patch(pref, PreferencePatch(min_bedrooms=2))
+    assert pref.min_bedrooms is None
+    assert updated.min_bedrooms == 2
+    assert "2 PN" in updated.to_context_string()
+
+    cleared_rt = apply_patch(updated, PreferencePatch(clear=["room_type"]))
+    cleared_area = apply_patch(updated, PreferencePatch(clear=["area"]))
+    assert cleared_rt.min_bedrooms is None
+    assert cleared_area.min_bedrooms is None
+
+    # 3. _postprocess nhận diện min_bedrooms là tiêu chí tìm kiếm hợp lệ trong đa mệnh lệnh
+    analysis = TurnAnalysis(
+        intent="refine_search",
+        patch=PreferencePatch(min_bedrooms=2),
+        skill_slug="rental-contract-advisor",
+    )
+    processed = _postprocess(
+        analysis,
+        user_text="tìm giúp căn 2 phòng ngủ và hỏi về tiền cọc",
+        valid_slugs=set(SKILLS.keys()),
+    )
+    assert processed.is_multi_intent is True
+

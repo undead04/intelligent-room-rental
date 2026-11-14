@@ -10,10 +10,10 @@ Thư mục này là **Sổ Tay Kiểm Toán Kỹ Thuật (Post-mortem & Issue Tr
 [ PHÁT HIỆN BUG / SỰ CỐ ]
            │
            ▼
-[ 1. docs/fix/in-progress/ ]   ─── Đang phân tích nguyên nhân gốc rễ (RCA) & triển khai fix
+[ 1. docs/maintenance/in-progress/ ]   ─── Đang phân tích nguyên nhân gốc rễ (RCA) & triển khai fix
            │
            ▼
-[ 2. docs/fix/resolved/ ]      ─── Đã fix xong, test pass 100%, ghi lại bài học & đóng issue
+[ 2. docs/maintenance/resolved/ ]      ─── Đã fix xong, test pass 100%, ghi lại bài học & đóng issue
 ```
 
 ---
@@ -22,7 +22,7 @@ Thư mục này là **Sổ Tay Kiểm Toán Kỹ Thuật (Post-mortem & Issue Tr
 
 | Mã Issue | Tiêu Đề Sự Cố | Mức Độ | Module Ảnh Hưởng | Trạng Thái | File Chi Tiết |
 | :---: | :--- | :---: | :--- | :---: | :--- |
-| `ISSUE-0001` | Lỗi Bounding Box, thiếu đa loại phòng & lọt Sleepbox | 🔴 CRITICAL | `backend`, `ai-agent` | 🟡 `IN_PROGRESS` | [`in-progress/ISSUE-0001-core-eval-architecture-fixes.md`](./in-progress/ISSUE-0001-core-eval-architecture-fixes.md) |
+| `ISSUE-0001` | Lỗi Bounding Box, thiếu đa loại phòng & lọt Sleepbox | 🔴 CRITICAL | `backend`, `ai-agent` | ✅ `RESOLVED` | [`resolved/ISSUE-0001-core-eval-architecture-fixes.md`](./resolved/ISSUE-0001-core-eval-architecture-fixes.md) |
 
 ---
 

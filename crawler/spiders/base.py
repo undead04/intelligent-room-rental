@@ -1,5 +1,8 @@
+import asyncio
+import concurrent.futures
 import json
 import os
+import threading
 import time
 from abc import ABC, abstractmethod
 from crawler.config.paths import RAW_DATA_DIR
@@ -16,6 +19,7 @@ class BaseSpider(ABC):
         self.raw_dir = str(RAW_DATA_DIR)
         RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.staging_db = staging_db
+        self._ckpt_lock = threading.Lock()
 
     def log(self, msg: str):
         """In log kèm tiền tố nguồn dữ liệu (ép flush ra terminal)"""
@@ -47,15 +51,19 @@ class BaseSpider(ABC):
         return 0
 
     def save_checkpoint(self, offset: int, region: str = "all"):
-        """Ghi mốc offset vào file checkpoint"""
+        """Ghi mốc offset vào file checkpoint một cách atomic và an toàn đa luồng."""
         ckpt_file = self.get_checkpoint_file(region)
-        with open(ckpt_file, "w", encoding="utf-8") as f:
-            json.dump({
-                "source": self.name,
-                "region": region,
-                "last_offset": offset,
-                "updated_at": time.time()
-            }, f, indent=2)
+        tmp_file = f"{ckpt_file}.tmp.{threading.get_ident()}"
+        payload = {
+            "source": self.name,
+            "region": region,
+            "last_offset": offset,
+            "updated_at": time.time(),
+        }
+        with self._ckpt_lock:
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+            os.replace(tmp_file, ckpt_file)
         self.log(f"Đã lưu checkpoint {region.upper()}: offset {offset}")
 
     def save_listing(self, item: dict) -> str:
@@ -92,8 +100,19 @@ class BaseSpider(ABC):
         Phương thức bất đồng bộ cào dữ liệu.
         Mặc định fallback về crawl() đồng bộ trong thread pool nếu spider con chưa ghi đè.
         """
-        import asyncio
         return await asyncio.to_thread(self.crawl, pages=pages, mode=mode, region=region)
+
+    def _run_coro_sync(self, coro):
+        """Thực thi coroutine an toàn từ ngữ cảnh đồng bộ (kể cả khi đã có running event loop)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(lambda: asyncio.run(coro)).result()
+        return asyncio.run(coro)
 
     def run(self, mode: str = "resume", pages: int = 5, region: str = "all", limit: int = 100, auto_clean: bool = True):
         """Hàm thực thi chuẩn cho spider"""
@@ -103,7 +122,12 @@ class BaseSpider(ABC):
             self.log(f"Kết quả Verify: {stats.get('active', 0)} tin còn sống, {stats.get('expired', 0)} tin đã hết hạn/ẩn.")
         else:
             self.log(f"Bắt đầu chế độ CÀO DỮ LIỆU (Mode: {mode.upper()}, Pages: {pages}, Region: {region.upper()})...")
-            total = self.crawl(pages=pages, mode=mode, region=region)
+            if type(self).async_crawl is not BaseSpider.async_crawl:
+                total = self._run_coro_sync(
+                    self.async_crawl(pages=pages, mode=mode, region=region)
+                )
+            else:
+                total = self.crawl(pages=pages, mode=mode, region=region)
             self.log(f"Crawl hoàn tất! Đã thu thập thêm {total} tin mới.")
 
         if auto_clean:

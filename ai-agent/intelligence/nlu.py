@@ -123,6 +123,10 @@ class PreferencePatch(BaseModel):
     )
     min_area: Optional[float] = Field(None, description="Diện tích tối thiểu (m²)")
     max_area: Optional[float] = Field(None, description="Diện tích tối đa (m²)")
+    min_bedrooms: Optional[int] = Field(
+        None,
+        description="Số phòng ngủ tối thiểu — CHỈ điền khi người dùng nêu rõ số phòng ngủ (vd: '2 phòng ngủ', '3 PN'); không suy từ số người ở",
+    )
     room_type: Optional[RoomType] = Field(None, description="Loại phòng người dùng MUỐN")
     room_types_allow: list[RoomType] = Field(
         default_factory=list,
@@ -173,6 +177,19 @@ class PreferencePatch(BaseModel):
     @classmethod
     def _area(cls, v: Optional[float]) -> Optional[float]:
         return v if v is not None and 3 <= v <= 1000 else None
+
+    @field_validator("min_bedrooms", mode="before")
+    @classmethod
+    def _bedrooms(cls, v: Any) -> Optional[int]:
+        if v is None or isinstance(v, bool):
+            return None
+        if isinstance(v, float) and not v.is_integer():
+            return None
+        try:
+            num = int(v)
+        except (TypeError, ValueError):
+            return None
+        return num if 1 <= num <= 20 else None
 
     @field_validator("room_type", mode="before")
     @classmethod
@@ -230,8 +247,10 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
             p.min_price = p.max_price = None
         elif group == "area":
             p.min_area = p.max_area = None
+            p.min_bedrooms = None
         elif group == "room_type":
             p.room_type = None
+            p.min_bedrooms = None
             p.excluded_room_types = []
             p.allowed_room_types = []
         elif group == "amenities":
@@ -246,7 +265,7 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
     elif patch.location_kind and p.location_text and not patch.location_is_vague and p.location_kind is None:
         p.location_kind = patch.location_kind        # cùng địa danh nhưng giờ mới biết loại
 
-    for key in ("min_price", "max_price", "min_area", "max_area", "max_distance_km"):
+    for key in ("min_price", "max_price", "min_area", "max_area", "min_bedrooms", "max_distance_km"):
         v = getattr(patch, key)
         if v is not None:
             setattr(p, key, v)
@@ -456,6 +475,7 @@ def _postprocess(
         or a.patch.min_price is not None
         or a.patch.min_area is not None
         or a.patch.max_area is not None
+        or a.patch.min_bedrooms is not None
         or a.patch.room_types_exclude
         or a.patch.amenities_add
         or a.patch.preferred_amenities_add

@@ -62,6 +62,8 @@ erDiagram
         float price_million_per_m2
         float deposit
         int furnishing_code
+        int bedrooms
+        int bathrooms
         string address_raw
         float lat
         float lng
@@ -112,6 +114,8 @@ Là bảng lưu trữ trung tâm của toàn bộ hệ thống:
 | `price_million_per_m2`| `FLOAT` | `NULLABLE` | Đơn giá triệu/m2 (tính toán tự động). |
 | `deposit` | `FLOAT` | `NULLABLE` | Tiền cọc (VNĐ). |
 | `furnishing_code` | `INTEGER` | `NULLABLE` | Mã tình trạng nội thất (`0`: Trống, `1`: Cơ bản, `2`: Đầy đủ). |
+| `bedrooms` | `INTEGER` | `INDEX, NULLABLE` | Số phòng ngủ (`> 0`, lấy từ raw parser hoặc LLM `numeric`). |
+| `bathrooms` | `INTEGER` | `NULLABLE` | Số phòng vệ sinh (`> 0`, lấy từ raw parser hoặc LLM `numeric`). |
 | `address_raw` | `VARCHAR` | `NULLABLE` | Địa chỉ thô người cho thuê nhập vào. |
 | `lat` / `lng` | `FLOAT` | `NULLABLE` | Tọa độ địa lý (Vĩ độ / Kinh độ). |
 | `posted_date` | `TIMESTAMP` | `NULLABLE` | Ngày người dùng đăng bài trên web gốc. |
@@ -220,6 +224,8 @@ class VectorSearchBody(BaseModel):
     max_price: Optional[float] = None                # Giá trần tối đa (VNĐ)
     min_area: Optional[float] = None                 # Diện tích tối thiểu (m2)
     max_area: Optional[float] = None                 # Diện tích tối đa (m2)
+    min_bedrooms: Optional[int] = None               # Số phòng ngủ tối thiểu
+    min_bathrooms: Optional[int] = None              # Số phòng vệ sinh tối thiểu
     amenities: Optional[list[str]] = None            # Tiện ích bắt buộc lọc cứng (AND)
     city_id: Optional[int] = None                    # ID Tỉnh/Thành phố
     district_id: Optional[int] = None                # ID Quận/Huyện
@@ -239,10 +245,12 @@ class VectorSearchBody(BaseModel):
 Các đối tượng trạng thái cốt lõi trao đổi giữa LangGraph State Machine, Backend và Frontend Next.js:
 
 * **`UserPreferenceState` (Trạng thái tiêu chí người dùng tích lũy qua các lượt chat):**
+  - `min_bedrooms: Optional[int]`: Số phòng ngủ tối thiểu người dùng yêu cầu rõ ràng (dùng cho tìm nhà nhiều phòng / ở ghép nhiều người).
   - `allowed_room_types: list[RoomType]`: Danh sách các loại phòng người dùng chấp nhận (khi chấp nhận nhiều loại hình, ví dụ `['ROOM', 'STUDIO']`). Chuẩn hóa tự động qua `normalize_room_types`.
   - `excluded_room_types: list[RoomType]`: Danh sách loại phòng bị loại trừ (ví dụ cấm `SLEEPBOX`).
   - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động tính toán mã định danh số (1..5) từ `room_type` để serialize gửi sang Frontend, tương thích ngược an toàn với `model_validate`.
 * **`RoomItem` (Thực thể phòng trọ chuẩn hóa trả về cho Frontend UI):**
+  - `bedrooms: Optional[int]` / `bathrooms: Optional[int]`: Số phòng ngủ / phòng vệ sinh trích xuất từ Backend (bỏ qua nếu thiếu).
   - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động suy ra mã ID loại phòng phục vụ render Badge / Icon trực tiếp trên Next.js.
   - `concept_scores: dict[str, float]`: Điểm số xác thực cho đủ 17 nhãn tiện ích chuẩn hóa.
   - `tags: list[str]`: Danh sách nhãn hiển thị trực quan tiếng Việt sinh động từ `_CONCEPT_TAGS`.
@@ -280,6 +288,8 @@ Bảng quy đổi 17 nhãn tiếng Việt chuẩn mực giữa mã kỹ thuật 
     "title": "Phòng trọ cao cấp có ban công",
     "price_vnd": 4200000.0,
     "area_m2": 30.0,
+    "bedrooms": 2,
+    "bathrooms": 1,
     "address_raw": "Đường Nguyễn Duy Trinh, Phường Long Trường, TP Thủ Đức",
     "lat": 10.802091,
     "lng": 106.812294,

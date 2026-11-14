@@ -269,6 +269,7 @@ Bảng checklist dưới đây được cập nhật liên tục (`[ ]` $\righta
 ### C. Tầng Huấn Luyện, Xuất Artifacts & Đồng Bộ Database (`train_price_model.py`)
 - [x] Cập nhật `train_price_model.py` với Stratified K-Fold theo nhóm phân khúc, tối ưu siêu tham số Optuna cho LightGBM và XGBoost trên tập dữ liệu 9.693 bản ghi sạch.
 - [x] Huấn luyện và xuất mới `rent_pipeline.joblib`, `guard.joblib`, `training_metrics.json`.
+- [x] Bổ sung module EDA, giải trình lựa chọn đặc trưng (Feature Importance, Multicollinearity & Ablation Study) và đánh giá phân khúc chi tiết tại [`crawler/model/ml/evaluate_model.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/crawler/model/ml/evaluate_model.py), xuất báo cáo tại [`evaluation_report.md`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/crawler/model/ml/artifacts/evaluation_report.md) và [`evaluation_report.json`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghiệp/crawler/model/ml/artifacts/evaluation_report.json).
 - [x] Cập nhật lại điểm `price_score` mới cho toàn bộ 10.431 bản ghi trong bảng `listings` của PostgreSQL.
 - [x] Cập nhật tài liệu `crawler/model/ml/README.md`.
 - [x] Chạy toàn bộ test suite `crawler/tests` và `backend/tests` pass 100%.

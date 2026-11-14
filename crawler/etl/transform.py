@@ -124,6 +124,16 @@ class ListingTransformer:
         except (ValueError, TypeError):
             return default
 
+    def clean_positive_int(self, *candidates: object) -> Optional[int]:
+        """Chọn giá trị số nguyên dương (> 0) đầu tiên hợp lệ, bỏ qua bool và giá trị <= 0."""
+        for val in candidates:
+            if val is None or isinstance(val, bool) or val == "":
+                continue
+            parsed = self.clean_int(val, default=None)
+            if parsed is not None and parsed > 0:
+                return parsed
+        return None
+
     def to_datetime(self, date_string: Optional[Union[str, int, float, datetime]]) -> Optional[datetime]:
         """Chuẩn hóa trường ngày giờ."""
         if not date_string:
@@ -174,6 +184,12 @@ class ListingTransformer:
 
         record["deposit"] = self.clean_number(record.get("deposit"), default=None)
         record["furnishing_code"] = self.clean_int(record.get("furnishing_code"), default=None)
+        raw_bedrooms = self.clean_positive_int(
+            record.get("bedrooms"), record.get("num_bedrooms"), record.get("rooms")
+        )
+        raw_bathrooms = self.clean_positive_int(
+            record.get("bathrooms"), record.get("num_bathrooms"), record.get("toilets")
+        )
         record["price_string"] = record.get("price_string") or (f"{int(price_vnd):,} đ/tháng" if price_vnd > 0 else None)
 
         # 4. Tọa độ & Địa chỉ
@@ -225,6 +241,8 @@ class ListingTransformer:
             or record.get("report")
         )
         rep_obj = None
+        llm_bedrooms = None
+        llm_bathrooms = None
         if rep:
             if isinstance(rep, dict):
                 try:
@@ -240,10 +258,8 @@ class ListingTransformer:
                 record["concept_scores"] = rep_obj.to_concept_scores()
                 record["report"] = rep_obj.model_dump(mode="json")
                 if getattr(rep_obj, "numeric", None):
-                    if rep_obj.numeric.bedrooms is not None:
-                        record["num_bedrooms"] = rep_obj.numeric.bedrooms
-                    if rep_obj.numeric.bathrooms is not None:
-                        record["num_bathrooms"] = rep_obj.numeric.bathrooms
+                    llm_bedrooms = rep_obj.numeric.bedrooms
+                    llm_bathrooms = rep_obj.numeric.bathrooms
             elif isinstance(rep, dict):
                 record["safety_score"] = self.clean_number(rep.get("safety_score"), default=None)
                 record["amenity_overall"] = self.clean_number(rep.get("amenity_overall_score") or rep.get("amenity_overall"), default=None)
@@ -251,14 +267,25 @@ class ListingTransformer:
                 record["report"] = rep
                 num_dict = rep.get("numeric") or {}
                 if isinstance(num_dict, dict):
-                    if num_dict.get("bedrooms") is not None:
-                        record["num_bedrooms"] = num_dict.get("bedrooms")
-                    if num_dict.get("bathrooms") is not None:
-                        record["num_bathrooms"] = num_dict.get("bathrooms")
+                    llm_bedrooms = num_dict.get("bedrooms")
+                    llm_bathrooms = num_dict.get("bathrooms")
         else:
             record["safety_score"] = self.clean_number(record.get("safety_score"), default=None)
             record["amenity_overall"] = self.clean_number(record.get("amenity_overall"), default=None)
             record["concept_scores"] = record.get("concept_scores")
+
+        final_bedrooms = self.clean_positive_int(llm_bedrooms, raw_bedrooms)
+        final_bathrooms = self.clean_positive_int(llm_bathrooms, raw_bathrooms)
+        record["bedrooms"] = final_bedrooms
+        record["bathrooms"] = final_bathrooms
+        if final_bedrooms is not None:
+            record["num_bedrooms"] = final_bedrooms
+        else:
+            record.pop("num_bedrooms", None)
+        if final_bathrooms is not None:
+            record["num_bathrooms"] = final_bathrooms
+        else:
+            record.pop("num_bathrooms", None)
 
         # 9. Chuẩn hóa phân loại phòng (room_type & room_type_id) theo canonical 1..5
         room_type_val = None

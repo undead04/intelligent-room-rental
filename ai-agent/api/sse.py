@@ -7,7 +7,6 @@ import logging
 import time
 from typing import Any, Iterator, Optional
 
-from core import RECURSION_LIMIT
 from domain.schemas import AgentResponse
 
 logger = logging.getLogger(__name__)
@@ -106,7 +105,6 @@ def stream_graph_events(
         for chunk in graph.stream(
             state,
             stream_mode="updates",
-            config={"recursion_limit": RECURSION_LIMIT},
         ):
             if not isinstance(chunk, dict):
                 continue

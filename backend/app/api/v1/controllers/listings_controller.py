@@ -50,6 +50,8 @@ def get_listings(
         max_price=params.max_price,
         min_area=params.min_area,
         max_area=params.max_area,
+        min_bedrooms=params.min_bedrooms,
+        min_bathrooms=params.min_bathrooms,
         order_by=params.order_by,
         sort_desc=params.sort_desc,
         limit=params.limit,
@@ -79,6 +81,8 @@ def get_total_listings(
             max_price=params.max_price,
             min_area=params.min_area,
             max_area=params.max_area,
+            min_bedrooms=params.min_bedrooms,
+            min_bathrooms=params.min_bathrooms,
         )
     )
     return ResponseDTO[ListingCountResponse](data=count)
@@ -156,6 +160,8 @@ def vector_search_listings(
         max_price=body.max_price,
         min_area=body.min_area,
         max_area=body.max_area,
+        min_bedrooms=body.min_bedrooms,
+        min_bathrooms=body.min_bathrooms,
         max_distance_km=body.max_distance_km,
         limit=body.limit,
         offset=body.offset,

@@ -136,7 +136,7 @@ BENCHMARK_QUERIES: list[BenchmarkQuery] = [
             max_distance_km=2.5,
             target_location_name="KTX Khu B ĐHQG",
             required_amenities=[],
-            allowed_room_types=["SLEEPBOX"],
+            allowed_room_types=["SLEEPBOX", "ROOM"],
             forbidden_room_types=[],
             ideal_priorities={"price": "high", "distance": "high"},
         ),

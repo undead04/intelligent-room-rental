@@ -128,7 +128,7 @@ class NhaTotSpider(BaseSpider):
 
         return total_crawled
 
-    async def async_verify(self, limit: int = 100, max_concurrency: int = 5) -> dict:
+    async def async_verify(self, limit: int = 100, max_concurrency: Optional[int] = None) -> dict:
         """
         Kiểm tra trạng thái các tin đã lưu trên Chợ Tốt bằng kiến trúc Asynchronous Concurrency:
         - Sử dụng asyncio.Semaphore(max_concurrency) để kiểm soát tải HTTP song song.
@@ -136,6 +136,9 @@ class NhaTotSpider(BaseSpider):
         - Sử dụng asyncio.Lock bảo vệ cập nhật dictionary stats và gọi self.staging_db.save_listing qua asyncio.to_thread.
         - Gom toàn bộ tác vụ qua asyncio.gather(*tasks).
         """
+        effective_concurrency = (
+            max_concurrency if max_concurrency is not None else settings.VERIFY_MAX_CONCURRENCY
+        )
         stats = {"checked": 0, "active": 0, "expired": 0, "error": 0}
         indexed = []
 
@@ -167,10 +170,10 @@ class NhaTotSpider(BaseSpider):
         target_list = indexed[:limit] if limit > 0 else indexed
         self.log(
             f"Bắt đầu kiểm tra bất đồng bộ {len(target_list)} tin cũ "
-            f"(Concurrency: {max_concurrency}, Tổng kho: {len(indexed)} tin)..."
+            f"(Concurrency: {effective_concurrency}, Tổng kho: {len(indexed)} tin)..."
         )
 
-        sem = asyncio.Semaphore(max_concurrency)
+        sem = asyncio.Semaphore(effective_concurrency)
         lock = asyncio.Lock()
 
         async def _verify_single(item_info: dict):
@@ -255,34 +258,30 @@ class NhaTotSpider(BaseSpider):
         với main.py, scheduler.py và các test suites cũ.
         Tự động xử lý an toàn kể cả khi đang có sẵn running event loop.
         """
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(lambda: asyncio.run(self.async_verify(limit=limit))).result()
-        else:
-            return asyncio.run(self.async_verify(limit=limit))
+        return self._run_coro_sync(self.async_verify(limit=limit))
 
     async def async_crawl_regions(
         self,
         pages: int = 5,
         mode: str = "resume",
         regions: Optional[list] = None,
-        max_concurrent_regions: int = 2,
+        max_concurrent_regions: Optional[int] = None,
     ) -> int:
         """
         Cào song song đa vùng độc lập bằng asyncio.gather kết hợp Semaphore.
         Mỗi vùng duy trì checkpoint riêng biệt và cơ chế early stop độc lập.
         """
+        effective_max_regions = (
+            max_concurrent_regions
+            if max_concurrent_regions is not None
+            else settings.CRAWL_MAX_CONCURRENT_REGIONS
+        )
         target_regions = regions or list(settings.REGIONS.keys())
         self.log(
             f"Bắt đầu cào song song {len(target_regions)} vùng: {', '.join(target_regions).upper()} "
-            f"(Max concurrency: {max_concurrent_regions} vùng đồng thời)..."
+            f"(Max concurrency: {effective_max_regions} vùng đồng thời)..."
         )
-        region_sem = asyncio.Semaphore(max_concurrent_regions)
+        region_sem = asyncio.Semaphore(effective_max_regions)
 
         async def _crawl_single_region(reg: str) -> int:
             async with region_sem:

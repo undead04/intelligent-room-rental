@@ -57,6 +57,32 @@ class ListingRepository:
             joinedload(Listing.room_type),
         )
 
+    @staticmethod
+    def _apply_numeric_filters(
+        query: Query,
+        *,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        min_area: Optional[float] = None,
+        max_area: Optional[float] = None,
+        min_bedrooms: Optional[int] = None,
+        min_bathrooms: Optional[int] = None,
+    ) -> Query:
+        """Áp dụng thống nhất các bộ lọc khoảng giá, diện tích và số phòng."""
+        if min_price is not None:
+            query = query.filter(Listing.price_vnd >= min_price)
+        if max_price is not None:
+            query = query.filter(Listing.price_vnd <= max_price)
+        if min_area is not None:
+            query = query.filter(Listing.area_m2 >= min_area)
+        if max_area is not None:
+            query = query.filter(Listing.area_m2 <= max_area)
+        if min_bedrooms is not None:
+            query = query.filter(Listing.bedrooms >= min_bedrooms)
+        if min_bathrooms is not None:
+            query = query.filter(Listing.bathrooms >= min_bathrooms)
+        return query
+
     def filtered_query(
         self,
         *,
@@ -69,6 +95,8 @@ class ListingRepository:
         max_price: Optional[float],
         min_area: Optional[float],
         max_area: Optional[float],
+        min_bedrooms: Optional[int] = None,
+        min_bathrooms: Optional[int] = None,
         include_inactive: bool = False,
     ) -> Query:
         query = self.base_query()
@@ -85,15 +113,15 @@ class ListingRepository:
         ):
             if value is not None:
                 query = query.filter(column == value)
-        if min_price is not None:
-            query = query.filter(Listing.price_vnd >= min_price)
-        if max_price is not None:
-            query = query.filter(Listing.price_vnd <= max_price)
-        if min_area is not None:
-            query = query.filter(Listing.area_m2 >= min_area)
-        if max_area is not None:
-            query = query.filter(Listing.area_m2 <= max_area)
-        return query
+        return self._apply_numeric_filters(
+            query,
+            min_price=min_price,
+            max_price=max_price,
+            min_area=min_area,
+            max_area=max_area,
+            min_bedrooms=min_bedrooms,
+            min_bathrooms=min_bathrooms,
+        )
 
     def search(
         self,
@@ -111,6 +139,8 @@ class ListingRepository:
         sort_desc: bool,
         limit: int,
         offset: int,
+        min_bedrooms: Optional[int] = None,
+        min_bathrooms: Optional[int] = None,
     ) -> list[Listing]:
         query = self.filtered_query(
             search=search,
@@ -122,6 +152,8 @@ class ListingRepository:
             max_price=max_price,
             min_area=min_area,
             max_area=max_area,
+            min_bedrooms=min_bedrooms,
+            min_bathrooms=min_bathrooms,
         )
         sort_column = getattr(Listing, order_by)
         query = query.order_by(sort_column.desc() if sort_desc else sort_column)
@@ -139,6 +171,8 @@ class ListingRepository:
         max_price: Optional[float],
         min_area: Optional[float],
         max_area: Optional[float],
+        min_bedrooms: Optional[int] = None,
+        min_bathrooms: Optional[int] = None,
     ) -> int:
         query = self.filtered_query(
             search=search,
@@ -150,6 +184,8 @@ class ListingRepository:
             max_price=max_price,
             min_area=min_area,
             max_area=max_area,
+            min_bedrooms=min_bedrooms,
+            min_bathrooms=min_bathrooms,
         )
         return query.order_by(None).count()
 
@@ -209,6 +245,8 @@ class ListingRepository:
         max_price: float | None = None,
         min_area: float | None = None,
         max_area: float | None = None,
+        min_bedrooms: int | None = None,
+        min_bathrooms: int | None = None,
         limit: int = 50,
         alpha: float = 0.6,
         model_name: Optional[str] = None,
@@ -323,15 +361,15 @@ class ListingRepository:
             if excluded_ids:
                 query = query.filter(Listing.room_type_id.notin_(set(excluded_ids)))
 
-        if min_price is not None:
-            query = query.filter(Listing.price_vnd >= min_price)
-        if max_price is not None:
-            query = query.filter(Listing.price_vnd <= max_price)
-
-        if min_area is not None:
-            query = query.filter(Listing.area_m2 >= min_area)
-        if max_area is not None:
-            query = query.filter(Listing.area_m2 <= max_area)
+        query = self._apply_numeric_filters(
+            query,
+            min_price=min_price,
+            max_price=max_price,
+            min_area=min_area,
+            max_area=max_area,
+            min_bedrooms=min_bedrooms,
+            min_bathrooms=min_bathrooms,
+        )
 
         # Lọc không gian Bán kính Tròn Haversine chính xác quanh toạ độ mục tiêu
         if lat is not None and lng is not None and max_distance_km:
@@ -373,6 +411,11 @@ class ListingRepository:
                     c_furn = func.coalesce(cast(Listing.concept_scores.op("->>")("furniture"), Float), 0.0) >= 0.5
                     c_code = Listing.furnishing_code.in_([1, 2])
                     query = query.filter(or_(c_furn, c_code))
+                elif clean_code == "no_shared_landlord":
+                    c_nsl = func.coalesce(cast(Listing.concept_scores.op("->>")("no_shared_landlord"), Float), 0.0) >= 0.5
+                    c_free = func.coalesce(cast(Listing.concept_scores.op("->>")("free_hours"), Float), 0.0) >= 0.5
+                    c_fp = func.coalesce(cast(Listing.concept_scores.op("->>")("fingerprint_lock"), Float), 0.0) >= 0.5
+                    query = query.filter(or_(c_nsl, c_free & c_fp))
                 else:
                     query = query.filter(
                         func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5

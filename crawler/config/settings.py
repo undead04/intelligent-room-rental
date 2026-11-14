@@ -83,3 +83,7 @@ SCHEDULER_VERIFY_LIMIT = int(os.environ.get("SCHEDULER_VERIFY_LIMIT", "100"))
 SCHEDULER_DEFAULT_REGION = os.environ.get("SCHEDULER_DEFAULT_REGION", "all")
 SCHEDULER_DEFAULT_SOURCE = os.environ.get("SCHEDULER_DEFAULT_SOURCE", "all")
 
+# 8. Cấu hình Concurrency / Semaphore cho Spider
+CRAWL_MAX_CONCURRENT_REGIONS = max(1, int(os.environ.get("CRAWL_MAX_CONCURRENT_REGIONS", "2")))
+VERIFY_MAX_CONCURRENCY = max(1, int(os.environ.get("VERIFY_MAX_CONCURRENCY", "5")))
+

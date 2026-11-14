@@ -1,4 +1,22 @@
 from datetime import datetime
+import re
+from typing import Optional
+
+
+def _extract_positive_int(val: object) -> Optional[int]:
+    """Trích xuất số nguyên dương (> 0) từ int/float/str; bỏ qua bool và giá trị <= 0."""
+    if val is None or isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        num = int(val)
+        return num if num > 0 else None
+    if isinstance(val, str):
+        match = re.search(r"\d+", val)
+        if match:
+            num = int(match.group(0))
+            return num if num > 0 else None
+    return None
+
 
 def parse_chotot_item(item):
     """Map dữ liệu từ Chợ Tốt JSON sang raw schema chuẩn hóa đầy đủ dựa theo test_output"""
@@ -24,16 +42,34 @@ def parse_chotot_item(item):
     ).strip()
     poster_avatar = item.get('avatar') or seller_info.get('avatar') or ''
 
-    # Lấy tình trạng nội thất từ feature_params (seo_structure hoặc compare)
+    # Lấy tình trạng nội thất, số phòng ngủ & phòng vệ sinh từ feature_params (seo_structure hoặc compare)
     furnishing = ""
+    bedrooms_feat = None
+    bathrooms_feat = None
     feature_params = item.get('feature_params', {}) or {}
     seo_items = feature_params.get('seo_structure', {}).get('items', [])
     compare_items = feature_params.get('compare', {}).get('items', [])
     
     for feat in seo_items + compare_items:
-        if feat.get('id') == 'furnishing_rent':
+        fid = feat.get('id')
+        if fid == 'furnishing_rent' and not furnishing:
             furnishing = feat.get('value', '')
-            break
+        elif fid in ('rooms', 'bedrooms') and bedrooms_feat is None:
+            bedrooms_feat = _extract_positive_int(feat.get('value'))
+        elif fid in ('toilets', 'bathrooms') and bathrooms_feat is None:
+            bathrooms_feat = _extract_positive_int(feat.get('value'))
+
+    bedrooms = _extract_positive_int(item.get('rooms'))
+    if bedrooms is None:
+        bedrooms = _extract_positive_int(item.get('bedrooms'))
+    if bedrooms is None:
+        bedrooms = bedrooms_feat
+
+    bathrooms = _extract_positive_int(item.get('toilets'))
+    if bathrooms is None:
+        bathrooms = _extract_positive_int(item.get('bathrooms'))
+    if bathrooms is None:
+        bathrooms = bathrooms_feat
 
     # Trích xuất địa chỉ đầy đủ (address_raw)
     street_name = item.get('street_name', '') or ''
@@ -83,6 +119,8 @@ def parse_chotot_item(item):
         "deposit": item.get('deposit', 0),
         "furnishing": furnishing,
         "furnishing_code": item.get('furnishing_rent'), # Code 1, 2, 3...
+        "bedrooms": bedrooms,
+        "bathrooms": bathrooms,
         "room_type": item.get('category_name') or "Phòng trọ",
         "category_id": item.get('category'),
         "ward": ward_name,

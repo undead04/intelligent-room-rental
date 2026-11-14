@@ -46,6 +46,8 @@ class ListingService:
             max_price=filters.get("max_price"), # type: ignore
             min_area=filters.get("min_area"), # type: ignore
             max_area=filters.get("max_area"), # type: ignore
+            min_bedrooms=filters.get("min_bedrooms"), # type: ignore
+            min_bathrooms=filters.get("min_bathrooms"), # type: ignore
             order_by=order_by,
             sort_desc=bool(filters.get("sort_desc", True)),
             limit=int(filters.get("limit", 20)), # type: ignore
@@ -63,6 +65,8 @@ class ListingService:
             max_price=filters.get("max_price"), # type: ignore
             min_area=filters.get("min_area"), # type: ignore
             max_area=filters.get("max_area"), # type: ignore
+            min_bedrooms=filters.get("min_bedrooms"), # type: ignore
+            min_bathrooms=filters.get("min_bathrooms"), # type: ignore
         )
 
     def get_listing(self, listing_id: str) -> Listing:
@@ -274,6 +278,8 @@ class ListingService:
         max_price: Optional[float] = None,
         min_area: Optional[float] = None,
         max_area: Optional[float] = None,
+        min_bedrooms: Optional[int] = None,
+        min_bathrooms: Optional[int] = None,
         max_distance_km: Optional[float] = 8.0,
         limit: int = 5,
         offset: int = 0,
@@ -308,6 +314,10 @@ class ListingService:
             "excluded_room_types": excluded_room_types,
             "limit": candidate_limit,
         }
+        if min_bedrooms is not None:
+            repo_kwargs["min_bedrooms"] = min_bedrooms
+        if min_bathrooms is not None:
+            repo_kwargs["min_bathrooms"] = min_bathrooms
         model_name = model_embedding.model_name.strip()
         repo_kwargs["model_name"] = model_name
 

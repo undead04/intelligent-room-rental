@@ -126,7 +126,7 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
         for k in ("city_id", "district_id", "ward_id"):
             if args.get(k) is not None:
                 body[k] = args[k]
-    for k in ("room_type", "min_price", "max_price", "min_area", "max_area"):
+    for k in ("room_type", "min_price", "max_price", "min_area", "max_area", "min_bedrooms", "min_bathrooms"):
         if args.get(k) is not None:
             body[k] = getattr(args[k], "value", args[k])
     if args.get("room_types"):
@@ -184,6 +184,7 @@ def search_rooms(
     max_price: Optional[float] = None,
     min_area: Optional[float] = None,
     max_area: Optional[float] = None,
+    min_bedrooms: Optional[int] = None,
     amenities: Optional[list[str]] = None,
     preferred_amenities: Optional[list[str]] = None,
     max_distance_km: Optional[float] = None,
@@ -209,6 +210,7 @@ def search_rooms(
         max_price: Giá tối đa bằng VNĐ (ví dụ: 3500000).
         min_area: Diện tích tối thiểu (m²).
         max_area: Diện tích tối đa (m²).
+        min_bedrooms: Số phòng ngủ tối thiểu.
         amenities: Danh sách tiện ích yêu cầu theo format Amenity (ví dụ: ['aircon', 'mezzanine', 'pet_allowed']).
         preferred_amenities: Danh sách tiện ích ưu tiên mềm.
         max_distance_km: Bán kính tìm kiếm tối đa (km).
@@ -222,6 +224,7 @@ def search_rooms(
         query=query, lat=lat, lng=lng, city_id=city_id, district_id=district_id, ward_id=ward_id,
         room_type=room_type, room_types=room_types, excluded_room_types=excluded_room_types,
         min_price=min_price, max_price=max_price, min_area=min_area, max_area=max_area,
+        min_bedrooms=min_bedrooms,
         amenities=amenities, preferred_amenities=preferred_amenities, max_distance_km=max_distance_km,
         weights=weights, limit=limit,
     )))
@@ -269,9 +272,13 @@ def compact_listing_detail(raw_data: dict[str, Any]) -> dict[str, Any]:
         compact["deposit"] = deposit_vnd
         compact["deposit_million"] = round(deposit_vnd / 1_000_000, 2)
 
-    # 4. Diện tích & loại phòng (hỗ trợ object room_type từ backend)
+    # 4. Diện tích, số phòng & loại phòng (hỗ trợ object room_type từ backend)
     if raw_data.get("area_m2"):
         compact["area_m2"] = raw_data["area_m2"]
+    if raw_data.get("bedrooms") is not None:
+        compact["bedrooms"] = raw_data["bedrooms"]
+    if raw_data.get("bathrooms") is not None:
+        compact["bathrooms"] = raw_data["bathrooms"]
 
     room_type = raw_data.get("room_type")
     if isinstance(room_type, dict) and room_type.get("name"):

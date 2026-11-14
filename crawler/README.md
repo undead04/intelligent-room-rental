@@ -113,16 +113,17 @@ crawler/
 │   ├── enum.py                  # Shim tương thích ngược (re-export từ schema/enums.py)
 │   └── listing.py               # Pydantic schemas (Signal, Amenities, Safety, ConceptScores)
 ├── spiders/
-│   ├── base.py                  # Lớp Base Spider trừu tượng
-│   ├── nhatot.py                # Crawler Chợ Tốt / Nhà Tốt API (resume, update, verify)
+│   ├── base.py                  # Lớp Base Spider trừu tượng (tự động điều phối async_crawl, atomic checkpoint)
+│   ├── nhatot.py                # Crawler Chợ Tốt / Nhà Tốt API (async_crawl_regions & async_verify với asyncio.Semaphore)
 │   └── phongtro123.py           # Crawler PhongTro123
 ├── utils/
 │   ├── count_token.py           # Đếm token đầu vào cho LLM
 │   ├── http.py                  # Client HTTP với Retry & Exponential Backoff
-│   └── parser.py                # Bóc tách và chuẩn hóa dữ liệu thô từ payload API
-├── tests/                       # 81 Unit & Integration tests (Schema, Staging DB, Pipeline chunking, Transform và ML v2)
-├── staging_db.py                # SQLite Staging DB interface & schema
+│   └── parser.py                # Bóc tách và chuẩn hóa dữ liệu thô từ payload API (kèm bedrooms, bathrooms)
+├── tests/                       # 150 Unit & Integration tests (Async Spider/Semaphore, Scheduler, Schema, Staging DB, Transform, ML v2)
+├── staging_db.py                # SQLite Staging DB interface & schema (WAL mode + threading.RLock an toàn đa luồng)
 ├── main.py                      # CLI điều khiển chính của Crawler
+├── scheduler.py                 # Cron Job Scheduler Daemon (daily_crawl 02:00 & weekly_verify Chủ Nhật 04:00)
 ├── README.md                    # Tài liệu hướng dẫn chi tiết
 └── requirements.txt             # Danh sách thư viện phụ thuộc
 ```
@@ -153,6 +154,13 @@ GEMINI_API_KEYS="AIzaSyA...,AIzaSyB...,AIzaSyC..."
 
 # Kết nối cơ sở dữ liệu PostgreSQL (chứa extension pgvector)
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/smart_housing_db"
+
+# (Tùy chọn) Cấu hình Asynchronous Concurrency (asyncio.Semaphore) & Scheduler
+CRAWL_MAX_CONCURRENT_REGIONS=2
+VERIFY_MAX_CONCURRENCY=5
+SCHEDULER_DAILY_CRAWL_TIME="02:00"
+SCHEDULER_WEEKLY_VERIFY_DAY="sun"
+SCHEDULER_WEEKLY_VERIFY_TIME="04:00"
 ```
 
 > [!NOTE]
@@ -163,7 +171,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/smart_housing_db"
 
 ## 🚀 5. Hướng Dẫn Sử Dụng Chi Tiết
 
-Hệ thống hỗ trợ 2 cách vận hành: **Chạy trọn gói (End-to-End)** hoặc **Chạy tách biệt từng bước (Step-by-Step)**.
+Hệ thống hỗ trợ 3 cách vận hành: **Chạy trọn gói (End-to-End)**, **Chạy tách biệt từng bước (Step-by-Step)** và **Chạy tự động theo lịch (Cron Job Scheduler)**.
 
 ---
 
@@ -172,7 +180,7 @@ Hệ thống hỗ trợ 2 cách vận hành: **Chạy trọn gói (End-to-End)**
 Không cần phải nhớ cấu hình phức tạp, bạn có thể chạy nhanh các tác vụ phổ biến:
 
 ```powershell
-# 1. Cào cơ bản (Mặc định: 5 trang TP.HCM, tự động lưu staging & xuất CSV, Parquet):
+# 1. Cào cơ bản (Mặc định: 5 trang/vùng toàn quốc --region all, tự động lưu staging & xuất CSV, Parquet):
 python crawler/main.py
 
 # 2. Cào kèm bóc tách thuộc tính ngữ nghĩa qua LLM Gemini:
@@ -190,7 +198,7 @@ python crawler/main.py --pages 10 --region hcm
 | `--full` | **Trọn gói A-Z**: Tự động bật **LLM Gemini** + **ML Price Score** + **Embedding E5** + **Nạp PostgreSQL** (`db`) & xuất CSV, Parquet | `False` |
 | `--llm` | **Bật LLM Gemini** bóc tách tiện ích, an ninh & kiểm định bằng chứng | `False` |
 | `--pages` | Số trang cần cào (mỗi trang ~50 tin) | `5` |
-| `--region` | Khu vực tỉnh/thành (`hcm`, `hanoi`, `danang`, `binhduong`...) | `hcm` |
+| `--region` | Khu vực (`hcm`, `hanoi`, `danang`, `binhduong`, `dongnai`, `cantho`, `all` — khi `all` tự động cào song song đa vùng qua `asyncio.Semaphore`) | `all` |
 | `--mode` | Chế độ: `resume` (cào tiếp), `update` (tin mới), `verify` (kiểm tra tin cũ) | `resume` |
 | `--no-clean` | Tắt ETL (chỉ cào thô và lưu vào staging.db) | `False` |
 | `--limit` | Số lượng tin cũ kiểm tra khi chạy `--mode verify` | `50` |
@@ -248,6 +256,36 @@ python crawler/etl/pipeline.py --dest db --embed --extract-llm --checkpoint craw
 | `--output-parquet`| Tùy chỉnh đường dẫn file Parquet xuất ra | `crawler/data/processed/listings_clean.parquet` |
 | `--output-csv` | Tùy chỉnh đường dẫn file CSV xuất ra | `crawler/data/processed/listings_clean.csv` |
 | `--output-json` | Tùy chỉnh đường dẫn file JSON xuất ra | `crawler/data/processed/listings_clean.json` |
+
+---
+
+### ⏰ Lựa chọn 3: Chạy Tự Động Bằng Cron Job Scheduler (`crawler/scheduler.py`)
+
+Dùng cho vận hành nền tự động hằng ngày (`daily_crawl` 02:00 AM) và kiểm tra tin cũ hằng tuần (`weekly_verify` Chủ Nhật 04:00 AM):
+
+```powershell
+# Khởi chạy Scheduler Daemon (chạy nền liên tục, có Non-overlapping Lock & Graceful Shutdown)
+.\crawler\.venv\Scripts\python.exe crawler/scheduler.py
+
+# Kích hoạt chạy ngay tức thì để demo/kiểm thử (không cần đợi đến giờ hẹn)
+.\crawler\.venv\Scripts\python.exe crawler/scheduler.py --run-now update --pages 1 --no-clean
+```
+
+| Tham số `scheduler.py` | Ý nghĩa | Mặc định |
+|---|---|---|
+| `--run-now` | Chạy ngay 1 job (`daily`, `update`, `verify`, `weekly`) | `None` (chạy Daemon) |
+| `--pages` | Ghi đè số trang cào cho job hằng ngày | `SCHEDULER_DAILY_PAGES` (`3`) |
+| `--limit` | Ghi đè số tin tối đa khi chạy kiểm tra trạng thái | `SCHEDULER_VERIFY_LIMIT` (`100`) |
+| `--region` | Khu vực cào (`hcm`, `hanoi`, ..., `all`) | `SCHEDULER_DEFAULT_REGION` (`all`) |
+| `--source` | Nguồn dữ liệu (`nhatot`, `phongtro123`, `all`) | `SCHEDULER_DEFAULT_SOURCE` (`all`) |
+| `--no-clean` | Tắt ETL sau khi cào (chỉ lưu dữ liệu thô vào `staging.db`) | `False` |
+| `--poll-interval` | Chu kỳ (giây) kiểm tra lịch hẹn | `1.0` |
+
+> [!NOTE]
+> **Kiến trúc Concurrency (`asyncio.Semaphore`) & An toàn Rate Limit:**
+> - **Crawl đa vùng (`async_crawl_regions`):** `BaseSpider.run()` tự động kích hoạt `async_crawl()` khi spider con override; riêng `NhaTotSpider` với `--region all` chạy song song đa tỉnh qua `asyncio.Semaphore(CRAWL_MAX_CONCURRENT_REGIONS)` (mặc định `2`), ghi `staging.db` qua `threading.RLock` và lưu checkpoint nguyên tử (`os.replace`).
+> - **Verify bất đồng bộ (`async_verify`):** Quét trạng thái tin cũ song song qua `asyncio.Semaphore(VERIFY_MAX_CONCURRENCY)` (mặc định `5`) kèm anti-ban jitter.
+> - **LLM Extraction (`crawler/model/llm/pipeline.py`):** Cố tình giữ **chạy tuần tự (sequential)** để tránh vượt ngưỡng rate limit của Gemini API.
 
 ---
 
@@ -343,7 +381,7 @@ Khi chạy `--dest db`, loader tự động nạp và liên kết các bảng:
 - `cities`, `districts`, `wards`: Hệ thống địa danh phân cấp hành chính.
 - `room_types`: Danh mục loại hình phòng (`ROOM`, `MINI_APARTMENT`, `HOUSE`, `STUDIO`...).
 - `users`: Thông tin người đăng tin (chủ trọ/môi giới).
-- `listings`: Thông tin cốt lõi bài đăng (giá, diện tích, tiền cọc, toạ độ, `price_score`, `concept_scores`, LLM extraction jsonb).
+- `listings`: Thông tin cốt lõi bài đăng (giá, diện tích, `bedrooms`, `bathrooms` trích xuất kết hợp từ raw parser Chợ Tốt & `LLM numeric`, tiền cọc, toạ độ, trạng thái `is_active` / `status` / `last_checked_at`, `price_score`, `concept_scores`).
 - `listing_embeddings`: Bảng chứa vector `vector(768)` liên kết `1-1` với `listings`, hỗ trợ lập chỉ mục **HNSW** (`vector_cosine_ops`) để tìm kiếm ngữ nghĩa theo Cosine Similarity dưới 10ms.
 
 ---
@@ -351,16 +389,19 @@ Khi chạy `--dest db`, loader tự động nạp và liên kết các bảng:
 ## 🧪 9. Kiểm Thử (Unit Tests)
 
 Thư mục `crawler/tests/` cung cấp bộ kiểm thử toàn diện:
-```bash
-# Chạy toàn bộ test của module crawler
-pytest crawler/tests -v
+```powershell
+# Chạy toàn bộ test của module crawler (từ thư mục gốc dự án)
+.\crawler\.venv\Scripts\pytest.exe crawler/tests -q
 ```
 
-Danh sách các test case chính:
+Danh sách các test suite chính:
+- `test_async_spider.py`: Kiểm tra `asyncio.Semaphore` cho `async_verify` & `async_crawl_regions`, routing qua `BaseSpider.run()`, SQLite lock và checkpoint atomic.
+- `test_scheduler.py`: Kiểm tra `HomigoScheduler`, Non-overlapping Lock và chế độ `--run-now`.
 - `test_listing_schema.py`: Kiểm tra Pydantic validation, evidence verification và thang điểm concept scores.
-- `test_staging_db.py`: Kiểm tra tính toàn vẹn SQLite WAL, khử trùng lặp và chuyển đổi trạng thái `is_processed`.
-- `test_transform.py`: Kiểm tra làm sạch văn bản, chuyển đổi kiểu dữ liệu, khử trùng lặp, tích hợp embedding metadata và ML price score.
-- `test_run_pipeline_chunking.py`: Kiểm tra bộ bóc tách token chunking và cơ chế checkpoint phục hồi.
+- `test_staging_db.py`: Kiểm tra tính toàn vẹn SQLite WAL + `RLock`, khử trùng lặp và chuyển đổi trạng thái `is_processed`.
+- `test_transform.py`: Kiểm tra làm sạch văn bản, bóc tách `bedrooms`/`bathrooms`, chuyển đổi kiểu dữ liệu, khử trùng lặp, tích hợp embedding metadata và ML price score.
+- `test_run_pipeline_chunking.py`: Kiểm tra bộ bóc tách token chunking tuần tự và cơ chế checkpoint phục hồi.
+- `test_ml_v2_qa_independent.py`: Kiểm thử độc lập mô hình ML v2 định giá & tính nhất quán PostgreSQL.
 
 ---
 
