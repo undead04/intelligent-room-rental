@@ -329,16 +329,6 @@ class TraceStore:
         ordered = sorted(self._events, key=lambda e: int(e.get("seq", 0)))
         return "\n".join(json.dumps(ev, ensure_ascii=False, default=str) for ev in ordered)
 
-    def persist_jsonl(self, path: Optional[Path] = None) -> Path:
-        """Ghi nối tiếp toàn bộ các span của lượt chạy vào tệp JSONL."""
-        target = Path(path) if path else self.persist_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        content = self.to_jsonl()
-        if content:
-            with target.open("a", encoding="utf-8") as fh:
-                fh.write(content + "\n")
-        return target
-
     def count_type(self, event_type: str) -> int:
         return sum(1 for e in self._events if e.get("type") == event_type)
 

@@ -15,12 +15,10 @@ from __future__ import annotations
 import copy
 import json
 import uuid
-from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from core.session_store import SessionStore
-from domain.budget import MarketStats
 from eval.datasets.agent_eval_set import (
     AGENT_EVAL_CASES,
     EVAL_SET_VERSION,

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
@@ -40,12 +41,36 @@ def new_session_id() -> str:
     return uuid.uuid4().hex
 
 
+_ROOM_LIST_SPLIT_RE = re.compile(r"(?:\n|^)(?:###\s*1\.|1\.\s+\*\*|\d+\.\s+\*\*)")
+
+
+def _compact_assistant_text(
+    text_msg: str,
+    *,
+    max_len: int,
+    snippet_len: int,
+    list_with_header: str,
+    list_fallback: str,
+    skill_suffix: str,
+) -> str:
+    """Rút gọn tin nhắn assistant chứa danh sách phòng hoặc cẩm nang dài."""
+    split_match = _ROOM_LIST_SPLIT_RE.search(text_msg)
+    if split_match or "Homigo đã tìm được" in text_msg or "Homigo đã nhận được" in text_msg:
+        header = text_msg[:split_match.start()].strip() if split_match else text_msg.split("Homigo đã")[0].strip()
+        if len(header) > 30:
+            return f"{header}{list_with_header}"
+        return list_fallback
+    if "Tư vấn chuyên sâu" in text_msg or len(text_msg) > max_len:
+        snippet = text_msg[:snippet_len].rsplit(" ", 1)[0].strip() if len(text_msg) > snippet_len else text_msg.strip()
+        return f"{snippet}{skill_suffix}"
+    return text_msg
+
+
 class SessionData:
     def __init__(self, session_id: str, clock: Callable[[], float] = time.time):
         self.session_id = session_id
         self.preferences = UserPreferenceState()
         self.multipliers: dict[str, float] = dict(DEFAULT_MULTIPLIERS)
-        self.proposed_budget: Optional[float] = None
         self.zero_result_streak: int = 0
         self.history: list[tuple[str, str]] = []
         self.last_rooms: list[RoomItem] = []
@@ -89,7 +114,6 @@ class SessionData:
         - Giữ nguyên tin nhắn của user.
         - Với tin nhắn của assistant: nếu chứa danh sách phòng markdown ('### 1.' hoặc '1. **' hoặc 'Homigo đã tìm được'),
           rút gọn khối markdown dài dòng thành tóm tắt ngắn, loại bỏ 70-80% token rác tích tụ qua nhiều lượt."""
-        import re
         from langchain_core.messages import AIMessage, HumanMessage
 
         slice_hist = self.history[-window:] if window > 0 else self.history
@@ -98,21 +122,14 @@ class SessionData:
             if role == "user":
                 out.append(HumanMessage(content=text_msg))
             else:
-                cleaned = text_msg
-                split_match = re.search(r"(?:\n|^)(?:###\s*1\.|1\.\s+\*\*|\d+\.\s+\*\*)", text_msg)
-                if split_match or "Homigo đã tìm được" in text_msg or "Homigo đã nhận được" in text_msg:
-                    if split_match:
-                        header = text_msg[:split_match.start()].strip()
-                    else:
-                        header = text_msg.split("Homigo đã")[0].strip()
-
-                    if len(header) > 30:
-                        cleaned = f"{header}\n[Đã cung cấp danh sách phòng kèm phân tích chi tiết]"
-                    else:
-                        cleaned = "[Đã gợi ý danh sách các phòng phù hợp với yêu cầu]"
-                elif "Tư vấn chuyên sâu" in text_msg or len(text_msg) > 350:
-                    snippet = text_msg[:220].rsplit(" ", 1)[0].strip() if len(text_msg) > 220 else text_msg.strip()
-                    cleaned = f"{snippet}...\n[Đã cung cấp nội dung tư vấn chuyên sâu từ cẩm nang]"
+                cleaned = _compact_assistant_text(
+                    text_msg,
+                    max_len=350,
+                    snippet_len=220,
+                    list_with_header="\n[Đã cung cấp danh sách phòng kèm phân tích chi tiết]",
+                    list_fallback="[Đã gợi ý danh sách các phòng phù hợp với yêu cầu]",
+                    skill_suffix="...\n[Đã cung cấp nội dung tư vấn chuyên sâu từ cẩm nang]",
+                )
                 out.append(AIMessage(content=cleaned))
         return out
 
@@ -120,29 +137,20 @@ class SessionData:
         """Trả về danh sách tuple (role, text) đã được nén gọn cho tầng NLU và Prompt:
         - Giữ nguyên tin nhắn của user.
         - Với tin nhắn của assistant: rút gọn danh sách phòng hoặc cẩm nang dài dòng thành câu ngắn gọn."""
-        import re
-
         slice_hist = self.history[-window:] if window > 0 else self.history
         out: list[tuple[str, str]] = []
         for role, text_msg in slice_hist:
             if role == "user":
                 out.append((role, text_msg))
             else:
-                cleaned = text_msg
-                split_match = re.search(r"(?:\n|^)(?:###\s*1\.|1\.\s+\*\*|\d+\.\s+\*\*)", text_msg)
-                if split_match or "Homigo đã tìm được" in text_msg or "Homigo đã nhận được" in text_msg:
-                    if split_match:
-                        header = text_msg[:split_match.start()].strip()
-                    else:
-                        header = text_msg.split("Homigo đã")[0].strip()
-
-                    if len(header) > 30:
-                        cleaned = f"{header} [Đã gợi ý danh sách phòng]"
-                    else:
-                        cleaned = "Homigo đã gợi ý danh sách các phòng phù hợp với yêu cầu."
-                elif "Tư vấn chuyên sâu" in text_msg or len(text_msg) > 250:
-                    snippet = text_msg[:180].rsplit(" ", 1)[0].strip() if len(text_msg) > 180 else text_msg.strip()
-                    cleaned = f"{snippet}... [Đã cung cấp nội dung tư vấn cẩm nang]"
+                cleaned = _compact_assistant_text(
+                    text_msg,
+                    max_len=250,
+                    snippet_len=180,
+                    list_with_header=" [Đã gợi ý danh sách phòng]",
+                    list_fallback="Homigo đã gợi ý danh sách các phòng phù hợp với yêu cầu.",
+                    skill_suffix="... [Đã cung cấp nội dung tư vấn cẩm nang]",
+                )
                 out.append((role, cleaned))
         return out
 
@@ -200,7 +208,7 @@ class SessionStore:
 # ---------------------------------------------------------------------------
 def _dump(s: SessionData) -> str:
     return json.dumps({
-        "preferences": s.preferences.model_dump(mode="json"), "multipliers": s.multipliers, "proposed_budget": s.proposed_budget,
+        "preferences": s.preferences.model_dump(mode="json"), "multipliers": s.multipliers,
         "zero_result_streak": s.zero_result_streak, "history": s.history, "last_rooms": [r.model_dump(mode="json") if hasattr(r, "model_dump") else r for r in s.last_rooms],
         "preference_history": [p.model_dump(mode="json") for p in s.preference_history],
         "turn_snapshots": [p.model_dump(mode="json") for p in s.turn_snapshots], "initial_preference": s.initial_preference.model_dump(mode="json") if s.initial_preference else None,
@@ -213,7 +221,6 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s = SessionData(session_id, clock)
     s.preferences = UserPreferenceState.model_validate(d["preferences"])
     s.multipliers = {**DEFAULT_MULTIPLIERS, **(d.get("multipliers") or {})}
-    s.proposed_budget = d.get("proposed_budget")
     s.zero_result_streak = int(d.get("zero_result_streak") or 0)
     s.history = [(str(r), str(t)) for r, t in d.get("history") or []]
     loaded_rooms = []

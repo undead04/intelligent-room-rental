@@ -36,6 +36,10 @@ flowchart TD
 * `advisory_node`: Chỉ được cấp `ADVISORY_TOOLS` (`get_market_price_stats`).
 * `formatter_node` / `response_node`: Không có quyền gọi tools, triệt tiêu ảo giác tool calls.
 
+### Trạng Thái Graph (`HousingAgentState`) & Quy Tắc Lệch Giá Thị Trường:
+* `HousingAgentState` (`ai-agent/graph/state.py`) truyền trực tiếp `market_context: Optional[MarketContext]` (`area_name`, `user_budget`, `user_budget_str`, `market_min_price`, `market_min_price_str`, `market_avg_price`, `market_avg_price_str`, `is_market_gap`, `message`) từ `retrieval_node` sang `decision_node`, `verify_node` và `replies.py` (`reply_when_no_rooms`). Các field dư thừa (`proposed_budget`, `proposed_budget_str`, `is_contract_query`, `retry_count`) đã được loại bỏ hoàn toàn.
+* Khi `retrieval_node` tìm được 0 phòng hợp lệ và khu vực có thống kê thị trường đáng tin cậy (`total_listings >= 20` hoặc không rõ cỡ mẫu), `propose_budget()` kích hoạt **`is_market_gap = True` ngay khi `user_max < market.min_price`** và truyền thẳng giá sàn thực tế (`market_min_price`, `market_min_price_str`) qua `market_context` để tư vấn người dùng.
+
 ---
 
 ## 2. Các Cơ Chế Tối Ưu Hóa Trải Nghiệm (UX & Resilience)
@@ -74,5 +78,17 @@ flowchart TD
    - `verify_node` ghi riêng một span `verifier_decision` vào `TraceStore` (kèm `verifier_output` và `next_decision`). Khi `passed = false`, hệ thống thực thi hành vi xác định (`retry`, `ask_user`, `fallback_template` thay thế nội dung kể cả luồng follow-up, hoặc `stop_and_report`), tuyệt đối không ghi log rồi vẫn gửi câu báo thành công giả.
 5. **KV-Cache Prefix Protection (`nlu_prompt.py`):**
    - Toàn bộ quy tắc NLU (gồm Quy tắc số 10 cho `allowed_room_types`, `excluded_room_types`) nằm trong khối tĩnh `NLU_RULES` trước `skills_part` động.
+
+---
+
+## 4. Hệ Thống Đánh Giá Agent Toàn Diện (`ai-agent/eval/`)
+
+1. **Bộ Eval Set Bất Biến (`eval/datasets/agent_eval_set.py`):**
+   - Định nghĩa chuẩn các nhóm ca (`normal`, `boundary`, `missing_info`, `conflict`, `tool_error`, `out_of_scope`) với trạng thái hệ thống ban đầu (`InitialSystemState`), giả lập lỗi (`FaultInjection`) và kỳ vọng trạng thái/hành vi, được khóa bằng `compute_eval_set_digest()` khi so sánh giữa 2 phiên bản.
+2. **Chấm Điểm Trajectory Không Ép Chuỗi (`eval/trajectory.py`):**
+   - Chỉ chấm khi trace đủ 3 thông tin cho mọi tool call (`seq`, `tool`, `args`). Đánh giá độc lập hai tiêu chí: đã đủ bước bắt buộc (`sufficient_required_steps`) và không có bước cấm/thừa (`no_forbidden_or_redundant_steps`).
+3. **Chạy Lặp $pass^k$, Trace Diff & Regression Gate (`eval/stability_and_regression.py`):**
+   - Công bố sẵn $k$ và ngưỡng đạt trước khi chạy, báo tỉ lệ đạt đủ cả $k$ lần (`pass_all_k_rate`) cùng danh sách `unstable_cases` và bước phân kỳ đầu tiên giữa 2 trace (`diff_traces_first_divergence`).
+   - So sánh Baseline vs Current kèm danh sách case **Đạt $\rightarrow$ Rớt** và **Rớt $\rightarrow$ Đạt**; buộc **REJECT** nếu xuất hiện bất kỳ case nào chuyển từ Đạt sang Rớt, đồng thời quy chiếu về `versions` (`prompt`, `skill`, `model`) gắn trong trace.
 
 

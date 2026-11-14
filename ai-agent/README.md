@@ -26,9 +26,10 @@ flowchart LR
 ```
 
 ### Điểm Nổi Bật Thiết Kế
-1. **Self-RAG Grounding & Self-Correction Loop (`safety/grounding.py`)**:
-   - **Tầng Retrieval (`verify_context_grounding`)**: Lọc cứng bằng code kiểm tra ràng buộc ngân sách, diện tích và tiện ích bắt buộc. Nếu không có phòng thỏa mãn, hệ thống tra cứu số liệu thị trường thực tế (giá sàn, giá trung bình) để chuyển tiếp cho `decision_node` đóng vai trò Cố vấn đối thoại tự nhiên (`ZeroResultAdvice`).
-   - **Tầng Generation (`verify_answer_grounding` / `verify_node`)**: Đối chiếu mọi mã phòng (`nhatot_...`) và con số giá tiền trong câu trả lời với `retrieved_rooms`. Chỉ khi `is_grounded = True` mới chuyển qua `formatter_node`; nếu phát hiện ảo giác sẽ tự động quay lại `decision_node` với chỉ dẫn lỗi cụ thể để tự sửa sai (tối đa 2 lần).
+1. **Self-RAG Grounding, DoD Verifier & Trace Cô Lập (`safety/` & `graph/tracing.py`)**:
+   - **Tầng Retrieval (`verify_context_grounding`)**: Lọc cứng bằng code kiểm tra ràng buộc ngân sách, diện tích và tiện ích bắt buộc. Nếu không có phòng thỏa mãn, hệ thống tra cứu số liệu thị trường thực tế (giá sàn, giá trung bình) gắn vào `market_context` trong `HousingAgentState` để `decision_node` / `replies.py` đóng vai trò Cố vấn đối thoại tự nhiên (`ZeroResultAdvice`) và kích hoạt `is_market_gap` khi `user_max < market.min_price`.
+   - **Tầng Generation (`verify_answer_grounding` / `verify_node`)**: Validation 3 tầng theo chi phí tăng dần (`schema_format` $\rightarrow$ `business_rule` $\rightarrow$ `external_cross_check`) đối chiếu mọi mã phòng (`nhatot_...`), khoảng cách và con số giá tiền với `retrieved_rooms`. Nếu phát hiện ảo giác sẽ quay lại `decision_node` để tự sửa sai (tối đa 2 lần).
+   - **DoD Verifier độc lập (`safety/dod_verifier.py`) & `TraceStore` (`graph/tracing.py`)**: Mọi model call, tool call (kèm `state_before`/`state_after`) và quyết định verifier được ghi nối tiếp dạng JSONL theo `run_id`/`seq` độc lập ngoài State; `verify_dod` kiểm chứng trên bản chụp bất biến và buộc thực thi hành vi thoát xác định (`retry`, `ask_user`, `fallback_template`, `stop_and_report`) khi `passed = False`.
 2. **Tool Partitioning (`tools/registry.py`)**: Phân vùng công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giúp giảm thiểu token overhead và ngăn LLM gọi nhầm tool.
 3. **Intent-Aware Dynamic Weighting (`intent_weights.py`)**:
    - Phát hiện ý định ưu tiên từ câu nói tự nhiên để kích hoạt hệ số nhân (`price: 2.0x`, `location: 2.0x`, `safety: 2.0x`, `amenity: 1.8x`).
@@ -51,19 +52,19 @@ ai-agent/
 ├── core/                        # Cấu hình Pydantic Settings, LLM Factory, Paths, SQLite SessionStore
 ├── domain/                      # Schemas chuẩn (AgentResponse, RoomItem, DecisionInsight), Enums, Budget
 ├── intelligence/                # Logic NLU, Intent Multipliers & L1 Dynamic MCDM, Trade-offs & Checklist
-├── safety/                      # Guardrails (Prompt Injection, Homoglyph/ZWSP) & Self-RAG Grounding Check
-├── graph/                       # LangGraph State Machine 8 Node
+├── safety/                      # Guardrails, Self-RAG Grounding 3 tầng & DoD Verifier độc lập (dod_verifier.py)
+├── graph/                       # LangGraph State Machine 8 Node & TraceStore JSONL (tracing.py)
 │   ├── builder.py               # StateGraph construction & Conditional edges
-│   ├── state.py                 # HousingAgentState TypedDict
+│   ├── state.py                 # HousingAgentState TypedDict (kèm market_context, verifier_result)
 │   ├── routing.py               # Dynamic Routing logic
+│   ├── tracing.py               # TraceStore JSONL cô lập theo run_id/seq + che PII
 │   └── nodes/                   # guardrail, understand, clarification, advisory, retrieval, decision, verify, formatter
 ├── tools/                       # Native LangChain Tools & Phân vùng Scopes (RETRIEVAL, DETAIL, ADVISORY)
 ├── skills/                      # Dynamic Skill Discovery qua YAML triggers (rental-contract-advisor)
-├── eval/                        # Bộ benchmark đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding...)
-├── tests/                       # 454 Unit & Integration Tests (100% Passed)
+├── eval/                        # Đánh giá Agent toàn diện (agent_eval_set.py, trajectory.py, stability_and_regression.py)
+├── tests/                       # 575 Unit & Integration Tests (100% Passed)
 ├── main.py                      # Uvicorn entrypoint (Port 8001)
-├── pyproject.toml / uv.lock     # Quản lý phụ thuộc uv
-└── requirements.txt
+└── pyproject.toml / uv.lock     # Quản lý phụ thuộc uv
 ```
 
 ---
@@ -102,7 +103,7 @@ if res.insights:
 
 ## 🧪 4. Chạy Kiểm Thử (Unit Tests)
 
-Chạy toàn bộ 454 unit & integration tests của Homigo AI Agent (100% Passed):
+Chạy toàn bộ 575 unit & integration tests của Homigo AI Agent (100% Passed):
 ```powershell
 .\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 ```

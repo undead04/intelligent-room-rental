@@ -4,7 +4,8 @@ from domain.enums import Amenity, RoomType
 from intelligence.nlu import PreferencePatch, Priorities, TurnAnalysis
 from domain.schemas import UserPreferenceState
 from tests.helpers import SKILLS, FakeModel, make_session, room
-from intelligence.understand import interpret_turn, route_after_understand
+from graph.routing import route_after_understand
+from intelligence.understand import interpret_turn
 
 
 def run(analysis, session=None, text="câu bất kỳ", **kw):

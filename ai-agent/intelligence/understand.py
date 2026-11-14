@@ -2,7 +2,6 @@
 
   interpret_turn(...)         hàm THUẦN: (câu, session, model) -> TurnPlan. Không ghi session.
   compute_normalized_weights  re-export từ intelligence.intent_weights để tính trọng số MCDM.
-  route_after_understand      re-export từ graph.routing định tuyến sau bước hiểu nhu cầu.
 """
 
 from __future__ import annotations
@@ -369,12 +368,9 @@ def interpret_turn(
     )
 
 
-from graph.routing import route_after_understand
-
 __all__ = [
     "SAFE_TEXT",
     "TurnPlan",
     "compute_normalized_weights",
     "interpret_turn",
-    "route_after_understand",
 ]

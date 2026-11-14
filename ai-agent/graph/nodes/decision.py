@@ -20,14 +20,10 @@ from intelligence.payload_builder import (
     build_decision_query_message,
 )
 from prompts.decision_prompt import build_zero_result_user_prompt
+from utils.text import extract_message_text
 
 logger = logging.getLogger(__name__)
 MIN_AGENT_REPLY = 30
-
-
-def _text(m: Any) -> str:
-    c = getattr(m, "content", m)
-    return c if isinstance(c, str) else "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in (c or []))
 
 
 def followup_fallback_reply(room: Optional[Any], details: Optional[dict[str, Any]] = None) -> str:
@@ -102,10 +98,10 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
         ]
         result = agent.invoke({"messages": messages}, config={"callbacks": [TraceCollector(trace, node_name="decision_node")]})
         msgs = result.get("messages", [])
-        evidence.extend(_text(m) for m in msgs if isinstance(m, ToolMessage))
+        evidence.extend(extract_message_text(m) for m in msgs if isinstance(m, ToolMessage))
         for m in reversed(msgs):
             if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None):
-                t = _text(m).strip()
+                t = extract_message_text(m).strip()
                 if len(t) > MIN_AGENT_REPLY:
                     return t, evidence
     except Exception:
@@ -137,7 +133,7 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
                 node="decision_node",
                 input_data=qa_prompt,
             )
-            ans_text = _text(ans).strip()
+            ans_text = extract_message_text(ans).strip()
             if len(ans_text) > MIN_AGENT_REPLY:
                 return ans_text, evidence
         except Exception:

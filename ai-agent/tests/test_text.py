@@ -1,6 +1,6 @@
 import pytest
 
-from utils.text import contains_phrase, norm_key, strip_accents, tokens
+from utils.text import extract_message_text, norm_key, strip_accents, tokens
 
 
 def test_strip_accents():
@@ -17,18 +17,9 @@ def test_tokens():
     assert tokens("Phòng 25m2, gần UIT!") == ["phong", "25m2", "gan", "uit"]
 
 
-@pytest.mark.parametrize(
-    "text,phrase,expected",
-    [
-        ("tìm phòng cọc thấp", "cọc", True),
-        ("hop dong thue tro", "hợp đồng", True),       # gõ không dấu vẫn khớp
-        ("chere hon", "re hon", False),                 # không khớp chuỗi con
-        ("phòng rẻ hơn nữa", "rẻ hơn", True),
-        ("bảo vệ môi trường", "bảo vệ", True),
-        ("xem phòng", "xe", False),                     # 'xe' không khớp trong 'xem'
-        ("", "abc", False),
-        ("abc", "", False),
-    ],
-)
-def test_contains_phrase(text, phrase, expected):
-    assert contains_phrase(text, phrase) is expected
+def test_extract_message_text():
+    from types import SimpleNamespace
+
+    assert extract_message_text("hello") == "hello"
+    assert extract_message_text(SimpleNamespace(content="hi")) == "hi"
+    assert extract_message_text(SimpleNamespace(content=[{"text": "a"}, "b"])) == "ab"

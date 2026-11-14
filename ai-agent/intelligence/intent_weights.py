@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Mapping, Optional
 
 from domain.schemas import UserPreferenceState
-from intelligence.nlu import CRITERIA  # noqa: F401
 
 DEFAULT_BASE_WEIGHTS = {"price": 1.0, "safety": 1.0, "semantic": 1.0, "location": 1.0, "amenity": 1.0}
 

@@ -249,9 +249,13 @@ Các đối tượng trạng thái cốt lõi trao đổi giữa LangGraph State
   - `excluded_room_types: list[RoomType]`: Danh sách loại phòng bị loại trừ (ví dụ cấm `SLEEPBOX`).
 * **`RoomItem` (Thực thể phòng trọ chuẩn hóa trả về cho Frontend UI):**
   - `bedrooms: Optional[int]` / `bathrooms: Optional[int]`: Số phòng ngủ / phòng vệ sinh trích xuất từ Backend (bỏ qua nếu thiếu).
+  - `lat: Optional[float]` / `lng: Optional[float]`: Tọa độ địa lý thực tế (đã loại bỏ các trường tọa độ giả lập `latPercent` / `lngPercent`).
   - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động suy ra mã ID loại phòng phục vụ render Badge / Icon trực tiếp trên Next.js.
   - `concept_scores: dict[str, float]`: Điểm số xác thực cho đủ 17 nhãn tiện ích chuẩn hóa.
   - `tags: list[str]`: Danh sách nhãn hiển thị trực quan tiếng Việt sinh động từ `_CONCEPT_TAGS`.
+* **`MarketContext` & `GroundingReport` (Ngữ cảnh thị trường & báo cáo kiểm định):**
+  - `MarketContext`: Lưu `area_name`, `user_budget`, `user_budget_str`, `market_min_price`, `market_min_price_str`, `market_avg_price`, `market_avg_price_str`, và cờ `is_market_gap` (bật `True` khi `user_max < market.min_price` với mẫu tin đăng đáng tin cậy). Đã loại bỏ hoàn toàn các trường dư thừa `proposed_budget` và `proposed_budget_str`.
+  - `GroundingReport`: Lưu kết quả kiểm định tầng câu trả lời (`is_grounded`, `groundedness_score`, `checked`, `verified`), tầng ngữ cảnh (`context_grounded`), nhật ký tự sửa (`answer_retries`, `retry_notes`, `issues`, `fallback_template_used`), cùng đầu ra DoD Verifier (`verifier_output`, `dod_report`).
 
 ### 5.3. Bảng Ánh Xạ Nhãn Tiện Ích Chuẩn Hóa (`_CONCEPT_TAGS` - 17 Nhãn):
 Bảng quy đổi 17 nhãn tiếng Việt chuẩn mực giữa mã kỹ thuật `snake_case` và văn bản hiển thị:

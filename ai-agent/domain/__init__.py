@@ -2,7 +2,6 @@
 
 from domain.budget import (
     DORM_THRESHOLD,
-    GAP_RATIO,
     MIN_SAMPLE,
     ROUND_STEP,
     BudgetProposal,
@@ -46,7 +45,6 @@ __all__ = [
     "Amenity",
     "RoomType",
     # budget
-    "GAP_RATIO",
     "MIN_SAMPLE",
     "DORM_THRESHOLD",
     "ROUND_STEP",

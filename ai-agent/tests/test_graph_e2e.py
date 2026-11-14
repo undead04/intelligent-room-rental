@@ -73,12 +73,24 @@ def test_suspicious_listing_is_dropped_and_traced():
 
 
 # ---------------- không có phòng ----------------
-def test_empty_results_provide_market_advice_and_update_proposed_budget():
+def test_empty_results_provide_market_advice():
     llm = FakeLLM().on("TurnAnalysis", nlu(location_text="Dĩ An", location_kind="admin", max_price=1_500_000)).on("Advice", GOOD_ADVICE)
     h = Harness(llm, rooms=[])
     r = h.turn("tìm phòng ở Dĩ An dưới 1tr5")
     assert r.rooms == [] and "chưa tìm thấy" in r.text_reply
-    assert h.session.zero_result_streak == 1 and h.session.proposed_budget is None
+    assert h.session.zero_result_streak == 1
+
+
+def test_market_context_preserved_through_graph_on_under_budget_zero_result():
+    """Kiểm chứng market_context không bị StateGraph làm rơi và user_max < min_price kích hoạt tư vấn lệch giá."""
+    llm = FakeLLM().on("TurnAnalysis", nlu(location_text="Dĩ An", location_kind="admin", max_price=3_500_000))
+    market = lambda **kw: {"minimum_price_vnd": 4_000_000, "average_price_vnd": 5_000_000, "total_listings": 50}
+    h = Harness(llm, rooms=[], market=market)
+    r = h.turn("tìm phòng ở Dĩ An dưới 3tr5")
+    assert r.rooms == []
+    assert r.grounding_report is not None and not r.grounding_report.context_grounded
+    assert "4 triệu/tháng" in r.text_reply
+    assert "3.5 triệu/tháng" in r.text_reply
 
 
 def test_admin_not_in_database():

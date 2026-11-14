@@ -16,7 +16,7 @@ Nguyên tắc thiết kế:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Mapping, Optional, Sequence
 
 from eval.datasets.agent_eval_set import TrajectorySpec

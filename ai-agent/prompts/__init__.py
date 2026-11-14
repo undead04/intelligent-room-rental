@@ -17,13 +17,6 @@ from prompts.nlu_prompt import (
     build_nlu_system_prompt,
 )
 
-CAPABILITY_PROMPT = f"{DECISION_RULES}"
-
-
-def build_system_prompt() -> str:
-    return f"{BASE_PROMPT}\n\n{CAPABILITY_PROMPT}"
-
-
 __all__ = [
     "BASE_PROMPT",
     "INTENT_GUIDE",
@@ -35,5 +28,4 @@ __all__ = [
     "build_decision_prompt",
     "build_zero_result_user_prompt",
     "build_advisory_prompt",
-    "build_system_prompt",
 ]

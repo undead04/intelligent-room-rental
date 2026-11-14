@@ -1,7 +1,7 @@
 """Thang điểm đánh giá định lượng 100 điểm cho Đồ án Tốt nghiệp (Homigo AI) — bản refactor.
 
 Phạm vi: kiểm thử mức THÀNH PHẦN (component-level), chạy offline, không gọi LLM khi model=None.
-Đánh giá end-to-end trên dữ liệu thật nằm ở run_comprehensive_real_data_eval.py.
+Đánh giá end-to-end toàn diện nằm ở `python -m eval.run --suite agent_eval` (và `eval/run_recommendation_eval.py`).
 
 5 trụ cột:
   1. NLU & Trạng thái tích lũy          - 25 điểm
@@ -633,14 +633,14 @@ def _c_context_grounding() -> SubCriterionResult:
 
     market = MarketStats(min_price=3_500_000, avg_price=4_200_000, total_listings=45)
     gap = propose_budget(user_max=2_000_000, market=market, area_name="Quận 1")
-    gap_ok = bool(gap.is_market_gap and gap.suggest_dormitory and gap.proposed_budget > 2_000_000)
+    gap_ok = bool(gap.is_market_gap and gap.suggest_dormitory and gap.market and gap.market.min_price > 2_000_000)
 
     feasible = propose_budget(user_max=5_000_000, market=market, area_name="Quận 1")
     control_ok = not feasible.is_market_gap  # đối chứng: ngân sách khả thi không bị báo "khoảng trống thị trường"
 
     checks = [
         Check("Context hợp lệ được giữ nguyên", 1.5, float(clean_ok)),
-        Check("Ngân sách 2tr (sàn thị trường 3.5tr) → báo market gap, gợi ý KTX, đề xuất > 2tr", 2.0, float(gap_ok)),
+        Check("Ngân sách 2tr (sàn thị trường 3.5tr) → báo market gap, gợi ý KTX, có dữ liệu giá sàn", 2.0, float(gap_ok)),
         Check("Đối chứng: ngân sách 5tr KHÔNG bị báo market gap", 1.5, float(control_ok)),
     ]
     return _from_checks("3.2", checks)
@@ -1066,7 +1066,7 @@ LIMITATIONS = (
     "chưa phải khả năng tổng quát hoá. Nên bổ sung tập kiểm thử giữ riêng (held-out) lấy từ log thật, có người gán nhãn độc lập.",
     "Số ca mỗi tiêu chí nhỏ; hãy đọc cột khoảng tin cậy 95% (Wilson) thay vì chỉ nhìn phần trăm.",
     "Đây là kiểm thử mức thành phần. Chất lượng truy xuất (Precision@k/Recall/nDCG), độ đúng của câu trả lời do LLM sinh "
-    "và độ trễ end-to-end được đo ở run_comprehensive_real_data_eval.py.",
+    "và độ trễ end-to-end được đo qua `python -m eval.run --suite agent_eval` và `eval/run_recommendation_eval.py`.",
     "Khi model=None, hệ thống đánh giá các mô-đun xác định (State Patching, MCDM Weights, Hard Constraints, Grounding, Guardrails) và đánh dấu SKIP trung thực đối với tiêu chí phân loại ý định NLU cần LLM.",
 )
 

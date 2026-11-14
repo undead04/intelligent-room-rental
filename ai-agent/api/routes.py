@@ -41,10 +41,6 @@ class ChatRequest(BaseModel):
         default=None,
         description="Mã phiên làm việc để tích lũy tiêu chí đa lượt",
     )
-    use_graph: Optional[bool] = Field(
-        default=True,
-        description="Sử dụng LangGraph State Machine (housing_graph)",
-    )
 
 
 def prepare_session_with_history(
@@ -80,21 +76,6 @@ class HousingAgentService:
     def __init__(self, settings: Any = None):
         self.settings = settings
 
-    def run_graph(
-        self,
-        user_message: str,
-        conversation_history: Optional[list[dict[str, Any]]] = None,
-        session_id: Optional[str] = None,
-        **kwargs: Any,
-    ) -> AgentResponse:
-        """Thực thi qua LangGraph State Machine 8 nodes."""
-        effective_session_id, _ = prepare_session_with_history(session_id, conversation_history)
-        return run_turn(
-            HOUSING_GRAPH,
-            user_message,
-            session_id=effective_session_id,
-        )
-
     def run(
         self,
         user_message: str,
@@ -102,29 +83,12 @@ class HousingAgentService:
         session_id: Optional[str] = None,
         **kwargs: Any,
     ) -> AgentResponse:
-        """Alias thống nhất về run_graph."""
-        return self.run_graph(
-            user_message=user_message,
-            conversation_history=conversation_history,
-            session_id=session_id,
-            **kwargs,
-        )
-
-    def handle_message(
-        self,
-        session_id: str,
-        message: str,
-        user_id: Optional[str] = None,
-        conversation_history: Optional[list[dict[str, Any]]] = None,
-        **kwargs: Any,
-    ) -> AgentResponse:
-        """Alias chuẩn hoá cho các runner đánh giá và tích hợp bên ngoài."""
-        return self.run(
-            user_message=message,
-            conversation_history=conversation_history,
-            session_id=session_id,
-            user_id=user_id,
-            **kwargs,
+        """Thực thi trực tiếp qua LangGraph State Machine."""
+        effective_session_id, _ = prepare_session_with_history(session_id, conversation_history)
+        return run_turn(
+            HOUSING_GRAPH,
+            user_message,
+            session_id=effective_session_id,
         )
 
     def run_stream(

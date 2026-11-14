@@ -13,7 +13,6 @@ from langchain_core.tools import tool
 from domain.enums import normalize_amenities
 from domain.schemas import format_vnd_million
 from skills.skills_discovery import discover_housing_skills, get_skill
-from tools import http
 from tools.http import request
 
 logger = logging.getLogger(__name__)

@@ -14,11 +14,11 @@ from intelligence.decision import (
     room_lines,
 )
 from intelligence.intent_weights import (
-    CRITERIA,
     DEFAULT_BASE_WEIGHTS,
     compute_normalized_weights,
 )
 from intelligence.nlu import (
+    CRITERIA,
     PreferencePatch,
     Priorities,
     TurnAnalysis,
@@ -37,10 +37,7 @@ from intelligence.payload_builder import (
     compact_room,
     format_retry_feedback,
 )
-from intelligence.understand import (
-    interpret_turn,
-    route_after_understand,
-)
+from intelligence.understand import interpret_turn
 
 __all__ = [
     # NLU
@@ -56,7 +53,6 @@ __all__ = [
     "analyze_turn",
     # Understand
     "interpret_turn",
-    "route_after_understand",
     # Dynamic MCDM
     "CRITERIA",
     "DEFAULT_BASE_WEIGHTS",

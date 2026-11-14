@@ -102,7 +102,6 @@ def make_retrieval_node(deps: Deps):
         multipliers = state.get("multipliers") or {}
         weights = dict(state.get("computed_weights") or {})
         trace = resolve_trace_target(deps).sink()
-        retry_count = state.get("retry_count", 0)
         session = deps.sessions.get_or_create_session(state["session_id"])
         vague = state.get("vague_location_info") or {}
         status, candidates = "ok", []
@@ -254,7 +253,6 @@ def make_retrieval_node(deps: Deps):
 
         session.preferences = pref
         if search_error:
-            session.proposed_budget = None
             return {
                 "retrieved_rooms": [],
                 "preferences": pref,
@@ -270,16 +268,12 @@ def make_retrieval_node(deps: Deps):
         # 4) kết luận sau tìm kiếm và phân tích thị trường
         if status == "ok" and ctx:
             rooms = ctx.valid_rooms[:RESULT_LIMIT]
-            session.proposed_budget = ctx.proposed_budget
             session.zero_result_streak = 0 if rooms else session.zero_result_streak + 1
             extra = {
                 "context_grounded": ctx.is_grounded,
-                "proposed_budget": ctx.proposed_budget,
-                "proposed_budget_str": ctx.proposed_budget_str,
                 "market_context": ctx.market_context,
             }
         else:
-            session.proposed_budget = None
             extra = {"context_grounded": True, "market_context": None}
 
         return {
@@ -290,7 +284,6 @@ def make_retrieval_node(deps: Deps):
             "searched": True,
             "admin_not_found": status == "admin_not_found",
             "ambiguous_candidates": candidates,
-            "retry_count": retry_count,
             "last_search_args": search_args,
             **extra,
         }

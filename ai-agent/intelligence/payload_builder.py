@@ -13,7 +13,7 @@ from typing import Any, Optional, Sequence
 from domain.schemas import RoomItem, UserPreferenceState
 
 _SKIP_HINTS = ("image", "img", "photo", "thumb", "avatar", "url", "link", "phone", "contact")
-_SKIP_KEYS = {"latPercent", "lngPercent", "lat", "lng", "rankText"}
+_SKIP_KEYS = {"lat", "lng", "rankText"}
 
 
 def _shrink(v: Any) -> Any:

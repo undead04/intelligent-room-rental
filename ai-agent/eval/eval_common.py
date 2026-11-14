@@ -9,13 +9,14 @@ Module này KHÔNG import code của dự án nên có thể test độc lập.
 
 from __future__ import annotations
 
-import math
 import re
 import sys
-import unicodedata
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, Sequence
+
+from eval.metrics import percentile as _metrics_percentile, wilson
+from utils.text import strip_accents
 
 PASS, WARN, FAIL, SKIP = "PASS", "WARN", "FAIL", "SKIP"
 
@@ -42,8 +43,7 @@ def ensure_project_root_on_path(script_file: str | Path) -> Path:
 # ------------------------------------------------------------------ văn bản
 def fold(text: Any) -> str:
     """Chữ thường + bỏ dấu tiếng Việt (đ -> d). Dùng để so khớp không phụ thuộc dấu."""
-    s = unicodedata.normalize("NFD", str(text or "").lower().replace("đ", "d"))
-    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return strip_accents(None if text is None else str(text))
 
 
 def contains_term(folded_text: str, term: str) -> bool:
@@ -80,25 +80,14 @@ def status_from_rate(rate: float, pass_at: float, warn_at: float) -> str:
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Khoảng tin cậy Wilson 95% cho tỷ lệ. Quan trọng khi số ca kiểm thử nhỏ."""
-    if n <= 0:
-        return (0.0, 0.0)
-    p = successes / n
-    denom = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / denom
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return (max(0.0, centre - half), min(1.0, centre + half))
+    return wilson(successes, n, z=z)
 
 
 def percentile(values: Sequence[float], p: float) -> float:
     """Percentile nội suy tuyến tính (p trong 0..100). Trả NaN nếu rỗng."""
     if not values:
         return float("nan")
-    s = sorted(values)
-    k = (len(s) - 1) * p / 100.0
-    lo, hi = math.floor(k), math.ceil(k)
-    if lo == hi:
-        return s[int(k)]
-    return s[lo] * (hi - k) + s[hi] * (k - lo)
+    return _metrics_percentile(values, p / 100.0)
 
 
 # ------------------------------------------------------------------ trace
