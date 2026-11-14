@@ -81,7 +81,6 @@ export default function AIChatWorkspacePage() {
           <RoomResultsPanel
             rooms={rooms}
             selectedRoomId={selectedRoomId}
-            preferences={preferences}
             onSelectRoom={setSelectedRoomId}
           />
 

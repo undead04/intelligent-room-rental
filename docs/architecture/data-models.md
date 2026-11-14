@@ -230,9 +230,8 @@ class VectorSearchBody(BaseModel):
     city_id: Optional[int] = None                    # ID Tỉnh/Thành phố
     district_id: Optional[int] = None                # ID Quận/Huyện
     ward_id: Optional[int] = None                    # ID Phường/Xã
-    room_type: Optional[str | int] = None            # Loại phòng đơn lẻ (ROOM, STUDIO...)
-    room_types: Optional[list[str | int]] = None     # Tập nhiều loại phòng được phép (IN)
-    excluded_room_types: Optional[list[str | int]] = None # Loại phòng loại trừ (NOT IN)
+    room_type: Optional[str | int | list[str | int]] = None # 1 loại hoặc danh sách nhiều loại phòng được phép (IN)
+    excluded_room_types: Optional[list[str | int]] = None   # Loại phòng loại trừ (NOT IN)
     preferred_amenities: Optional[list[str]] = None  # Tiện ích ưu tiên mềm để Reranker chấm điểm
     max_distance_km: Optional[float] = None          # Bán kính lọc Haversine chính xác (km)
     limit: int = 10                                  # Số lượng kết quả cần lấy
@@ -246,9 +245,8 @@ Các đối tượng trạng thái cốt lõi trao đổi giữa LangGraph State
 
 * **`UserPreferenceState` (Trạng thái tiêu chí người dùng tích lũy qua các lượt chat):**
   - `min_bedrooms: Optional[int]`: Số phòng ngủ tối thiểu người dùng yêu cầu rõ ràng (dùng cho tìm nhà nhiều phòng / ở ghép nhiều người).
-  - `allowed_room_types: list[RoomType]`: Danh sách các loại phòng người dùng chấp nhận (khi chấp nhận nhiều loại hình, ví dụ `['ROOM', 'STUDIO']`). Chuẩn hóa tự động qua `normalize_room_types`.
+  - `allowed_room_types: list[RoomType]`: Danh sách các loại phòng người dùng cho phép (1 hoặc nhiều loại, ví dụ `['STUDIO']` hoặc `['ROOM', 'STUDIO']`). Chuẩn hóa tự động qua `normalize_room_types`.
   - `excluded_room_types: list[RoomType]`: Danh sách loại phòng bị loại trừ (ví dụ cấm `SLEEPBOX`).
-  - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động tính toán mã định danh số (1..5) từ `room_type` để serialize gửi sang Frontend, tương thích ngược an toàn với `model_validate`.
 * **`RoomItem` (Thực thể phòng trọ chuẩn hóa trả về cho Frontend UI):**
   - `bedrooms: Optional[int]` / `bathrooms: Optional[int]`: Số phòng ngủ / phòng vệ sinh trích xuất từ Backend (bỏ qua nếu thiếu).
   - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động suy ra mã ID loại phòng phục vụ render Badge / Icon trực tiếp trên Next.js.

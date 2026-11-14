@@ -22,8 +22,8 @@ def test_patch_price_rescue_and_bounds():
 def test_patch_area_bounds_and_normalizers():
     assert PreferencePatch(min_area=20).min_area == 20
     assert PreferencePatch(min_area=2).min_area is None
-    p = PreferencePatch(amenities_add=["máy lạnh", "xyz", "ml"], room_type="ktx", room_types_exclude=["sleepbox", "bậy"])
-    assert p.amenities_add == [Amenity.AIRCON] and p.room_type is RoomType.SLEEPBOX and p.room_types_exclude == [RoomType.SLEEPBOX]
+    p = PreferencePatch(amenities_add=["máy lạnh", "xyz", "ml"], allowed_room_types=["ktx"], excluded_room_types=["sleepbox", "bậy"])
+    assert p.amenities_add == [Amenity.AIRCON] and p.allowed_room_types == [RoomType.SLEEPBOX] and p.excluded_room_types == [RoomType.SLEEPBOX]
 
 
 def test_patch_is_empty():
@@ -67,23 +67,23 @@ def test_amenity_add_remove_and_conflict():
 
 
 def test_room_type_want_and_exclude_interplay():
-    pref = UserPreferenceState(room_type="ktx")
-    assert apply_patch(pref, PreferencePatch(room_types_exclude=["ktx"])).room_type is None     # "ko lấy ktx"
-    assert apply_patch(pref, PreferencePatch(room_types_exclude=["ktx"])).excluded_room_types == [RoomType.SLEEPBOX]
+    pref = UserPreferenceState(allowed_room_types=["ktx"])
+    assert apply_patch(pref, PreferencePatch(excluded_room_types=["ktx"])).allowed_room_types == []     # "ko lấy ktx"
+    assert apply_patch(pref, PreferencePatch(excluded_room_types=["ktx"])).excluded_room_types == [RoomType.SLEEPBOX]
     p2 = UserPreferenceState(excluded_room_types=["ktx"])
-    new = apply_patch(p2, PreferencePatch(room_type="ktx"))                                   # đổi ý: muốn ktx
-    assert new.room_type is RoomType.SLEEPBOX and new.excluded_room_types == []
-    both = apply_patch(UserPreferenceState(), PreferencePatch(room_type="studio", room_types_exclude=["studio"]))
-    assert both.room_type is None                                                             # phủ định thắng
+    new = apply_patch(p2, PreferencePatch(allowed_room_types=["ktx"]))                                   # đổi ý: muốn ktx
+    assert new.allowed_room_types == [RoomType.SLEEPBOX] and new.excluded_room_types == []
+    both = apply_patch(UserPreferenceState(), PreferencePatch(allowed_room_types=["studio"], excluded_room_types=["studio"]))
+    assert both.allowed_room_types == []                                                             # phủ định thắng
 
 
 @pytest.mark.parametrize("group,field,expected", [
-    ("price", "max_price", None), ("area", "min_area", None), ("room_type", "room_type", None),
+    ("price", "max_price", None), ("area", "min_area", None), ("room_type", "allowed_room_types", []),
 ])
 def test_clear_groups(group, field, expected):
-    pref = UserPreferenceState(max_price=3e6, min_price=1e6, min_area=20, max_area=40, room_type="studio", excluded_room_types=["ktx"])
+    pref = UserPreferenceState(max_price=3e6, min_price=1e6, min_area=20, max_area=40, allowed_room_types=["studio"], excluded_room_types=["ktx"])
     new = apply_patch(pref, PreferencePatch(clear=[group]))
-    assert getattr(new, field) is expected
+    assert getattr(new, field) == expected
     if group == "room_type":
         assert new.excluded_room_types == []
 
@@ -137,7 +137,7 @@ def test_sanitize_strips_tags_and_truncates():
 
 def test_system_prompt_contains_catalog_and_glossary():
     s = build_system_prompt("- rental-contract-advisor: tư vấn hợp đồng")
-    assert "rental-contract-advisor" in s and "- aircon:" in s and "- SLEEPBOX:" in s and "room_types_exclude" in s
+    assert "rental-contract-advisor" in s and "- aircon:" in s and "- SLEEPBOX:" in s and "excluded_room_types" in s
     assert "KHÔNG có kỹ năng" in build_system_prompt("")
 
 
@@ -280,23 +280,23 @@ def test_sleepbox_auto_exclusion_guardrail():
         patch=PreferencePatch(amenities_add=[Amenity.PRIVATE_WC]),
     )
     res1 = _postprocess(a1, user_text="tìm phòng có wc riêng")
-    assert RoomType.SLEEPBOX in res1.patch.room_types_exclude
+    assert RoomType.SLEEPBOX in res1.patch.excluded_room_types
 
     # 2. Người dùng tìm phòng khép kín / cho 2 bạn -> tự động loại trừ SLEEPBOX
     a2 = TurnAnalysis(
         intent="new_search",
-        patch=PreferencePatch(room_type=RoomType.ROOM),
+        patch=PreferencePatch(allowed_room_types=[RoomType.ROOM]),
     )
     res2 = _postprocess(a2, user_text="tìm phòng khép kín cho 2 bạn nữ")
-    assert RoomType.SLEEPBOX in res2.patch.room_types_exclude
+    assert RoomType.SLEEPBOX in res2.patch.excluded_room_types
 
     # 3. Người dùng chủ động tìm KTX / sleepbox -> KHÔNG bị loại trừ
     a3 = TurnAnalysis(
         intent="new_search",
-        patch=PreferencePatch(room_type=RoomType.SLEEPBOX),
+        patch=PreferencePatch(allowed_room_types=[RoomType.SLEEPBOX]),
     )
     res3 = _postprocess(a3, user_text="tìm ký túc xá hoặc sleepbox gần trường")
-    assert RoomType.SLEEPBOX not in res3.patch.room_types_exclude
+    assert RoomType.SLEEPBOX not in res3.patch.excluded_room_types
 
 
 def test_patch_min_bedrooms_bounds_clear_and_postprocess():

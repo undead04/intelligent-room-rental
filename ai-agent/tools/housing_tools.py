@@ -126,11 +126,15 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
         for k in ("city_id", "district_id", "ward_id"):
             if args.get(k) is not None:
                 body[k] = args[k]
-    for k in ("room_type", "min_price", "max_price", "min_area", "max_area", "min_bedrooms", "min_bathrooms"):
+    for k in ("min_price", "max_price", "min_area", "max_area", "min_bedrooms", "min_bathrooms"):
         if args.get(k) is not None:
             body[k] = getattr(args[k], "value", args[k])
-    if args.get("room_types"):
-        body["room_types"] = [getattr(r, "value", r) for r in args["room_types"]]
+    if args.get("room_type") is not None:
+        rt = args["room_type"]
+        if isinstance(rt, (list, tuple, set)):
+            body["room_type"] = [getattr(r, "value", r) for r in rt]
+        else:
+            body["room_type"] = getattr(rt, "value", rt)
     amenities = [a.value for a in normalize_amenities(args.get("amenities"))]
     if amenities:
         body["amenities"] = sorted(amenities)
@@ -177,8 +181,7 @@ def search_rooms(
     city_id: Optional[int] = None,
     district_id: Optional[int] = None,
     ward_id: Optional[int] = None,
-    room_type: Optional[str] = None,
-    room_types: Optional[list[str]] = None,
+    room_type: Optional[str | list[str]] = None,
     excluded_room_types: Optional[list[str]] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
@@ -203,8 +206,7 @@ def search_rooms(
         city_id: ID thành phố.
         district_id: ID quận/huyện.
         ward_id: ID phường/xã.
-        room_type: Mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE).
-        room_types: Danh sách mã loại phòng cho phép khi chấp nhận nhiều loại.
+        room_type: Mã loại phòng hoặc danh sách mã loại phòng (ROOM, STUDIO, APARTMENT, SLEEPBOX, WHOLE_HOUSE).
         excluded_room_types: Danh sách mã loại phòng bị loại trừ.
         min_price: Giá tối thiểu bằng VNĐ (ví dụ: 1500000).
         max_price: Giá tối đa bằng VNĐ (ví dụ: 3500000).
@@ -222,7 +224,7 @@ def search_rooms(
     """
     return dump(search_rooms_api(dict(
         query=query, lat=lat, lng=lng, city_id=city_id, district_id=district_id, ward_id=ward_id,
-        room_type=room_type, room_types=room_types, excluded_room_types=excluded_room_types,
+        room_type=room_type, excluded_room_types=excluded_room_types,
         min_price=min_price, max_price=max_price, min_area=min_area, max_area=max_area,
         min_bedrooms=min_bedrooms,
         amenities=amenities, preferred_amenities=preferred_amenities, max_distance_km=max_distance_km,

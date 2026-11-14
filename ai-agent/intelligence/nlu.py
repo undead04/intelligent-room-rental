@@ -19,14 +19,13 @@ from domain.enums import (
     RoomType,
     normalize_amenities,
     normalize_amenity,
-    normalize_room_type,
     normalize_room_types,
 )
 from domain.schemas import UserPreferenceState
 from prompts.nlu_prompt import (
     INTENT_GUIDE,
     NLU_RULES,
-    build_nlu_system_prompt as _base_build_nlu_system_prompt,
+    build_nlu_system_prompt,
 )
 from utils.text import norm_key, strip_accents
 
@@ -34,20 +33,6 @@ logger = logging.getLogger(__name__)
 
 MAX_INPUT_CHARS = 2000
 CRITERIA = ("price", "location", "safety", "amenity", "semantic")
-
-_ROOM_TYPES_NLU_RULE = (
-    "\n10. QUY TẮC LOẠI PHÒNG (ROOM_TYPE):\n"
-    "    - Nếu khách chỉ chọn 1 loại phòng mục tiêu duy nhất: điền vào `room_type`.\n"
-    "    - Nếu khách chấp nhận nhiều loại phòng (vd: 'phòng trọ hoặc studio', 'ktx hoặc phòng trọ'): điền danh sách vào `room_types_allow`.\n"
-    "    - Nếu khách cấm/phủ định loại phòng (vd: 'không lấy ktx', 'trừ sleepbox'): điền danh sách vào `room_types_exclude`."
-)
-
-
-def build_nlu_system_prompt(skills_catalog: str = "") -> str:
-    prompt = _base_build_nlu_system_prompt(skills_catalog)
-    if "room_types_allow" not in prompt:
-        prompt = prompt + _ROOM_TYPES_NLU_RULE
-    return prompt
 
 IntentT = Literal[
     "new_search",
@@ -127,12 +112,11 @@ class PreferencePatch(BaseModel):
         None,
         description="Số phòng ngủ tối thiểu — CHỈ điền khi người dùng nêu rõ số phòng ngủ (vd: '2 phòng ngủ', '3 PN'); không suy từ số người ở",
     )
-    room_type: Optional[RoomType] = Field(None, description="Loại phòng người dùng MUỐN")
-    room_types_allow: list[RoomType] = Field(
+    allowed_room_types: list[RoomType] = Field(
         default_factory=list,
-        description="Danh sách loại phòng được phép khi người dùng chấp nhận nhiều loại (vd: 'phòng trọ hoặc studio' -> ['ROOM', 'STUDIO'])",
+        description="Danh sách loại phòng được phép (1 hoặc nhiều loại, vd: ['ROOM'], ['ROOM', 'STUDIO'])",
     )
-    room_types_exclude: list[RoomType] = Field(
+    excluded_room_types: list[RoomType] = Field(
         default_factory=list,
         description="Loại phòng người dùng PHỦ ĐỊNH rõ ràng (vd: 'không lấy KTX', 'trừ sleepbox'); để rỗng [] nếu người dùng không phủ định",
     )
@@ -191,14 +175,9 @@ class PreferencePatch(BaseModel):
             return None
         return num if 1 <= num <= 20 else None
 
-    @field_validator("room_type", mode="before")
+    @field_validator("excluded_room_types", "allowed_room_types", mode="before")
     @classmethod
-    def _rt(cls, v: Any) -> Optional[RoomType]:
-        return normalize_room_type(v)
-
-    @field_validator("room_types_exclude", "room_types_allow", mode="before")
-    @classmethod
-    def _rt_ex(cls, v: Any) -> list[RoomType]:
+    def _rt(cls, v: Any) -> list[RoomType]:
         return normalize_room_types(v)
 
     @field_validator("amenities_add", "amenities_remove", "preferred_amenities_add", mode="before")
@@ -249,7 +228,6 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
             p.min_area = p.max_area = None
             p.min_bedrooms = None
         elif group == "room_type":
-            p.room_type = None
             p.min_bedrooms = None
             p.excluded_room_types = []
             p.allowed_room_types = []
@@ -281,27 +259,19 @@ def apply_patch(pref: UserPreferenceState, patch: PreferencePatch) -> UserPrefer
         else:
             p.max_area = None
 
-    if patch.room_type is not None and not patch.room_types_allow:
-        p.room_type = patch.room_type
-        p.allowed_room_types = []
-        p.excluded_room_types = [r for r in p.excluded_room_types if r != patch.room_type]
-
-    if patch.room_types_allow:
-        direct_excluded = set(patch.room_types_exclude)
-        p.excluded_room_types = [r for r in p.excluded_room_types if r not in patch.room_types_allow or r in direct_excluded]
+    if patch.allowed_room_types:
+        direct_excluded = set(patch.excluded_room_types)
+        p.excluded_room_types = [
+            r for r in p.excluded_room_types
+            if r not in patch.allowed_room_types or r in direct_excluded
+        ]
         active_excluded = set(p.excluded_room_types)
+        p.allowed_room_types = list(dict.fromkeys(
+            rt for rt in patch.allowed_room_types if rt not in active_excluded
+        ))
 
-        allowed = [rt for rt in patch.room_types_allow if rt not in active_excluded]
-        p.allowed_room_types = list(dict.fromkeys(allowed))
-        if len(p.allowed_room_types) == 1:
-            p.room_type = p.allowed_room_types[0]
-        else:
-            p.room_type = None
-
-    if patch.room_types_exclude:                     # phủ định thắng nếu mâu thuẫn trong cùng lượt
-        p.excluded_room_types = list(dict.fromkeys([*p.excluded_room_types, *patch.room_types_exclude]))
-        if p.room_type in p.excluded_room_types:
-            p.room_type = None
+    if patch.excluded_room_types:                     # phủ định thắng nếu mâu thuẫn trong cùng lượt
+        p.excluded_room_types = list(dict.fromkeys([*p.excluded_room_types, *patch.excluded_room_types]))
         p.allowed_room_types = [r for r in p.allowed_room_types if r not in p.excluded_room_types]
 
     if patch.amenities_add or patch.amenities_remove or patch.preferred_amenities_add:
@@ -464,8 +434,7 @@ def _postprocess(
     has_concrete_search_target = bool(
         (a.patch.location_text and not a.patch.location_is_vague)
         or a.patch.max_price is not None
-        or a.patch.room_type is not None
-        or bool(a.patch.room_types_allow)
+        or bool(a.patch.allowed_room_types)
     )
     if a.intent == "skill_advice" and not has_concrete_search_target:
         a.patch = PreferencePatch()
@@ -476,7 +445,7 @@ def _postprocess(
         or a.patch.min_area is not None
         or a.patch.max_area is not None
         or a.patch.min_bedrooms is not None
-        or a.patch.room_types_exclude
+        or a.patch.excluded_room_types
         or a.patch.amenities_add
         or a.patch.preferred_amenities_add
     )
@@ -527,8 +496,7 @@ def _postprocess(
 
     # 1. Người dùng chủ động chấp nhận mô hình giường ngủ tập thể (shared bed)
     accepts_shared_bed = bool(
-        a.patch.room_type == RoomType.SLEEPBOX
-        or RoomType.SLEEPBOX in a.patch.room_types_allow
+        RoomType.SLEEPBOX in a.patch.allowed_room_types
         or any(kw in clean_u for kw in (
             "ktx", "ky tuc xa", "sleepbox", "hop ngu", "giuong tang", "bao giuong", "1 giuong", "o ghep ktx"
         ))
@@ -536,9 +504,8 @@ def _postprocess(
 
     # 2. Người dùng yêu cầu không gian phòng ở độc lập (private space)
     private_room_types = {RoomType.ROOM, RoomType.STUDIO, RoomType.APARTMENT, RoomType.WHOLE_HOUSE}
-    is_private_room_type = (
-        (a.patch.room_type is not None and a.patch.room_type in private_room_types)
-        or (bool(a.patch.room_types_allow) and all(rt in private_room_types for rt in a.patch.room_types_allow))
+    is_private_room_type = bool(a.patch.allowed_room_types) and all(
+        rt in private_room_types for rt in a.patch.allowed_room_types
     )
     has_room_area = a.patch.min_area is not None and a.patch.min_area >= 15
     private_amenities = (Amenity.PRIVATE_WC, Amenity.PET_ALLOWED, Amenity.MEZZANINE, Amenity.WINDOW_BALCONY)
@@ -567,8 +534,8 @@ def _postprocess(
     )
 
     if requires_private_space and not accepts_shared_bed:
-        if RoomType.SLEEPBOX not in a.patch.room_types_exclude:
-            a.patch.room_types_exclude.append(RoomType.SLEEPBOX)
+        if RoomType.SLEEPBOX not in a.patch.excluded_room_types:
+            a.patch.excluded_room_types.append(RoomType.SLEEPBOX)
 
     return a
 

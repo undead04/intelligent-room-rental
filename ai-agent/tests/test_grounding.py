@@ -195,7 +195,7 @@ def test_no_city_means_no_market_call():
 
 def test_room_type_passed_to_fetcher():
     f = _fetcher()
-    build_market_context(UserPreferenceState(max_price=3e6, city_id=79, room_type="studio"), market_fetcher=f)
+    build_market_context(UserPreferenceState(max_price=3e6, city_id=79, allowed_room_types=["studio"]), market_fetcher=f)
     assert f.calls[0]["room_type_id"] == 2
     f2 = _fetcher()
     build_market_context(UserPreferenceState(max_price=3e6, city_id=79), {"room_type": "ROOM", "district_id": 5}, market_fetcher=f2)

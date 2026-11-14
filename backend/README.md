@@ -33,8 +33,6 @@ backend/
 │   ├── schemas/                       # Pydantic v2 DTOs & Request Params (ListingQueryParams, VectorSearchBody...)
 │   ├── services/                      # Logic nghiệp vụ (ListingService, EmbeddingModel, GeocodeService)
 │   │   └── reranker.py                # MCDM Dynamic Reranking Engine (rerank, explain_match, component_influence)
-│   ├── utils/
-│   │   └── utils.py                   # Tiện ích tương thích ngược (re-export từ app.services.reranker)
 │   └── main.py                        # FastAPI App Entrypoint & Lifespan (nạp sẵn multilingual-e5-base)
 ├── tests/                             # 48 Unit & Integration Tests (Embedding, MCDM Rerank, Lifecycle, Security Middleware)
 ├── requirements.txt

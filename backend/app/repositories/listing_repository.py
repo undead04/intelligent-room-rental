@@ -238,9 +238,7 @@ class ListingRepository:
         city_id: int | None = None,
         district_id: int | None = None,
         ward_id: int | None = None,
-        room_type_id: int | None = None,
-        room_type: Optional[str] = None,
-        room_types: Optional[list[str | int]] = None,
+        room_type: Optional[str | int | list[str | int]] = None,
         min_price: float | None = None,
         max_price: float | None = None,
         min_area: float | None = None,
@@ -314,52 +312,33 @@ class ListingRepository:
         if ward_id is not None:
             query = query.filter(Listing.ward_id == ward_id)
 
-        # Lọc theo danh sách loại phòng (room_types, room_type_id, room_type)
-        allowed_ids: set[int] = set()
-
-        effective_room_type_id = room_type_id
-        if effective_room_type_id is None and room_type is not None:
-            clean = room_type.value if hasattr(room_type, "value") else str(room_type).strip().upper()
-            if clean == "BOARDING_HOUSE":
-                clean = "ROOM"
-            if clean.isdigit() and 1 <= int(clean) <= 5:
-                effective_room_type_id = int(clean)
-            elif clean in ROOM_TYPE_CODE_TO_ID:
-                effective_room_type_id = ROOM_TYPE_CODE_TO_ID[clean]
-
-        if effective_room_type_id is not None:
-            allowed_ids.add(effective_room_type_id)
-
-        if room_types:
-            for item in room_types:
+        # Lọc theo loại phòng cho phép (room_type đơn hoặc danh sách) và loại trừ (excluded_room_types)
+        def _resolve_room_type_ids(raw_items: Any) -> set[int]:
+            items = list(raw_items) if isinstance(raw_items, (list, tuple, set)) else ([raw_items] if raw_items is not None else [])
+            ids: set[int] = set()
+            for item in items:
                 if isinstance(item, bool):
                     continue
-                if isinstance(item, int) and 1 <= item <= 5:
-                    allowed_ids.add(item)
-                else:
-                    clean = item.value if hasattr(item, "value") else str(item).strip().upper()
-                    if clean == "BOARDING_HOUSE":
-                        clean = "ROOM"
-                    if clean.isdigit() and 1 <= int(clean) <= 5:
-                        allowed_ids.add(int(clean))
-                    elif clean in ROOM_TYPE_CODE_TO_ID:
-                        allowed_ids.add(ROOM_TYPE_CODE_TO_ID[clean])
-
-        if allowed_ids:
-            query = query.filter(Listing.room_type_id.in_(list(allowed_ids)))
-
-        if excluded_room_types:
-            excluded_ids = []
-            for item in excluded_room_types:
+                if isinstance(item, int):
+                    if 1 <= item <= 5:
+                        ids.add(item)
+                    continue
                 clean = item.value if hasattr(item, "value") else str(item).strip().upper()
                 if clean == "BOARDING_HOUSE":
                     clean = "ROOM"
                 if clean.isdigit() and 1 <= int(clean) <= 5:
-                    excluded_ids.append(int(clean))
+                    ids.add(int(clean))
                 elif clean in ROOM_TYPE_CODE_TO_ID:
-                    excluded_ids.append(ROOM_TYPE_CODE_TO_ID[clean])
-            if excluded_ids:
-                query = query.filter(Listing.room_type_id.notin_(set(excluded_ids)))
+                    ids.add(ROOM_TYPE_CODE_TO_ID[clean])
+            return ids
+
+        allowed_ids = _resolve_room_type_ids(room_type)
+        if allowed_ids:
+            query = query.filter(Listing.room_type_id.in_(list(allowed_ids)))
+
+        excluded_ids = _resolve_room_type_ids(excluded_room_types)
+        if excluded_ids:
+            query = query.filter(Listing.room_type_id.notin_(excluded_ids))
 
         query = self._apply_numeric_filters(
             query,

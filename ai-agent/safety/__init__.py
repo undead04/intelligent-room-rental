@@ -1,5 +1,13 @@
 """Safety & Grounding module: Guardrails (L0, L1) và Self-RAG Grounding Verification."""
 
+from safety.dod_verifier import (
+    DoDCondition,
+    DoDReport,
+    DoDSpec,
+    VerifierType,
+    derive_dod_spec,
+    verify_dod,
+)
 from safety.grounding import (
     AMOUNT_TOLERANCE_VND,
     DISTANCE_ABS_TOL_M,
@@ -12,6 +20,8 @@ from safety.grounding import (
     ClaimsReport,
     CriticVerificationReport,
     ContextGroundingResult,
+    ValidationIssue,
+    ValidationTier,
     backend_market_fetcher,
     build_market_context,
     check_hard_constraints,
@@ -49,6 +59,8 @@ __all__ = [
     "DISTANCE_ABS_TOL_M",
     "ContextGroundingResult",
     "AnswerGroundingResult",
+    "ValidationIssue",
+    "ValidationTier",
     "ClaimsReport",
     "CriticVerificationReport",
     "check_hard_constraints",
@@ -62,4 +74,11 @@ __all__ = [
     "verify_answer_grounding",
     "critic_unsupported_claims",
     "critic_answer_validation",
+    # dod_verifier
+    "VerifierType",
+    "DoDCondition",
+    "DoDSpec",
+    "DoDReport",
+    "derive_dod_spec",
+    "verify_dod",
 ]

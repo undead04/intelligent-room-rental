@@ -105,7 +105,7 @@ def test_unresolved_point_still_searches_by_text():
 
 def test_excluded_room_types_overfetch_filter_and_renumber():
     rooms = [raw_room(1, room_type={"id": 4}), raw_room(2, room_type={"id": 4}), raw_room(3, room_type={"id": 1}), raw_room(4)]
-    h = Harness(search_llm(room_types_exclude=["ktx"]), rooms)
+    h = Harness(search_llm(excluded_room_types=["ktx"]), rooms)
     r = h.turn("tìm phòng gần UIT, không lấy ktx")
     assert h.search_calls[0]["limit"] == 10
     assert [x.id for x in r.rooms] == ["nhatot_3", "nhatot_4"] and [x.rank for x in r.rooms] == [1, 2]

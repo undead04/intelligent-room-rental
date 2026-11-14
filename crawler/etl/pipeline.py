@@ -11,11 +11,7 @@ if _PROJECT_ROOT not in sys.path:
 from crawler.config.settings import GEMINI_API_KEYS, setup_windows_encoding
 setup_windows_encoding()
 
-from crawler.config.paths import (
-    LLM_CHECKPOINT_PATH,
-    LEGACY_JSON_CHECKPOINT_PATH,
-    LEGACY_LLM_CHECKPOINT_PATH,
-)
+from crawler.config.paths import LLM_CHECKPOINT_PATH
 from crawler.etl.extract import extract_raw_listings
 from crawler.etl.transform import ListingTransformer
 from crawler.etl.load import DataLoader
@@ -78,17 +74,9 @@ def run_pipeline(
             print("[ETL] Cảnh báo: --extract-llm được bật nhưng chưa cấu hình GEMINI_API_KEYS trong file .env. Bỏ qua bước LLM.", flush=True)
 
     # Tự động tìm checkpoint có sẵn nếu chưa chỉ định checkpoint_path
-    if not checkpoint_path:
-        default_ckpts = [
-            str(LLM_CHECKPOINT_PATH),
-            str(LEGACY_JSON_CHECKPOINT_PATH),
-            str(LEGACY_LLM_CHECKPOINT_PATH),
-        ]
-        for p in default_ckpts:
-            if os.path.exists(p):
-                checkpoint_path = p
-                print(f"[ETL] Tự động phát hiện và áp dụng báo cáo trích xuất LLM từ: {p}", flush=True)
-                break
+    if not checkpoint_path and os.path.exists(LLM_CHECKPOINT_PATH):
+        checkpoint_path = str(LLM_CHECKPOINT_PATH)
+        print(f"[ETL] Tự động phát hiện và áp dụng báo cáo trích xuất LLM từ: {checkpoint_path}", flush=True)
 
     # 2. TRANSFORM
     transformer = ListingTransformer(llm_reports=checkpoint_path, enable_price_evaluator=eval_price)

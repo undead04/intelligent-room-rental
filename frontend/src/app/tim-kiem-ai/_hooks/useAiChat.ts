@@ -217,8 +217,11 @@ export function useAiChat() {
 
       if (res.current_preferences) {
         const pref = res.current_preferences;
-        if (pref.room_type && CANONICAL_ROOM_TYPES_MAP[pref.room_type]) {
-          mandatory.push(`Loại: ${CANONICAL_ROOM_TYPES_MAP[pref.room_type]}`);
+        if (pref.allowed_room_types && pref.allowed_room_types.length > 0) {
+          const labels = pref.allowed_room_types
+            .map((rt) => CANONICAL_ROOM_TYPES_MAP[rt] || rt)
+            .join(", ");
+          mandatory.push(`Loại: ${labels}`);
         }
         if (pref.min_price && pref.max_price) {
           const minTr = (pref.min_price / 1_000_000).toFixed(1).replace(".0", "");

@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from graph.deps import Deps
-from graph.tracing import traced_call
+from graph.tracing import resolve_trace_target, traced_call
 from intelligence.nlu import is_daily_quota_exhausted, sanitize_user_text
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class ClarifyReply(BaseModel):
 
 def make_clarification_node(deps: Deps):
     def clarification_node(state: dict[str, Any]) -> dict[str, Any]:
-        trace = list(state.get("trace_events") or [])
+        trace = resolve_trace_target(deps).sink()
         text_in = sanitize_user_text(state.get("user_message", ""))
         vague = state.get("vague_location_info")
         pref = state.get("preferences")
@@ -41,10 +41,17 @@ def make_clarification_node(deps: Deps):
                      if vague else
                      "Nếu người dùng chỉ chào hỏi/cảm ơn thì đáp lại thân thiện rồi mời họ nêu nhu cầu. Nếu thiếu khu vực hoặc ngân sách, hãy hỏi khéo léo để bổ sung.")
             try:
-                reply = traced_call(trace, lambda: model.with_structured_output(ClarifyReply).invoke([
+                call_msgs = [
                     ("system", deps.base_prompt),
                     ("human", f"{guide}\n\n{hist_str}Tiêu chí đã biết:\n{pref.to_context_string() if pref else 'chưa có'}\n\n<user_message>\n{text_in}\n</user_message>"),
-                ]))
+                ]
+                reply = traced_call(
+                    trace,
+                    lambda: model.with_structured_output(ClarifyReply).invoke(call_msgs),
+                    message_count=len(call_msgs),
+                    node="clarification_node",
+                    input_data=call_msgs,
+                )
                 reply = reply if isinstance(reply, ClarifyReply) else ClarifyReply.model_validate(reply)
                 text = reply.text.strip()
                 suggestions = [s.strip() for s in reply.suggestions if s and s.strip()]
@@ -62,6 +69,6 @@ def make_clarification_node(deps: Deps):
                     logger.warning("clarification_node: LLM lỗi", exc_info=True)
         if len(text) < 15:
             text = FALLBACK_TEXT
-        return {"final_text": text, "needs_clarification": True, "retrieved_rooms": [], "follow_up_questions": suggestions, "trace_events": trace}
+        return {"final_text": text, "needs_clarification": True, "retrieved_rooms": [], "follow_up_questions": suggestions}
 
     return clarification_node

@@ -48,7 +48,7 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
      + "khu an ninh" hoặc "nữ ở 1 mình" -> chỉ đặt priorities.safety="high", KHÔNG tự thêm 'camera' hay 'guard'.
      + "nuôi mèo/thú cưng" hoặc "căn studio" -> KHÔNG tự thêm 'no_shared_landlord' trừ khi người dùng nói rõ "không chung chủ / lối đi riêng".
    - Yêu cầu giảm nhẹ ("ưu tiên", "càng tốt", "có thì tốt") -> preferred_amenities_add; bỏ tiện ích -> amenities_remove.
-   - Điền room_types_exclude khi có từ phủ định rõ ràng ("không lấy KTX", "trừ sleepbox"). ĐẶC BIỆT: Khi người dùng tìm phòng riêng khép kín ("phòng khép kín", "wc riêng", "không chung chủ", "cho 2 bạn nữ", "2 người ở", "studio", "phòng trọ"), tự động bổ sung "SLEEPBOX" vào room_types_exclude (vì hộp ngủ sleepbox không thể ở 2 người hoặc có WC riêng). Chỉ khi người dùng nói rõ muốn ở KTX/sleepbox/hộp ngủ thì mới cho phép.
+   - Điền excluded_room_types khi có từ phủ định rõ ràng ("không lấy KTX", "trừ sleepbox"). ĐẶC BIỆT: Khi người dùng tìm phòng riêng khép kín ("phòng khép kín", "wc riêng", "không chung chủ", "cho 2 bạn nữ", "2 người ở", "studio", "phòng trọ"), tự động bổ sung "SLEEPBOX" vào excluded_room_types (vì hộp ngủ sleepbox không thể ở 2 người hoặc có WC riêng). Chỉ khi người dùng nói rõ muốn ở KTX/sleepbox/hộp ngủ thì mới cho phép.
 3. ĐỊA DANH (location_kind, location_is_vague):
    - location_kind="admin": MỌI tên Tỉnh/Thành phố, Quận/Huyện, Thị xã, Phường/Xã, kể cả khi KHÔNG ghi từ "Tỉnh/Quận/Phường" (vd: "Quảng Ngãi", "Dĩ An", "Thủ Đức", "Cầu Giấy Hà Nội", "Linh Trung Thủ Đức", "Quận 7").
    - location_kind="place": CHỈ cho điểm mốc cụ thể có tên riêng như trường đại học, KTX, chợ, bến xe, KCN có tên riêng, toà nhà, con đường (vd: "UIT", "ĐH Bách Khoa", "chợ Thủ Đức", "KCN VSIP 1").
@@ -71,7 +71,10 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
 9. QUY TẮC CLEAR (XÓA BỎ TIÊU CHÍ):
    - Mặc định TUYỆT ĐỐI để clear=[] rỗng.
    - CHỈ đưa "location", "price", "amenities", "room_type"... vào clear khi người dùng TUYÊN BỐ RÕ RÀNG từ chối hoặc yêu cầu bỏ tiêu chí cũ (vd: "không tìm ở UIT nữa", "bỏ giới hạn giá đi", "bỏ máy lạnh").
-   - Khi người dùng chỉ nêu thêm tiện ích (vd: "thêm máy lạnh", "có gác không") hoặc đổi giá, TUYỆT ĐỐI KHÔNG đưa "location" hay các tiêu chí khác vào clear."""
+   - Khi người dùng chỉ nêu thêm tiện ích (vd: "thêm máy lạnh", "có gác không") hoặc đổi giá, TUYỆT ĐỐI KHÔNG đưa "location" hay các tiêu chí khác vào clear.
+10. QUY TẮC LOẠI PHÒNG (`allowed_room_types`, `excluded_room_types`):
+   - Nếu khách chọn 1 hoặc nhiều loại phòng muốn tìm (vd: "phòng trọ", "căn hộ studio", "phòng trọ hoặc studio", "ktx hoặc phòng trọ"): điền danh sách vào `allowed_room_types` (vd: `['ROOM']`, `['ROOM', 'STUDIO']`).
+   - Nếu khách cấm/phủ định loại phòng (vd: "không lấy ktx", "trừ sleepbox"): điền danh sách vào `excluded_room_types`."""
 
 
 def build_nlu_system_prompt(skills_catalog: str = "") -> str:
@@ -92,8 +95,4 @@ def build_nlu_system_prompt(skills_catalog: str = "") -> str:
         f"Loại phòng hợp lệ:\n{room_type_glossary()}",
         skills_part,
     ])
-
-
-# Alias tương thích ngược
-build_system_prompt = build_nlu_system_prompt
 

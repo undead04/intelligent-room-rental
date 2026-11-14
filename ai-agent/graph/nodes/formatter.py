@@ -4,6 +4,7 @@ from typing import Any
 
 from domain.schemas import AgentResponse, UserPreferenceState
 from graph.deps import Deps
+from graph.tracing import resolve_trace_target
 
 
 def make_formatter_node(deps: Deps):
@@ -55,7 +56,7 @@ def make_formatter_node(deps: Deps):
             need_clarification=need_clarify,
             follow_up_questions=follow_up,
             grounding_report=report,
-            trace_events=list(state.get("trace_events") or []),
+            trace_events=resolve_trace_target(deps).snapshot(),
             searched=bool(state.get("searched")),
         )
         if not blocked:     # tin nhắn bị chặn (injection...) KHÔNG được vào lịch sử, tránh đầu độc các lượt sau

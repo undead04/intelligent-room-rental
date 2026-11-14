@@ -21,7 +21,7 @@ def populate(store, sid="a"):
     s = store.get_or_create_session(sid)
     s.preferences.max_price = 3_000_000
     s.preferences.amenities = ["ml"]
-    s.preferences.room_type = "studio"
+    s.preferences.allowed_room_types = ["studio"]
     s.preferences.excluded_room_types = ["ktx"]
     s.preferences.set_location("Dĩ An", kind="admin", city_id=74, district_id=724)
     s.multipliers["price"] = 2.0
@@ -34,7 +34,7 @@ def test_state_survives_restart(db):
     populate(PersistentSessionStore(db))
     fresh = PersistentSessionStore(db).get_or_create_session("a")                      # "khởi động lại": store mới, cùng file
     p = fresh.preferences
-    assert (p.max_price, p.amenities, p.room_type, p.excluded_room_types) == (3_000_000, [Amenity.AIRCON], RoomType.STUDIO, [RoomType.SLEEPBOX])
+    assert (p.max_price, p.amenities, p.allowed_room_types, p.excluded_room_types) == (3_000_000, [Amenity.AIRCON], [RoomType.STUDIO], [RoomType.SLEEPBOX])
     assert (p.location_text, p.location_kind, p.city_id, p.district_id) == ("Dĩ An", "admin", 74, 724)
     assert fresh.multipliers["price"] == 2.0 and fresh.proposed_budget == 3_450_000 and fresh.zero_result_streak == 1
     assert fresh.history == [("user", "tìm phòng ở Dĩ An"), ("assistant", "ok")]

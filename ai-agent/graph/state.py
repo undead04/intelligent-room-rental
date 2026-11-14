@@ -51,7 +51,9 @@ class HousingAgentState(TypedDict, total=False):
     answer_grounded: bool
     retry_notes: list[str]
     grounding_report: Optional[dict[str, Any]]
+    dod_report: Optional[dict[str, Any]]
+    verifier_result: Optional[dict[str, Any]]
+    verifier_decision: Optional[str]
 
-    # đầu ra
-    trace_events: list[dict[str, Any]]
+    # đầu ra (trace được cô lập trong TraceStore, KHÔNG nằm trong state)
     final_response: Optional[AgentResponse]

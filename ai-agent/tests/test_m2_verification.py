@@ -3,10 +3,10 @@
 Bao hàm đầy đủ 4 nhóm test cases theo chuẩn rigorous-testing:
 1. Nhóm 1 (Happy Path):
    - Tra cứu POI Đại học 0 ms: "UIT", "Bách Khoa CS2", "ĐH Sư phạm Kỹ thuật" trả về đúng lat/lng với kind="point" ngay lập tức mà không gọi geocode bên ngoài.
-   - Phòng thủ NLU: "tìm phòng khép kín", "wc riêng", "không chung chủ", "cho 2 bạn nữ", "cần tìm studio" đều tự động kích hoạt RoomType.SLEEPBOX trong patch.room_types_exclude.
+   - Phòng thủ NLU: "tìm phòng khép kín", "wc riêng", "không chung chủ", "cho 2 bạn nữ", "cần tìm studio" đều tự động kích hoạt RoomType.SLEEPBOX trong patch.excluded_room_types.
 2. Nhóm 2 (Edge cases):
    - Phòng từ Backend bị thiếu relationship (r.room_type is None) nhưng có r.room_type_id == 4 (hoặc listing["room_type_id"] = 4) -> check_hard_constraints phải loại bỏ triệt để và gán lý do chính xác.
-   - Đảo chiều ý định: Khi người dùng tìm "ở ghép ký túc xá" hoặc "tìm sleepbox giá rẻ" -> RoomType.SLEEPBOX TUYỆT ĐỐI KHÔNG bị đưa vào room_types_exclude.
+   - Đảo chiều ý định: Khi người dùng tìm "ở ghép ký túc xá" hoặc "tìm sleepbox giá rẻ" -> RoomType.SLEEPBOX TUYỆT ĐỐI KHÔNG bị đưa vào excluded_room_types.
 3. Nhóm 3 (Backend Reranker Price Fit Verification):
    - So sánh 2 căn phòng: Căn A (giá 2.0tr, ml_score = 0.55), Căn B (giá 3.8tr trong ngân sách 4.0tr, ml_score = 0.95).
    - Khi ở chế độ ưu tiên giá rẻ (weights["price"] = 0.40), xác minh điểm _price_fit của Căn A (rẻ thực tế) cao hơn rõ rệt so với Căn B (đắt tiền có deal hời).
@@ -75,7 +75,7 @@ def test_happy_path_nlu_sleepbox_defense_triggers():
     - 'không chung chủ'
     - 'cho 2 bạn nữ'
     - 'cần tìm studio'
-    đều phải tự động kích hoạt RoomType.SLEEPBOX vào patch.room_types_exclude.
+    đều phải tự động kích hoạt RoomType.SLEEPBOX vào patch.excluded_room_types.
     """
     cues = [
         "tìm phòng khép kín",
@@ -88,8 +88,8 @@ def test_happy_path_nlu_sleepbox_defense_triggers():
     for cue in cues:
         raw_analysis = TurnAnalysis(intent="new_search", patch=PreferencePatch())
         processed = _postprocess(raw_analysis, user_text=cue)
-        assert RoomType.SLEEPBOX in processed.patch.room_types_exclude, (
-            f"Phát biểu '{cue}' phải tự động loại trừ RoomType.SLEEPBOX, nhưng không tìm thấy trong {processed.patch.room_types_exclude}"
+        assert RoomType.SLEEPBOX in processed.patch.excluded_room_types, (
+            f"Phát biểu '{cue}' phải tự động loại trừ RoomType.SLEEPBOX, nhưng không tìm thấy trong {processed.patch.excluded_room_types}"
         )
 
 
@@ -150,7 +150,7 @@ def test_edge_case_intent_reversal_shared_dorm_never_excluded():
     - 'tìm sleepbox giá rẻ'
     - 'thuê giường tầng ktx'
     - 'tìm hộp ngủ giá rẻ'
-    RoomType.SLEEPBOX TUYỆT ĐỐI KHÔNG ĐƯỢC PHÉP bị đưa vào patch.room_types_exclude!
+    RoomType.SLEEPBOX TUYỆT ĐỐI KHÔNG ĐƯỢC PHÉP bị đưa vào patch.excluded_room_types!
     """
     shared_cues = [
         "ở ghép ký túc xá",
@@ -162,8 +162,8 @@ def test_edge_case_intent_reversal_shared_dorm_never_excluded():
     for cue in shared_cues:
         raw_analysis = TurnAnalysis(intent="new_search", patch=PreferencePatch())
         processed = _postprocess(raw_analysis, user_text=cue)
-        assert RoomType.SLEEPBOX not in processed.patch.room_types_exclude, (
-            f"Phát biểu '{cue}' tìm ở ghép/sleepbox nhưng lại bị đưa vào room_types_exclude: {processed.patch.room_types_exclude}"
+        assert RoomType.SLEEPBOX not in processed.patch.excluded_room_types, (
+            f"Phát biểu '{cue}' tìm ở ghép/sleepbox nhưng lại bị đưa vào excluded_room_types: {processed.patch.excluded_room_types}"
         )
 
 

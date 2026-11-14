@@ -390,11 +390,11 @@ def _c_entities() -> SubCriterionResult:
     results.append(("tiện ích", not junk, f"[tiện ích] chuỗi vô nghĩa → {junk} (kỳ vọng rỗng)"))
 
     # Kiểm thử hợp nhất tiêu chí & ràng buộc qua apply_patch (State Patch Merging)
-    base_pref = UserPreferenceState(location_text="Dĩ An", lat=10.89, lng=106.76, min_price=2_500_000, max_price=3_500_000, room_type=RoomType.SLEEPBOX, amenities=[Amenity.AIRCON])
-    p_conflict = apply_patch(base_pref, PreferencePatch(location_text="Quận 7", max_price=2_000_000, room_types_exclude=[RoomType.SLEEPBOX], preferred_amenities_add=[Amenity.AIRCON, Amenity.MEZZANINE]))
+    base_pref = UserPreferenceState(location_text="Dĩ An", lat=10.89, lng=106.76, min_price=2_500_000, max_price=3_500_000, allowed_room_types=[RoomType.SLEEPBOX], amenities=[Amenity.AIRCON])
+    p_conflict = apply_patch(base_pref, PreferencePatch(location_text="Quận 7", max_price=2_000_000, excluded_room_types=[RoomType.SLEEPBOX], preferred_amenities_add=[Amenity.AIRCON, Amenity.MEZZANINE]))
     results.append(("apply_patch", not p_conflict.has_point and p_conflict.location_text == "Quận 7", "[apply_patch] đổi vị trí phải xoá toạ độ cũ"))
     results.append(("apply_patch", p_conflict.min_price is None and p_conflict.max_price == 2_000_000, "[apply_patch] max_price mới < min_price cũ phải ưu tiên max_price mới"))
-    results.append(("apply_patch", p_conflict.room_type is None and RoomType.SLEEPBOX in p_conflict.excluded_room_types, "[apply_patch] loại trừ loại phòng đang chọn phải xoá room_type"))
+    results.append(("apply_patch", not p_conflict.allowed_room_types and RoomType.SLEEPBOX in p_conflict.excluded_room_types, "[apply_patch] loại trừ loại phòng đang chọn phải xoá khỏi allowed_room_types"))
     results.append(("apply_patch", Amenity.AIRCON not in p_conflict.preferred_amenities and Amenity.MEZZANINE in p_conflict.preferred_amenities, "[apply_patch] tiện ích bắt buộc không được lặp lại trong preferred_amenities"))
 
     groups: dict[str, list[int]] = {}

@@ -110,7 +110,6 @@ crawler/
 │   └── ml/                      # Module Machine Learning v2 định giá phòng trọ Toàn Quốc (19 features, Weighted SpatialTE, Mondrian CQR)
 ├── schema/
 │   ├── enums.py                 # Danh mục chuẩn canonical (RoomType, AmenityCode, Amenities)
-│   ├── enum.py                  # Shim tương thích ngược (re-export từ schema/enums.py)
 │   └── listing.py               # Pydantic schemas (Signal, Amenities, Safety, ConceptScores)
 ├── spiders/
 │   ├── base.py                  # Lớp Base Spider trừu tượng (tự động điều phối async_crawl, atomic checkpoint)

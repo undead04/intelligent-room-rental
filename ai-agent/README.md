@@ -62,7 +62,6 @@ ai-agent/
 ├── eval/                        # Bộ benchmark đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding...)
 ├── tests/                       # 454 Unit & Integration Tests (100% Passed)
 ├── main.py                      # Uvicorn entrypoint (Port 8001)
-├── service.py                   # HousingAgentService shim tương thích ngược
 ├── pyproject.toml / uv.lock     # Quản lý phụ thuộc uv
 └── requirements.txt
 ```
@@ -85,7 +84,7 @@ SEARCH_ROOM_API_BASE=http://localhost:8000/api/v1
 
 ### 3.2. Gọi `HousingAgentService` Trong Python
 ```python
-from service import HousingAgentService
+from api.routes import HousingAgentService
 
 service = HousingAgentService()
 res = service.run(

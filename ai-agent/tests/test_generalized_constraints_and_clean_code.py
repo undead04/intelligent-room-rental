@@ -53,30 +53,24 @@ from tests.e2e_helpers import GOOD_ADVICE, FakeLLM, Harness, nlu, raw_room
 # ==============================================================================
 
 def test_user_preference_multi_room_types_and_computed_fields():
-    """Nhóm 1: UserPreferenceState hỗ trợ allowed_room_types, apply_patch chuẩn hóa chính xác,
-    và @computed_field room_type_id xuất hiện đầy đủ trong .model_dump().
+    """Nhóm 1: UserPreferenceState hỗ trợ allowed_room_types (1 hoặc nhiều loại), apply_patch chuẩn hóa chính xác,
+    và @computed_field room_type_id chỉ giữ trên RoomItem (entity kết quả).
     """
     pref = UserPreferenceState()
 
     # 1. Áp patch với nhiều loại phòng được phép
-    patch_multi = PreferencePatch(room_types_allow=["ROOM", "STUDIO"])
+    patch_multi = PreferencePatch(allowed_room_types=["ROOM", "STUDIO"])
     p_multi = apply_patch(pref, patch_multi)
 
     assert p_multi.allowed_room_types == [RoomType.ROOM, RoomType.STUDIO]
-    assert p_multi.room_type is None, "Khi có >1 loại phòng cho phép, room_type đơn trị phải là None"
-
-    dump_multi = p_multi.model_dump()
-    assert "room_type_id" in dump_multi
-    assert dump_multi["room_type_id"] is None
+    assert "room_type_id" not in p_multi.model_dump()
 
     # 2. Áp patch với 1 loại phòng duy nhất được phép
-    patch_single = PreferencePatch(room_types_allow=["STUDIO"])
+    patch_single = PreferencePatch(allowed_room_types=["STUDIO"])
     p_single = apply_patch(pref, patch_single)
 
     assert p_single.allowed_room_types == [RoomType.STUDIO]
-    assert p_single.room_type == RoomType.STUDIO
-    dump_single = p_single.model_dump()
-    assert dump_single["room_type_id"] == 2
+    assert p_single.model_dump()["allowed_room_types"] == ["STUDIO"]
 
     # 3. RoomItem có computed_field room_type_id
     item_room = RoomItem(
@@ -277,29 +271,29 @@ def test_nlu_postprocess_domain_generalization_sleepbox():
     # 1. Yêu cầu diện tích phòng riêng (min_area = 25m2 >= 15m2)
     a1 = TurnAnalysis(intent="new_search", patch=PreferencePatch(min_area=25.0))
     _postprocess(a1, user_text="tìm phòng rộng trên 25m2", n_rooms=0)
-    assert RoomType.SLEEPBOX in a1.patch.room_types_exclude
+    assert RoomType.SLEEPBOX in a1.patch.excluded_room_types
 
     # 2. Yêu cầu cho nhóm người ở ("hai vợ chồng", "nhóm 3 người")
     a2 = TurnAnalysis(intent="new_search", patch=PreferencePatch())
     _postprocess(a2, user_text="hai vợ chồng cần thuê phòng ở lâu dài", n_rooms=0)
-    assert RoomType.SLEEPBOX in a2.patch.room_types_exclude
+    assert RoomType.SLEEPBOX in a2.patch.excluded_room_types
 
     a3 = TurnAnalysis(intent="new_search", patch=PreferencePatch())
     _postprocess(a3, user_text="nhóm 3 bạn sinh viên tìm chỗ ở gần trường", n_rooms=0)
-    assert RoomType.SLEEPBOX in a3.patch.room_types_exclude
+    assert RoomType.SLEEPBOX in a3.patch.excluded_room_types
 
     # 3. Yêu cầu tiện ích không gian riêng biệt (nuôi thú cưng, ban công)
     a4 = TurnAnalysis(intent="new_search", patch=PreferencePatch(amenities_add=[Amenity.PET_ALLOWED]))
     _postprocess(a4, user_text="tìm phòng cho nuôi mèo thoải mái", n_rooms=0)
-    assert RoomType.SLEEPBOX in a4.patch.room_types_exclude
+    assert RoomType.SLEEPBOX in a4.patch.excluded_room_types
 
     # 4. Người dùng CHỦ ĐỘNG tìm KTX / Sleepbox -> KHÔNG loại trừ SLEEPBOX
     a5 = TurnAnalysis(
         intent="new_search",
-        patch=PreferencePatch(room_types_allow=[RoomType.SLEEPBOX, RoomType.ROOM]),
+        patch=PreferencePatch(allowed_room_types=[RoomType.SLEEPBOX, RoomType.ROOM]),
     )
     _postprocess(a5, user_text="tìm ktx hoặc phòng trọ giá sinh viên", n_rooms=0)
-    assert RoomType.SLEEPBOX not in a5.patch.room_types_exclude
+    assert RoomType.SLEEPBOX not in a5.patch.excluded_room_types
 
 
 def test_search_rooms_api_edge_and_boundary_clamping():
@@ -325,13 +319,13 @@ def test_search_rooms_api_edge_and_boundary_clamping():
         search_rooms_api({"query": "phòng trọ", "max_distance_km": 120.0})
         assert captured_payloads[-1]["max_distance_km"] == 50.0
 
-        # 4. Không truyền room_types -> không sinh key 'room_types' trong json body
+        # 4. Không truyền room_type -> không sinh key 'room_type' hoặc 'room_types' trong json body
         search_rooms_api({"query": "phòng trọ"})
-        assert "room_types" not in captured_payloads[-1]
+        assert "room_type" not in captured_payloads[-1] and "room_types" not in captured_payloads[-1]
 
-        # 5. Truyền room_types hợp lệ -> sinh danh sách string value
-        search_rooms_api({"query": "phòng trọ", "room_types": [RoomType.ROOM, RoomType.STUDIO]})
-        assert captured_payloads[-1]["room_types"] == ["ROOM", "STUDIO"]
+        # 5. Truyền room_type dạng danh sách hợp lệ -> sinh danh sách string value
+        search_rooms_api({"query": "phòng trọ", "room_type": [RoomType.ROOM, RoomType.STUDIO]})
+        assert captured_payloads[-1]["room_type"] == ["ROOM", "STUDIO"]
 
 
 def test_understand_rollback_accents_and_unnegated_keywords():
