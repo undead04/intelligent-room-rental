@@ -37,7 +37,7 @@ from utils.geo import haversine_km
 
 logger = logging.getLogger(__name__)
 
-MAX_GROUNDING_RETRIES = 3
+MAX_GROUNDING_RETRIES = 2
 PRICE_FILTER_TOLERANCE = 0.02      # backend có thể làm tròn; cho phép lệch 2% khi kiểm ràng buộc giá
 AMOUNT_TOLERANCE_VND = 50_000      # số tiền trong câu trả lời được lệch tối đa ngần này so với dữ liệu ("2.8 triệu" vs 2.75tr)
 AREA_TOLERANCE_M2 = 1.0
