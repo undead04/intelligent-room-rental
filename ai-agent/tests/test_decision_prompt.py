@@ -21,7 +21,7 @@ def _room():
 def test_compact_room_has_precomputed_fields_and_drops_noise():
     d = compact_room(_room())
     assert d["match_percent"] == 87 and d["area_m2"] == 25 and d["room_type"] == "STUDIO" and d["inferred_tags"] == ["Có máy lạnh"]
-    for k in ("image", "source_url", "lat", "lng", "latPercent", "rankText"):
+    for k in ("image", "source_url", "lat", "lng", "rankText"):
         assert k not in d
     assert d["price"] == "2.75 triệu/tháng"
 

@@ -139,13 +139,6 @@ def test_distance_formats():
     assert (r1.distance, r2.distance, r3.distance) == ("460m", "2.3 km", "800m")
 
 
-def test_pin_positions_are_deterministic():
-    a = RoomItem.from_backend_result(_raw(), rank=2)
-    b = RoomItem.from_backend_result(_raw(), rank=2)
-    assert (a.latPercent, a.lngPercent) == (b.latPercent, b.lngPercent)
-    assert 40.0 <= a.latPercent < 65.0 and 35.0 <= a.lngPercent < 70.0
-
-
 def test_match_percent_handles_both_scales():
     assert RoomItem(id="a", title="t", price="p", matchScore=0.5).match_percent == 50
     assert RoomItem(id="a", title="t", price="p", matchScore=87.0).match_percent == 87

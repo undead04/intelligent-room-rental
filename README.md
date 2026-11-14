@@ -130,11 +130,10 @@
 │   │   ├── skills_discovery.py    # Tự động phát hiện Kỹ năng không cần sửa code graph
 │   │   └── rental-contract-advisor/ # Kỹ năng tư vấn hợp đồng thuê trọ, tiền cọc, rủi ro pháp lý
 │   ├── eval/                      # Bộ đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding, Decision, Safety)
-│   ├── tests/                     # 454 Unit & Integration Tests (100% Passed)
+│   ├── tests/                     # 575 Unit & Integration Tests (100% Passed)
 │   ├── main.py                    # Uvicorn entrypoint (Port 8001)
 │   ├── service.py                 # HousingAgentService shim tương thích ngược
-│   ├── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
-│   └── requirements.txt
+│   └── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv (không còn requirements.txt)
 │
 ├── crawler/                       # [Service 4] Thu Thập, Trích Xuất LLM, Định Giá ML & ETL Pipeline
 │   ├── spiders/                   # Spiders cào dữ liệu có Resume Checkpoint (NhaTot, PhongTro123)
@@ -415,12 +414,12 @@ cd frontend; npm run dev
 
 ## 🧪 6. Kiểm Thử Hệ Thống & Báo Cáo Đánh Giá Chất Lượng
 
-Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **583 unit & integration tests** đã được kiểm chứng chạy thành công 100%:
+Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **704 unit & integration tests** (AI Agent: 575, Backend: 48, Crawler & ML v2: 81):
 
 ### 6.1. Chạy Toàn Bộ Test Suite Tự Động
 
 ```powershell
-# 1. Kiểm thử AI Agent (454 tests passed)
+# 1. Kiểm thử AI Agent (575 tests passed)
 ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 
 # 2. Kiểm thử Backend (48 tests passed)

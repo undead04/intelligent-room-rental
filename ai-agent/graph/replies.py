@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from domain.budget import GAP_RATIO
 from domain.enums import amenity_label
 from domain.schemas import UserPreferenceState, format_vnd_million
 
@@ -106,7 +105,6 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
     avg_p_val = market.market_avg_price if market else None
     min_p_str = market.market_min_price_str if market else (format_vnd_million(min_p_val) if min_p_val else None)
     avg_p_str = market.market_avg_price_str if market else (format_vnd_million(avg_p_val) if avg_p_val else None)
-    prop_p_str = market.proposed_budget_str if market and market.proposed_budget_str else None
 
     neighbor_bullets = _format_nearby_bullets(pref, search_args)
 
@@ -132,14 +130,14 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
 
     # CASE B: NGÂN SÁCH QUÁ THẤP (Under-budget / Market Gap)
     is_under_budget = bool(market and market.is_market_gap) or (
-        user_max is not None and min_p_val is not None and user_max < min_p_val * GAP_RATIO
+        user_max is not None and min_p_val is not None and user_max < min_p_val
     )
     if is_under_budget and min_p_str:
         avg_line = f"\n  - **Mức giá phổ biến (trung bình):** khoảng **{avg_p_str}**" if avg_p_str else ""
         user_line = f"\n  - **Ngân sách của bạn:** **{user_budget_str}** (hiện thấp hơn đáng kể so với giá sàn thực tế tại đây)" if user_budget_str else ""
 
         suggestions = [
-            f"  1. **Điều chỉnh ngân sách:** Cân nhắc nâng ngân sách lên từ khoảng **{prop_p_str or min_p_str}** để có thể tiếp cận phòng riêng cơ bản tại {loc}."
+            f"  1. **Điều chỉnh ngân sách:** Cân nhắc nâng ngân sách lên từ khoảng **{min_p_str}** để có thể tiếp cận phòng riêng cơ bản tại {loc}."
         ]
         has_dorm = user_max is not None and user_max <= 2_000_000
         if has_dorm:
@@ -189,7 +187,7 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
             f"Homigo hiện chưa tìm thấy phòng trọ nào khớp với tiêu chí trong phạm vi phường hiện tại ở **{loc}**.\n\n"
             f"💡 **Gợi ý định hướng từ Homigo để bạn cân nhắc:**\n"
             f"  1. **Mở rộng phạm vi tìm kiếm:** Bạn có thể mở rộng tìm kiếm ra toàn Quận/Huyện hoặc các khu vực lân cận giáp ranh:\n{neighbor_bullets}\n"
-            f"  2. **Nới nhẹ ngân sách:** Cân nhắc nâng ngân sách lên khoảng **{prop_p_str or 'mức giá phù hợp hơn'}** để tiếp cận các phòng mới đăng tải.\n\n"
+            f"  2. **Nới nhẹ ngân sách:** Cân nhắc nâng ngân sách lên khoảng **{min_p_str or 'mức giá phù hợp hơn'}** để tiếp cận các phòng mới đăng tải.\n\n"
             "👉 Bạn có muốn Homigo mở rộng tìm kiếm ra toàn quận hay sang khu vực lân cận nào ở trên không? Hãy nhắn cho mình biết nhé!"
         )
 
@@ -197,6 +195,6 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
         f"Homigo hiện chưa tìm thấy phòng trọ nào khớp 100% với điều kiện lọc của bạn tại **{loc}**.\n\n"
         f"💡 **Gợi ý định hướng từ Homigo để bạn cân nhắc:**\n"
         f"  1. **Mở rộng sang các khu vực lân cận có nhiều nguồn phòng hơn:**\n{neighbor_bullets}\n"
-        f"  2. **Điều chỉnh ngân sách hoặc tiện ích:** Cân nhắc nâng ngân sách lên khoảng **{prop_p_str or 'mức giá phù hợp hơn'}** hoặc lược bớt một số yêu cầu khắt khe.\n\n"
+        f"  2. **Điều chỉnh ngân sách hoặc tiện ích:** Cân nhắc nâng ngân sách lên khoảng **{min_p_str or 'mức giá phù hợp hơn'}** hoặc lược bớt một số yêu cầu khắt khe.\n\n"
         "👉 Bạn muốn điều chỉnh lại mức giá, tiện ích hay muốn đổi sang khu vực lân cận nào? Hãy nhắn cho Homigo biết nhé!"
     )

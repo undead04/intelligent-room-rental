@@ -19,8 +19,6 @@ class Settings(BaseModel):
     api_key: str = Field(default="", description="API Key của OpenAI hoặc Gemini")
     model_name: str = Field(default="gpt-4o-mini", description="Tên model LLM sử dụng")
     enable_main_thinking: bool = Field(default=True, description="Bật chế độ suy nghĩ (Thinking) cho role 'main'")
-    enable_prompt_caching: bool = Field(default=True, description="Bật cơ chế tối ưu Prefix/KV-Cache Caching")
-    kv_cache_type: str = Field(default="q8_0", description="Kiểu lượng tử hóa KV-Cache khuyến nghị: q8_0, q4_0, fp16")
     base_url: Optional[str] = Field(default=None, description="Endpoint URL tùy chỉnh (nếu có)")
     search_room_api_base: str = Field(
         default="http://localhost:8000/api/v1",
@@ -42,8 +40,6 @@ def load_settings() -> tuple[Settings | None, list[str]]:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     model_name = os.getenv("MODEL_NAME", "").strip() or "gpt-4o-mini"
     enable_main_thinking = os.getenv("ENABLE_MAIN_THINKING", "1") == "1"
-    enable_prompt_caching = os.getenv("ENABLE_PROMPT_CACHING", "1") == "1"
-    kv_cache_type = os.getenv("KV_CACHE_TYPE", "q8_0").strip().lower()
     base_url = os.getenv("OPENAI_BASE_URL", "").strip() or None
     api_base = os.getenv("SEARCH_ROOM_API_BASE", "http://localhost:8000/api/v1").rstrip("/")
     timeout = float(os.getenv("SEARCH_ROOM_TIMEOUT", "20.0"))
@@ -64,8 +60,6 @@ def load_settings() -> tuple[Settings | None, list[str]]:
             api_key=api_key,
             model_name=model_name,
             enable_main_thinking=enable_main_thinking,
-            enable_prompt_caching=enable_prompt_caching,
-            kv_cache_type=kv_cache_type,
             base_url=base_url,
             search_room_api_base=api_base,
             search_room_timeout=timeout,

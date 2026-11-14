@@ -476,10 +476,7 @@ def run_evaluation(
         else:
             for attempt in range(3):
                 try:
-                    if hasattr(agent, "handle_message"):
-                        resp = agent.handle_message(session_id=session_id, message=q.query)
-                    else:
-                        resp = agent.run(user_message=q.query, session_id=session_id)
+                    resp = agent.run(user_message=q.query, session_id=session_id)
                     break
                 except LLMQuotaExceededError as exc:
                     logger.warning("Agent chạm hạn mức Daily Quota LLM ở query %s: %s", q.id, exc)

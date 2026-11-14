@@ -45,8 +45,6 @@ export interface RoomItem {
   tags: string[];
   lat?: number;
   lng?: number;
-  latPercent: number; // For map pin positioning
-  lngPercent: number;
   source_url?: string;
   explain_match?: Record<string, unknown>;
 }
@@ -100,6 +98,5 @@ export interface AgentChatRequest {
   message: string;
   conversation_history?: Array<{ role: string; content: string }>;
   session_id?: string;
-  use_graph?: boolean;
 }
 

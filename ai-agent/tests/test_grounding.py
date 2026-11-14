@@ -2,11 +2,10 @@ import pytest
 
 from domain.enums import RoomType
 from safety.grounding import (
-    ClaimsReport, check_hard_constraints, critic_unsupported_claims, find_format_violations, parse_areas,
+    check_hard_constraints, find_format_violations, parse_areas,
     parse_vnd_amounts, verify_answer_grounding, verify_context_grounding, build_market_context,
 )
 from domain.schemas import RoomItem, UserPreferenceState
-from tests.helpers import FakeModel
 
 
 def R(i, price=2_500_000, area=25.0, rt=None, score=0.8):
@@ -153,7 +152,7 @@ def test_context_ok_returns_valid_rooms_and_top_score():
 def test_context_empty_triggers_market_context():
     res = verify_context_grounding([], UserPreferenceState(max_price=3_000_000, location_text="Dĩ An"))
     assert not res.is_grounded and res.market_context
-    assert res.proposed_budget is None and res.proposed_budget_str is None
+    assert not res.is_market_gap
 
 
 def test_context_all_violating_also_triggers_market_context_with_dropped():
@@ -174,7 +173,7 @@ def _fetcher(min_price=2_000_000, total=100):
 def test_market_gap_with_real_stats():
     pref = UserPreferenceState(max_price=1_500_000, location_text="Quận 1", city_id=79, district_id=1)
     p = build_market_context(pref, market_fetcher=_fetcher())
-    assert p.is_market_gap and p.proposed_budget == 2_000_000 and p.market_min_price_str == "2 triệu/tháng"
+    assert p.is_market_gap and p.market_min_price == 2_000_000 and p.market_min_price_str == "2 triệu/tháng"
     assert "Tại Quận 1" in p.message
 
 
@@ -183,7 +182,7 @@ def test_never_invents_market_data_when_backend_has_none():
     for fetcher in (lambda **kw: None, None):
         p = build_market_context(pref, market_fetcher=fetcher)
         assert not p.is_market_gap and p.market_min_price is None and p.market_avg_price is None
-        assert p.proposed_budget is None and "thấp nhất ghi nhận" not in (p.message or "")
+        assert "thấp nhất ghi nhận" not in (p.message or "")
         assert "chưa tìm thấy phòng trọ nào khớp với ngân sách" in (p.message or "")
 
 
@@ -204,19 +203,7 @@ def test_room_type_passed_to_fetcher():
 
 def test_without_budget_has_no_budget_option():
     p = build_market_context(UserPreferenceState(location_text="Dĩ An"))
-    assert p.proposed_budget is None and p.user_budget is None
-
-
-# ---------------- critic ----------------
-def test_critic_returns_claims_and_never_raises():
-    m = FakeModel(ClaimsReport(unsupported_claims=["Phòng 1 yên tĩnh", " ", "Gần chợ"]))
-    assert critic_unsupported_claims(m, "Phòng 1 yên tĩnh, gần chợ", [R(1)]) == ["Phòng 1 yên tĩnh", "Gần chợ"]
-    assert critic_unsupported_claims(FakeModel({"unsupported_claims": ["a"]}), "x", [R(1)]) == ["a"]
-    assert critic_unsupported_claims(FakeModel(RuntimeError("down")), "x", [R(1)]) == []
-    assert critic_unsupported_claims(None, "x", [R(1)]) == []
-    assert critic_unsupported_claims(FakeModel(ClaimsReport()), "  ", [R(1)]) == []
-    human = m.structured.calls[0][1][1]
-    assert "<rooms_data>" in human and "<answer>" in human
+    assert not p.is_market_gap and p.user_budget is None
 
 
 # ---------------- khoảng cách ----------------

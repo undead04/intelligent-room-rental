@@ -4,7 +4,7 @@ Bao gồm đủ 4 nhóm kiểm thử:
 1. Happy path: Bán kính cơ sở mặc định 2.5km khi có toạ độ điểm mốc (point).
 2. Strict constraint (Ca G2_03): Bán kính do người dùng chỉ định rõ (max_distance_km=2.0) được tôn trọng 100%, cấm tự nới lỏng.
 3. Two-phase expansion: Thuật toán 2 pha (2.5km -> 3.5km -> 5.0km) tự kích hoạt khi valid_rooms < 3 và ghi trace.
-4. Negative & Hard constraints: Ràng buộc trần giá (max_price) loại bỏ 100% phòng vượt ngân sách; proposed_budget là None khi không có khoảng trống thị trường (không tự nới giá ngầm +15%).
+4. Negative & Hard constraints: Ràng buộc trần giá (max_price) loại bỏ 100% phòng vượt ngân sách; is_market_gap là False khi không có khoảng trống thị trường (không tự nới giá ngầm +15%).
 """
 import pytest
 from domain.budget import MarketStats, propose_budget
@@ -182,7 +182,7 @@ def test_two_phase_expansion_continues_to_5_0km():
 
 
 # ============================================================================
-# 4. NEGATIVE & HARD CONSTRAINTS (PRICE CEILING & PROPOSED BUDGET)
+# 4. NEGATIVE & HARD CONSTRAINTS (PRICE CEILING & MARKET GAP)
 # ============================================================================
 
 def test_hard_constraint_price_filter_drops_overpriced_rooms():
@@ -235,13 +235,13 @@ def test_hard_constraint_price_filter_drops_overpriced_rooms():
     assert r.rooms[0].priceNum <= tolerance_ceiling
 
 
-def test_no_market_gap_leaves_proposed_budget_none():
+def test_no_market_gap_leaves_market_gap_false():
     """Test 4b (Negative / Market Budget Proposal):
     Khi không có khoảng cách thị trường (ngân sách người dùng đáp ứng hoặc không có số liệu thị trường),
-    proposed_budget BẮT BUỘC phải là None (tuyệt đối không tự nới giá ngầm +15%).
+    is_market_gap BẮT BUỘC phải là False (tuyệt đối không tự nới giá ngầm +15%).
     """
     # 1. Kiểm tra unit logic propose_budget:
-    # Ngân sách 3.0tr, giá sàn thị trường 2.8tr -> ngân sách >= 85% giá sàn -> Không có khoảng trống (is_market_gap = False)
+    # Ngân sách 3.0tr, giá sàn thị trường 2.8tr -> ngân sách >= giá sàn -> Không có khoảng trống (is_market_gap = False)
     market = MarketStats(min_price=2_800_000, avg_price=3_500_000, total_listings=40)
     proposal = propose_budget(user_max=3_000_000, market=market)
 
@@ -257,12 +257,9 @@ def test_no_market_gap_leaves_proposed_budget_none():
     pref = UserPreferenceState(max_price=3_000_000)
     res = verify_context_grounding([], preferences=pref, market_fetcher=fake_market_fetcher)
 
-    # proposed_budget BẮT BUỘC phải là None!
-    assert res.proposed_budget is None
     assert res.is_market_gap is False
-    assert res.market_context.proposed_budget is None
-    # Xác nhận không hề có mức giá nới ngầm 3.45tr (+15%)
-    assert res.proposed_budget != 3_450_000
+    assert res.market_context is not None
+    assert res.market_context.is_market_gap is False
 
     # 3. Kiểm tra End-to-end với Harness khi kết quả rỗng
     llm = FakeLLM().on(
@@ -273,7 +270,8 @@ def test_no_market_gap_leaves_proposed_budget_none():
     h = Harness(llm, rooms=[], market=fake_market_fetcher)
     r = h.turn("tìm phòng 3 triệu ở UIT")
 
-    assert h.session.proposed_budget is None
+    assert r.rooms == []
+    assert r.grounding_report is not None and not r.grounding_report.context_grounded
 
 
 # ============================================================================

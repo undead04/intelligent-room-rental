@@ -7,17 +7,13 @@ from graph.deps import Deps
 from graph.tracing import resolve_trace_target, traced_call, tool_event
 from intelligence.nlu import sanitize_user_text
 from prompts.advisory_prompt import build_advisory_prompt
+from utils.text import extract_message_text
 
 logger = logging.getLogger(__name__)
 
 SORRY = "Xin lỗi bạn, Homigo chưa tra cứu được cẩm nang tư vấn này lúc này. Bạn thử hỏi lại sau ít phút, hoặc cho Homigo biết nhu cầu tìm phòng của bạn nhé!"
 MAX_GUIDE_CHARS = 6000
 MAX_REF_CHARS = 3000
-
-
-def _msg_text(res: Any) -> str:
-    c = getattr(res, "content", res)
-    return c if isinstance(c, str) else "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in (c or []))
 
 
 def make_advisory_node(deps: Deps):
@@ -55,7 +51,7 @@ def make_advisory_node(deps: Deps):
         msgs: list[tuple[str, str]] = [("system", system)]
         for m in hist:
             role = "human" if getattr(m, "type", "") == "human" else "ai"
-            msgs.append((role, _msg_text(m)))
+            msgs.append((role, extract_message_text(m)))
         msgs.append(("human", f"<user_message>\n{query}\n</user_message>"))
         try:
             reply = traced_call(
@@ -65,7 +61,7 @@ def make_advisory_node(deps: Deps):
                 node="advisory_node",
                 input_data=msgs,
             )
-            text = _msg_text(reply).strip()
+            text = extract_message_text(reply).strip()
         except Exception:
             logger.warning("advisory_node: LLM lỗi", exc_info=True)
             text = ""

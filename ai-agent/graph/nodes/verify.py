@@ -50,12 +50,12 @@ def make_verify_node(deps: Deps):
         # Bổ sung ngữ cảnh thị trường/ngân sách khi kiểm tra trường hợp 0 phòng
         extra_texts = list(evidence)
         extra_amounts: list[float] = []
-        if state.get("proposed_budget"):
-            extra_amounts.append(float(state["proposed_budget"]))
-        if state.get("proposed_budget_str"):
-            extra_texts.append(str(state["proposed_budget_str"]))
         market = state.get("market_context")
         if market is not None:
+            for attr in ("market_min_price", "market_avg_price"):
+                amount = getattr(market, attr, None)
+                if amount:
+                    extra_amounts.append(float(amount))
             for attr in ("market_min_price_str", "market_avg_price_str", "user_budget_str"):
                 val = getattr(market, attr, None)
                 if val:
@@ -132,7 +132,7 @@ def make_verify_node(deps: Deps):
         direct_system_state = {
             "rooms": rooms,
             "tool_evidence": evidence,
-            "proposed_budget": state.get("proposed_budget"),
+            "market_context": state.get("market_context"),
             "admin_not_found": state.get("admin_not_found"),
             "ambiguous_candidates": state.get("ambiguous_candidates"),
             "search_error": state.get("search_error"),
@@ -272,8 +272,6 @@ def make_verify_node(deps: Deps):
                 "checked": chk.checked,
                 "verified": chk.verified,
                 "context_grounded": state.get("context_grounded", bool(rooms)),
-                "proposed_budget": state.get("proposed_budget"),
-                "proposed_budget_str": state.get("proposed_budget_str"),
                 "answer_retries": min(next_retry, deps.max_answer_retries),
                 "retry_notes": retry_notes,
                 "issues": all_issues,

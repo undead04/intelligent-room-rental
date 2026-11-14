@@ -21,7 +21,6 @@ from typing import Any, Callable, Iterable, Optional
 
 from domain.enums import RoomType
 
-GAP_RATIO = 0.85               # ngân sách < 85% giá sàn => "thấp hơn mặt bằng"
 MIN_SAMPLE = 20                # ít hơn ngần này tin đăng thì không tin giá sàn
 DORM_THRESHOLD = 2_000_000.0   # ngân sách <= mức này thì gợi ý ký túc xá/sleepbox
 ROUND_STEP = 50_000.0          # làm tròn LÊN để số tiền đề xuất gọn (3.45 chứ không phải 3.4501 triệu)
@@ -73,7 +72,6 @@ class MarketStats:
 @dataclass(frozen=True)
 class BudgetProposal:
     user_budget: float
-    proposed_budget: float
     is_market_gap: bool
     suggest_dormitory: bool
     market: Optional[MarketStats] = None
@@ -95,10 +93,9 @@ def propose_budget(
     if not user_max or user_max <= 0:
         return None
     user_max = float(user_max)
-    is_gap = bool(market and market.reliable and user_max < market.min_price * GAP_RATIO)
-    proposed = round_up_step(market.min_price) if is_gap and market else user_max
+    is_gap = bool(market and market.reliable and user_max < market.min_price)
     dorm = user_max <= DORM_THRESHOLD and RoomType.SLEEPBOX not in set(excluded_room_types or ())
-    return BudgetProposal(user_budget=user_max, proposed_budget=proposed, is_market_gap=is_gap,
+    return BudgetProposal(user_budget=user_max, is_market_gap=is_gap,
                           suggest_dormitory=dorm, market=market, area_name=area_name)
 
 

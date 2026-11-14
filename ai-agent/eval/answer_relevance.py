@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from utils.text import TOPIC_KEYWORDS
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,17 +32,6 @@ class RelevanceCase:
     expected_relevant: bool
     description: str
     target_topics: tuple[str, ...] = ()
-
-
-TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "thú cưng": ("thú cưng", "thu cung", "chó", "mèo", "meo", "pet", "nuôi chó", "nuôi mèo", "nuôi pet"),
-    "tiền cọc": ("tiền cọc", "tien coc", "đặt cọc", "dat coc", "cọc"),
-    "an ninh": ("an ninh", "an toan", "an toàn", "camera", "bảo vệ", "bao ve", "trộm", "trom"),
-    "giờ giấc": ("giờ giấc", "gio giac", "tự do", "tu do", "24/24", "24/7", "khóa vân tay", "khoa van tay", "cổng riêng", "cong rieng", "cửa cuốn", "cua cuon", "về muộn", "ve muon"),
-    "điện nước": ("điện", "dien", "nước", "nuoc", "kwh", "số điện", "so dien", "khối nước", "khoi nuoc"),
-    "gửi xe": ("xe", "bãi xe", "bai xe", "nhà xe", "nha xe", "gửi xe", "gui xe", "để xe", "de xe"),
-    "ở ghép": ("ở ghép", "o ghep", "ở chung", "o chung", "2 người", "hai người", "2 bạn", "o 2", "ở 2"),
-}
 
 
 RELEVANCE_CASES: tuple[RelevanceCase, ...] = (
@@ -103,10 +94,10 @@ RELEVANCE_CASES: tuple[RelevanceCase, ...] = (
 
 def _rule_based_relevance_judge(user_query: str, answer_text: str) -> RelevanceJudgeReport:
     """Đánh giá offline dựa trên độ phủ ý định và chủ đề khi không có LLM."""
-    uq_lower = (user_query or "").lower()
-    ans_lower = (answer_text or "").lower()
+    uq_lower = " ".join((user_query or "").lower().split())
+    ans_lower = " ".join((answer_text or "").lower().split())
 
-    if not ans_lower.strip():
+    if not ans_lower:
         return RelevanceJudgeReport(score=0.0, unaddressed_aspects=["Câu trả lời rỗng"], reason="Không có nội dung trả lời")
 
     # Xác định các chủ đề cụ thể xuất hiện trong câu hỏi

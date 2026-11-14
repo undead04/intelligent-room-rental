@@ -12,7 +12,6 @@ Các đặc điểm chính:
 from __future__ import annotations
 
 import re
-import zlib
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
@@ -115,8 +114,6 @@ class RoomItem(BaseModel):
     inferred_tags: list[str] = Field(default_factory=list, description="Thẻ SUY ĐOÁN từ mô hình ML, chưa xác thực")
     lat: Optional[float] = Field(None, description="Vĩ độ thực tế")
     lng: Optional[float] = Field(None, description="Kinh độ thực tế")
-    latPercent: float = Field(50.0, description="Toạ độ % tương đối để render pin lên map mock nếu cần")
-    lngPercent: float = Field(50.0, description="Toạ độ % tương đối để render pin lên map mock nếu cần")
     source_url: Optional[str] = Field(None, description="Link gốc bài đăng")
     concept_scores: dict[str, float] = Field(default_factory=dict, description="Điểm concept ML cho từng tiện ích")
     explain_match: Optional[dict[str, Any]] = Field(None, description="Chi tiết giải thích từ rerank backend")
@@ -203,11 +200,6 @@ class RoomItem(BaseModel):
         else:
             dist_str = ""  # không bịa: để UI tự xử lý
 
-        # Pin giả cho map mock: dùng crc32 (ổn định), KHÔNG dùng hash() (đổi mỗi lần chạy)
-        room_hash = zlib.crc32(str(listing.get("id", rank)).encode("utf-8")) % 100
-        lat_pct = 40.0 + ((rank * 13 + room_hash) % 25)
-        lng_pct = 35.0 + ((rank * 17 + room_hash * 2) % 35)
-
         resolved_rt = _room_type_from_listing(room_type_obj)
         if resolved_rt is None and listing.get("room_type_id") is not None:
             resolved_rt = normalize_room_type(listing.get("room_type_id"))
@@ -241,8 +233,6 @@ class RoomItem(BaseModel):
             inferred_tags=inferred,
             lat=room_lat,
             lng=room_lng,
-            latPercent=round(lat_pct, 1),
-            lngPercent=round(lng_pct, 1),
             source_url=listing.get("url"),
             concept_scores=concept_scores if isinstance(concept_scores, dict) else {},
             explain_match=explain,
@@ -423,9 +413,7 @@ class MarketContext(BaseModel):
     market_min_price_str: Optional[str] = Field(None, description="Chuỗi hiển thị giá sàn thực tế")
     market_avg_price: Optional[float] = Field(None, description="Mức giá trung bình thực tế tại khu vực")
     market_avg_price_str: Optional[str] = Field(None, description="Chuỗi hiển thị giá trung bình")
-    proposed_budget: Optional[float] = Field(None, description="Mức ngân sách đề xuất điều chỉnh")
-    proposed_budget_str: Optional[str] = Field(None, description="Chuỗi hiển thị ngân sách đề xuất")
-    is_market_gap: bool = Field(False, description="True nếu ngân sách người dùng thấp xa so với giá sàn thực tế")
+    is_market_gap: bool = Field(False, description="True nếu ngân sách người dùng thấp hơn giá sàn thực tế")
     message: Optional[str] = Field(None, description="Thông điệp phân tích thị trường giải thích lý do cần điều chỉnh")
 
 
@@ -458,18 +446,10 @@ class GroundingReport(BaseModel):
         description="Số lượng thực thể số liệu đã được xác minh thành công khớp với bằng chứng thực tế",
     )
 
-    # --- Kiểm định tầng Context (Context Grounding & Đề xuất ngân sách) ---
+    # --- Kiểm định tầng Context (Context Grounding) ---
     context_grounded: Optional[bool] = Field(
         None,
         description="True nếu tập ngữ cảnh phòng tìm kiếm được thỏa mãn các ràng buộc cứng của người dùng",
-    )
-    proposed_budget: Optional[float] = Field(
-        None,
-        description="Mức ngân sách mới được hệ thống tính toán đề xuất dựa trên giá sàn thực tế của thị trường (VNĐ)",
-    )
-    proposed_budget_str: Optional[str] = Field(
-        None,
-        description="Chuỗi định dạng hiển thị trực quan của ngân sách đề xuất (ví dụ: '3.5 triệu/tháng')",
     )
 
     # --- Cơ chế tự sửa sai (Self-Correction Retry Loop) & Fallback ---

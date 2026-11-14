@@ -60,7 +60,6 @@ def make_understand_node(deps: Deps):
             "semantic_query": plan.semantic_query,
             "needs_clarification": plan.needs_clarification,
             "matched_skill": plan.matched_skill,
-            "is_contract_query": bool(plan.matched_skill),
             "is_followup": plan.is_followup,
             "direct_reply": plan.direct_reply,
             "focus_rank": plan.focus_rank,

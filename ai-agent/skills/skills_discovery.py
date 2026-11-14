@@ -17,7 +17,7 @@ from typing import Optional
 
 import yaml
 
-from core.paths import PROJECT_ROOT, SKILLS_DIR
+from core.paths import SKILLS_DIR
 
 logger = logging.getLogger(__name__)
 

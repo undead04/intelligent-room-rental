@@ -25,7 +25,7 @@ def populate(store, sid="a"):
     s.preferences.excluded_room_types = ["ktx"]
     s.preferences.set_location("Dĩ An", kind="admin", city_id=74, district_id=724)
     s.multipliers["price"] = 2.0
-    s.proposed_budget, s.zero_result_streak = 3_450_000, 1
+    s.zero_result_streak = 1
     store.commit_turn(s, "tìm phòng ở Dĩ An", "ok", [room(1, RoomType.STUDIO), room(2)], searched=True)
     return s
 
@@ -36,7 +36,7 @@ def test_state_survives_restart(db):
     p = fresh.preferences
     assert (p.max_price, p.amenities, p.allowed_room_types, p.excluded_room_types) == (3_000_000, [Amenity.AIRCON], [RoomType.STUDIO], [RoomType.SLEEPBOX])
     assert (p.location_text, p.location_kind, p.city_id, p.district_id) == ("Dĩ An", "admin", 74, 724)
-    assert fresh.multipliers["price"] == 2.0 and fresh.proposed_budget == 3_450_000 and fresh.zero_result_streak == 1
+    assert fresh.multipliers["price"] == 2.0 and fresh.zero_result_streak == 1
     assert fresh.history == [("user", "tìm phòng ở Dĩ An"), ("assistant", "ok")]
     assert [r.id for r in fresh.last_rooms] == ["nhatot_1", "nhatot_2"] and fresh.last_rooms[0].room_type is RoomType.STUDIO and fresh.version == 1
 

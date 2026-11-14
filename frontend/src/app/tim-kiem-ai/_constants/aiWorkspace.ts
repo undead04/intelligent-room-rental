@@ -46,8 +46,6 @@ export const SAMPLE_ROOMS: RoomItem[] = [
     photoCount: 12,
     image: "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=600&q=80",
     tags: ["❄️ Máy lạnh", "🪜 Có gác", "🚿 WC riêng"],
-    latPercent: 22,
-    lngPercent: 24,
   },
   {
     id: "room-2",
@@ -62,8 +60,6 @@ export const SAMPLE_ROOMS: RoomItem[] = [
     photoCount: 10,
     image: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=600&q=80",
     tags: ["❄️ Máy lạnh", "🪜 Có gác", "🛵 Giữ xe máy"],
-    latPercent: 72,
-    lngPercent: 18,
   },
   {
     id: "room-3",
@@ -78,8 +74,6 @@ export const SAMPLE_ROOMS: RoomItem[] = [
     photoCount: 9,
     image: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=600&q=80",
     tags: ["❄️ Máy lạnh", "🪜 Có gác", "🚿 WC riêng"],
-    latPercent: 28,
-    lngPercent: 76,
   },
 ];
 

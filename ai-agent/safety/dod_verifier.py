@@ -26,19 +26,11 @@ from safety.grounding import (
     verify_answer_grounding,
 )
 from utils.geo import haversine_km
-from utils.text import strip_accents
+from utils.text import TOPIC_KEYWORDS, strip_accents
 
 VerifierType = Literal["state_code", "trace_code", "rubric", "human"]
 
-_TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "thú cưng": ("thu cung", "cho meo", "nuoi cho", "nuoi meo", "nuoi pet", "pet"),
-    "tiền cọc": ("tien coc", "dat coc", "coc"),
-    "an ninh": ("an ninh", "an toan", "camera", "bao ve", "trom"),
-    "giờ giấc": ("gio giac", "tu do", "24/24", "24/7", "khoa van tay", "cong rieng", "ve muon"),
-    "điện nước": ("dien", "nuoc", "kwh", "so dien", "khoi nuoc"),
-    "gửi xe": ("bai xe", "nha xe", "gui xe", "de xe"),
-    "ở ghép": ("o ghep", "o chung", "2 nguoi", "hai nguoi", "2 ban", "o 2"),
-}
+_TOPIC_KEYWORDS = TOPIC_KEYWORDS
 
 _FAKE_SUCCESS_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bda\s+(?:dat|giu)\s+(?:phong|lich|coc)\s+(?:thanh cong|xong)\b"),
@@ -465,7 +457,13 @@ def verify_dod(
 
     rooms = _coerce_rooms(frozen_state.get("rooms"))
     tool_evidence = list(frozen_state.get("tool_evidence") or ())
-    extra_amounts = [a for a in (frozen_state.get("proposed_budget"),) if a]
+    extra_amounts: list[float] = []
+    market_ctx = frozen_state.get("market_context")
+    if market_ctx is not None:
+        for attr in ("market_min_price", "market_avg_price"):
+            val = market_ctx.get(attr) if isinstance(market_ctx, Mapping) else getattr(market_ctx, attr, None)
+            if val:
+                extra_amounts.append(float(val))
     admin_not_found = bool(frozen_state.get("admin_not_found"))
     ambiguous_cands = bool(frozen_state.get("ambiguous_candidates"))
     search_error = frozen_state.get("search_error")
@@ -794,6 +792,7 @@ def verify_dod(
 
 __all__ = [
     "VerifierType",
+    "TOPIC_KEYWORDS",
     "DoDCondition",
     "DoDSpec",
     "DoDReport",

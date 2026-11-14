@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, TypedDict
 
-from domain.schemas import AgentResponse, DecisionInsight, RoomItem, UserPreferenceState
+from domain.schemas import AgentResponse, DecisionInsight, MarketContext, RoomItem, UserPreferenceState
 from safety.guardrails import GuardrailResult
 
 
@@ -24,7 +24,6 @@ class HousingAgentState(TypedDict, total=False):
     needs_clarification: bool
     direct_reply: bool
     matched_skill: Optional[str]
-    is_contract_query: bool                  # giữ tương thích; dùng matched_skill
     is_followup: bool
     focus_rank: Optional[int]
     vague_location_info: Optional[dict[str, Any]]
@@ -36,10 +35,8 @@ class HousingAgentState(TypedDict, total=False):
     search_error: Optional[str]
     admin_not_found: bool
     ambiguous_candidates: list[dict[str, Any]]
-    retry_count: int
     context_grounded: bool
-    proposed_budget: Optional[float]
-    proposed_budget_str: Optional[str]
+    market_context: Optional[MarketContext]
     last_search_args: Optional[dict[str, Any]]
 
     # tư vấn + kiểm chứng

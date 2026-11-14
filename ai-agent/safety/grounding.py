@@ -63,8 +63,6 @@ class ContextGroundingResult:
     context_score: float
     retry_strategy: Optional[str] = None
     reason: str = ""
-    proposed_budget: Optional[float] = None
-    proposed_budget_str: Optional[str] = None
     market_context: Optional[MarketContext] = None
     is_market_gap: bool = False
     valid_rooms: list[RoomItem] = field(default_factory=list)
@@ -183,9 +181,7 @@ def _market_for(
     )
 
 
-def _explanation(bp: BudgetProposal, proposed: Optional[float] = None) -> str:
-    prop_val = proposed if proposed is not None else bp.proposed_budget
-    prop = format_vnd_million(prop_val)
+def _explanation(bp: BudgetProposal) -> str:
     user = format_vnd_million(bp.user_budget)
     area = bp.area_name or "khu vực bạn chọn"
     if bp.is_market_gap and bp.market:
@@ -211,7 +207,6 @@ def build_market_context(
         excluded_room_types=pref.excluded_room_types,
     )
     m = bp.market if bp else None
-    proposed = bp.proposed_budget if (bp and bp.is_market_gap) else None
     return MarketContext(
         area_name=bp.area_name if bp else (area_name or pref.location_text),
         user_budget=bp.user_budget if bp else None,
@@ -220,10 +215,8 @@ def build_market_context(
         market_min_price_str=format_vnd_million(m.min_price) if m else None,
         market_avg_price=m.avg_price if m else None,
         market_avg_price_str=format_vnd_million(m.avg_price) if m and m.avg_price else None,
-        proposed_budget=proposed,
-        proposed_budget_str=format_vnd_million(proposed) if proposed else None,
         is_market_gap=bool(bp and bp.is_market_gap),
-        message=_explanation(bp, proposed) if bp else "Bạn có thể cân nhắc nới ngân sách hoặc mở rộng phạm vi tìm kiếm.",
+        message=_explanation(bp) if bp else "Bạn có thể cân nhắc nới ngân sách hoặc mở rộng phạm vi tìm kiếm.",
     )
 
 
@@ -245,8 +238,6 @@ def verify_context_grounding(
         return ContextGroundingResult(
             is_grounded=False,
             context_score=0.0,
-            proposed_budget=market_ctx.proposed_budget,
-            proposed_budget_str=market_ctx.proposed_budget_str,
             market_context=market_ctx,
             is_market_gap=market_ctx.is_market_gap,
             reason=f"{why} Hệ thống sẽ phân tích nguyên nhân thị trường và gợi ý giải pháp.",
@@ -320,7 +311,6 @@ class AnswerGroundingResult:
     issues: list[str] = field(default_factory=list)
     checked: int = 0
     verified: int = 0
-    corrected_text: Optional[str] = None
     failed_tier: Optional[ValidationTier] = None
     validation_errors: list[ValidationIssue] = field(default_factory=list)
 
@@ -805,42 +795,6 @@ def verify_answer_grounding(
 # 3) CRITIC LLM (Tuỳ chọn: Kiểm chứng định tính & Answer Relevance)
 # ===========================================================================
 
-class ClaimsReport(BaseModel):
-    unsupported_claims: list[str] = Field(
-        default_factory=list,
-        description="Phát biểu về phòng KHÔNG có căn cứ trong dữ liệu",
-    )
-
-
-def critic_unsupported_claims(
-    model: Any,
-    answer_text: str,
-    rooms: Sequence[RoomItem],
-    extra_texts: Iterable[str] = (),
-) -> list[str]:
-    """Chạy SAU khi kiểm tra bằng code đã qua. Lỗi/không có model -> [] (không chặn)."""
-    if model is None or not (answer_text or "").strip():
-        return []
-
-    from intelligence.payload_builder import compact_room
-    data = json.dumps([compact_room(r) for r in rooms], ensure_ascii=False)
-    tool_data = "\n".join(extra_texts)[:6000]
-    try:
-        rep = model.with_structured_output(ClaimsReport).invoke([
-            (
-                "system",
-                "Bạn là người kiểm chứng. Liệt kê các phát biểu cụ thể về phòng trong <answer> mà KHÔNG được hỗ trợ bởi <rooms_data> "
-                "hoặc <tool_data>. Bỏ qua lời khuyên chung, lời chào, và phần gợi ý cần tự kiểm tra khi đi xem phòng. "
-                "Không có thì trả danh sách rỗng.",
-            ),
-            ("human", f"<rooms_data>\n{data}\n</rooms_data>\n<tool_data>\n{tool_data}\n</tool_data>\n<answer>\n{answer_text}\n</answer>"),
-        ])
-        rep = rep if isinstance(rep, ClaimsReport) else ClaimsReport.model_validate(rep)
-        return [c for c in rep.unsupported_claims if c.strip()][:5]
-    except Exception:
-        logger.warning("critic_unsupported_claims lỗi, bỏ qua", exc_info=True)
-        return []
-
 
 class CriticVerificationReport(BaseModel):
     unsupported_claims: list[str] = Field(
@@ -904,11 +858,6 @@ def critic_answer_validation(
             return CriticVerificationReport(
                 unsupported_claims=[c for c in rep.get("unsupported_claims", []) if str(c).strip()][:5],
                 unaddressed_questions=[q for q in rep.get("unaddressed_questions", []) if str(q).strip()][:5],
-            )
-        elif isinstance(rep, ClaimsReport):
-            return CriticVerificationReport(
-                unsupported_claims=[c for c in rep.unsupported_claims if c.strip()][:5],
-                unaddressed_questions=[],
             )
         return CriticVerificationReport()
     except Exception:
