@@ -273,6 +273,7 @@ class ListingService:
         excluded_room_types: Optional[list[Any]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
+        prefer_cheapest: Optional[bool] = None,
         min_area: Optional[float] = None,
         max_area: Optional[float] = None,
         min_bedrooms: Optional[int] = None,
@@ -347,6 +348,7 @@ class ListingService:
             "preferred_amenities": preferred_amenities,
             "min_price": min_price,
             "max_price": max_price,
+            "prefer_cheapest": bool(prefer_cheapest),
             "query": query,
         }
 

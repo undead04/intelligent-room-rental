@@ -20,6 +20,7 @@ __all__ = ["rerank", "explain_match", "DEFAULT_WEIGHTS"]
 # --- Constants ---
 UNKNOWN_SCORE: float = 0.0
 EARTH_RADIUS_KM: float = 6371.0
+BASELINE_AMENITY_WEIGHT: float = 0.10
 DEFAULT_WEIGHTS: Mapping[str, float] = {
     "location": 0.25,
     "price": 0.25,
@@ -82,18 +83,19 @@ def _amenity_fit(
     concept_scores: Optional[Mapping[str, float]] = None,
     amenity_overall: Optional[float] = None,
     preferred: Optional[Sequence[object]] = None,
+    missing_overall_default: float = 1.0,
 ) -> float:
     """Điểm tiện ích trong MCDM Rerank (Phương án 3 - Kết hợp):
     - Tiện ích bắt buộc (requested) đã được lọc cứng (Pass/Fail) ở SQL & Grounding,
       tuyệt đối KHÔNG chấm điểm lặp lại trong MCDM.
     - Nếu có tiện ích ưu tiên mềm (preferred): tính độ thỏa mãn của preferred (70%) + tiện ích tổng thể (30%).
-    - Nếu không có preferred (bật do nhấn mạnh tiện nghi tổng thể): chấm theo amenity_overall hoặc fallback 1.0.
+    - Nếu không có preferred: chấm theo amenity_overall (hoặc missing_overall_default nếu thiếu dữ liệu).
     """
     scores = concept_scores or {}
     overall_val = (
         _clamp01(amenity_overall)
         if amenity_overall is not None
-        else (_clamp01(scores["amenity_overall"]) if "amenity_overall" in scores else 1.0)
+        else (_clamp01(scores["amenity_overall"]) if "amenity_overall" in scores else missing_overall_default)
     )
 
     if preferred:
@@ -105,16 +107,8 @@ def _amenity_fit(
     return overall_val
 
 
-# --- Weights ---
-def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = None) -> dict[str, float]:
-    """Chỉ giữ tiêu chí đang bật, rồi chuẩn hóa L1 để tổng trọng số = 1.0.
-    - Tiện ích bắt buộc (amenities) chỉ lọc cứng ở SQL & Grounding, KHÔNG bật trọng số amenity trong MCDM.
-    - Trọng số amenity chỉ bật khi có preferred_amenities, include_amenity_overall,
-      hoặc khi caller chủ động truyền trọng số 'amenity' trong base_weights (khi nhấn mạnh tiện nghi tổng thể).
-    """
-    eff_base = base if base is not None else DEFAULT_WEIGHTS
-    lat = _get(user_pref, "lat")
-    lng = _get(user_pref, "lng")
+def _has_explicit_amenity_intent(user_pref: object, base: Optional[Mapping[str, float]]) -> bool:
+    """Xác định caller/người dùng có chủ động yêu cầu ưu tiên tiện nghi mềm hay không."""
     preferred_amenities = _get(user_pref, "preferred_amenities")
     include_overall = bool(_get(user_pref, "include_amenity_overall", False))
     explicit_amenity_weight = (
@@ -123,15 +117,44 @@ def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = No
         and "amenity" in base
         and float(base.get("amenity", 0.0)) > 0
     )
+    return bool(preferred_amenities) or include_overall or explicit_amenity_weight
+
+
+# --- Weights ---
+def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = None) -> dict[str, float]:
+    """Chỉ giữ tiêu chí đang bật, rồi chuẩn hóa L1 để tổng trọng số = 1.0.
+    - Tiện ích bắt buộc (amenities) chỉ lọc cứng ở SQL & Grounding, KHÔNG kích hoạt trọng số đầy đủ.
+    - Trọng số amenity bật ở mức đầy đủ khi có preferred_amenities, include_amenity_overall,
+      hoặc caller chủ động truyền trọng số 'amenity' > 0 trong base_weights.
+    - Khi người dùng nói chung chung (chưa rõ tiện ích ưu tiên), vẫn bật amenity ở mức nền nhẹ
+      (BASELINE_AMENITY_WEIGHT) theo amenity_overall để tránh phòng kém tiện nghi nhưng giá rẻ độc chiếm top.
+    """
+    eff_base = base if base is not None else DEFAULT_WEIGHTS
+    lat = _get(user_pref, "lat")
+    lng = _get(user_pref, "lng")
+    has_explicit_amenity = _has_explicit_amenity_intent(user_pref, base)
+    caller_disabled_amenity = (
+        base is not None
+        and base is not DEFAULT_WEIGHTS
+        and "amenity" in base
+        and float(base.get("amenity", 0.0)) <= 0.0
+    )
 
     active = {
         "price": True,     # Bắt buộc: luôn đánh giá mức độ hợp lý của giá phòng (price_score từ ML)
         "safety": True,    # Bắt buộc: luôn đánh giá điểm an ninh (safety_score)
         "semantic": True,  # Bắt buộc: luôn đánh giá độ khớp ngữ nghĩa (similarity_score)
         "location": lat is not None and lng is not None,  # Động: chỉ bật khi có toạ độ mục tiêu
-        "amenity": bool(preferred_amenities) or include_overall or explicit_amenity_weight,
+        "amenity": not caller_disabled_amenity,
     }
-    w = {k: float(eff_base.get(k, DEFAULT_WEIGHTS.get(k, 0.2))) for k, on in active.items() if on}
+    w: dict[str, float] = {}
+    for k, on in active.items():
+        if not on:
+            continue
+        if k == "amenity" and not has_explicit_amenity:
+            w[k] = BASELINE_AMENITY_WEIGHT
+        else:
+            w[k] = float(eff_base.get(k, DEFAULT_WEIGHTS.get(k, 0.2)))
     total = sum(w.values())
     if total <= 0:
         raise ValueError("Tổng trọng số của các tiêu chí đang bật phải > 0")
@@ -176,23 +199,16 @@ def _price_fit(orm: object, user_pref: object = None, weights: Optional[Mapping[
         if p_val <= m_val:
             savings_ratio = max(0.0, min(1.0, (m_val - p_val) / m_val))
 
-            # Xác định người dùng có đang ưu tiên giá rẻ danh nghĩa hay không
-            prefer_cheap = False
-            if user_pref:
-                if _get(user_pref, "prefer_cheapest"):
-                    prefer_cheap = True
-                user_weights = _get(user_pref, "weights")
-                if isinstance(user_weights, Mapping) and float(user_weights.get("price", 0.0)) > 0.28:
-                    prefer_cheap = True
-            if weights and float(weights.get("price", 0.0)) > 0.28:
-                prefer_cheap = True
+            # Chỉ bật chế độ ưu tiên giá rẻ danh nghĩa khi người dùng/caller yêu cầu tường minh,
+            # không suy diễn từ trọng số sau L1-normalization (tránh tự bật khi location/amenity tắt).
+            prefer_cheap = bool(_get(user_pref, "prefer_cheapest")) if user_pref else False
 
             if prefer_cheap:
                 # Đẩy tỷ trọng độ rẻ tiền thực tế (savings_ratio) lên 85%, ML score chỉ 15%
                 return _clamp01(0.85 * (0.3 + 0.7 * savings_ratio) + 0.15 * ml_score)
             else:
-                # Cân bằng 50% độ rẻ tiền + 50% độ hợp lý thị trường từ ML
-                return _clamp01(0.50 * ml_score + 0.50 * (0.4 + 0.6 * savings_ratio))
+                # Mặc định ưu tiên 80% độ hời giá thị trường (ML) + 20% mức tiết kiệm danh nghĩa
+                return _clamp01(0.80 * ml_score + 0.20 * (0.4 + 0.6 * savings_ratio))
         else:
             return _clamp01(0.3 * ml_score)
 
@@ -203,6 +219,7 @@ def _match_breakdown(
     listing: object,
     user_pref: object,
     weights: dict[str, float],
+    missing_amenity_default: float = 1.0,
 ) -> dict[str, object]:
     """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
     orm = _get(listing, "listing", listing)
@@ -215,6 +232,7 @@ def _match_breakdown(
             _get(orm, "concept_scores"), # type: ignore
             _get(orm, "amenity_overall"), # type: ignore
             preferred=_get(user_pref, "preferred_amenities"), # type: ignore
+            missing_overall_default=missing_amenity_default,
         ),
         "semantic": lambda: _score_or_unknown(listing, "similarity_score") if isinstance(listing, Mapping) and "similarity_score" in listing else _score_or_unknown(orm, "similarity_score"),
     }
@@ -242,8 +260,9 @@ def rerank(
 
     effective_weights = base_weights or DEFAULT_WEIGHTS
     computed_weights = _dynamic_weights(user_pref, effective_weights)
+    missing_amenity_default = 1.0 if _has_explicit_amenity_intent(user_pref, effective_weights) else UNKNOWN_SCORE
 
-    scored = [(_match_breakdown(c, user_pref, computed_weights), c) for c in candidates]
+    scored = [(_match_breakdown(c, user_pref, computed_weights, missing_amenity_default=missing_amenity_default), c) for c in candidates]
     scored.sort(
         key=lambda x: (
             round(float(x[0]["score"]), 8), # type: ignore

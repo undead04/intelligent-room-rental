@@ -316,3 +316,31 @@ def test_adaptive_expansion_accounts_for_hard_constraint_filtering():
     assert h.search_calls[1]["max_distance_km"] == 3.5
     assert len(r.rooms) == 3
     assert all(rm.priceNum <= 3_000_000 * (1 + PRICE_FILTER_TOLERANCE) for rm in r.rooms)
+
+
+def test_broad_area_uses_wider_default_and_adaptive_radius():
+    """Khu vực rộng (Làng Đại học, KĐT, KCN...) mở đầu ở 4.0km và adaptive tới 5.0 -> 6.5km khi ít phòng."""
+    def dynamic_rooms(args):
+        rad = args.get("max_distance_km")
+        if rad == 4.0:
+            return [raw_room(1, price=2_600_000)]
+        if rad == 5.0:
+            return [
+                raw_room(1, price=2_600_000),
+                raw_room(2, price=2_800_000),
+                raw_room(3, price=2_900_000),
+            ]
+        return []
+
+    llm = FakeLLM().on(
+        "TurnAnalysis",
+        nlu(location_text="Làng Đại học Thủ Đức", location_kind="place", max_price=3_000_000),
+    ).on("Advice", GOOD_ADVICE)
+
+    h = Harness(llm, rooms=dynamic_rooms)
+    r = h.turn("tìm trọ gần Làng Đại học Thủ Đức dưới 3tr")
+
+    assert len(h.search_calls) == 2
+    assert h.search_calls[0]["max_distance_km"] == 4.0
+    assert h.search_calls[1]["max_distance_km"] == 5.0
+    assert len(r.rooms) == 3

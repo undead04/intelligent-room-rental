@@ -154,6 +154,7 @@ def vector_search_listings(
         excluded_room_types=body.excluded_room_types,
         min_price=body.min_price,
         max_price=body.max_price,
+        prefer_cheapest=body.prefer_cheapest,
         min_area=body.min_area,
         max_area=body.max_area,
         min_bedrooms=body.min_bedrooms,

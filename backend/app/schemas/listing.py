@@ -167,6 +167,10 @@ class VectorSearchBody(BaseModel):
     )
     min_price: Optional[float] = Field(None, ge=0, description="Giá tối thiểu (VNĐ)")
     max_price: Optional[float] = Field(None, ge=0, description="Giá tối đa (VNĐ)")
+    prefer_cheapest: Optional[bool] = Field(
+        default=None,
+        description="Bật True khi người dùng nhấn mạnh ưu tiên phòng giá rẻ nhất/tiết kiệm nhất",
+    )
     min_area: Optional[float] = Field(None, ge=0, description="Diện tích tối thiểu (m2)")
     max_area: Optional[float] = Field(None, ge=0, description="Diện tích tối đa (m2)")
     min_bedrooms: Optional[int] = Field(None, ge=1, description="Số phòng ngủ tối thiểu")

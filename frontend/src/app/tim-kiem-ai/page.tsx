@@ -65,7 +65,9 @@ export default function AIChatWorkspacePage() {
               if (question.includes("Tùy chỉnh tiêu chí") || question.startsWith("✏️")) {
                 setInputValue("Tôi muốn điều chỉnh: ");
                 setTimeout(() => {
-                  const inputEl = document.querySelector('input[type="text"]') as HTMLInputElement;
+                  const inputEl = document.querySelector(
+                    'textarea[data-ai-chat-input="true"], input[type="text"]'
+                  ) as HTMLTextAreaElement | HTMLInputElement | null;
                   if (inputEl) {
                     inputEl.focus();
                     inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);

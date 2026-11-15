@@ -10,6 +10,12 @@ from graph.tracing import resolve_trace_target
 def make_formatter_node(deps: Deps):
     def formatter_node(state: dict[str, Any]) -> dict[str, Any]:
         final_text = state.get("final_text", "")
+        partials = [p.strip() for p in (state.get("partial_replies") or []) if isinstance(p, str) and p.strip()]
+        cur_text = str(final_text or "").strip()
+        if partials:
+            if cur_text and cur_text not in partials:
+                partials.append(cur_text)
+            final_text = "\n\n".join(partials)
         rooms = state.get("retrieved_rooms") or []
         insights = state.get("insights")
         pref = state.get("preferences") or UserPreferenceState()
@@ -25,7 +31,7 @@ def make_formatter_node(deps: Deps):
 
         if blocked:
             follow_up = []
-        elif advisory:
+        elif advisory and not state.get("searched") and not rooms and not need_clarify:
             slug = state.get("matched_skill")
             skill = deps.skills().get(slug) if slug else None
             follow_up = list(getattr(skill, "follow_ups", [])) if skill else []

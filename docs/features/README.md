@@ -26,7 +26,6 @@ Thư mục này quản lý toàn bộ vòng đời của các tính năng kỹ t
 ### 🟢 3. Released (Đã phát hành & Vận hành ổn định)
 1. [`released/listing-lifecycle-sync.md`](./released/listing-lifecycle-sync.md): Đồng bộ vòng đời tin đăng tự động, ẩn tin hết hạn, cập nhật trạng thái `is_active`.
 2. [`released/ml-price-model-v2.md`](./released/ml-price-model-v2.md): Mô hình định giá phòng trọ và dự đoán khoảng giá tin cậy Conformal Prediction.
-3. [`released/ai-agent-recommendation-eval.md`](./released/ai-agent-recommendation-eval.md): Bộ chỉ số và kịch bản đo lường chất lượng gợi ý phòng của AI Agent (IR metrics, Compliance, Rubric).
 
 ### 🟡 2. In Progress (Đang thực hiện)
 - Hiện tại: Kiểm toán toàn diện & khắc phục lỗi logic kiến trúc (tham chiếu [`../fix/README.md`](../fix/README.md)).

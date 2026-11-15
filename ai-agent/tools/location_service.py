@@ -131,9 +131,14 @@ def _haversine_km_local(lat1: float, lng1: float, lat2: float, lng2: float) -> f
     return 2 * r * math.asin(math.sqrt(a))
 
 
+def _local_poi_enabled() -> bool:
+    """Cho phép tắt/bật từ điển POI cục bộ qua HOMIGO_USE_LOCAL_POI (hạn chế phụ thuộc hardcode khi đã có Goong Places)."""
+    return os.getenv("HOMIGO_USE_LOCAL_POI", "true").strip().lower() not in ("0", "false", "no", "off")
+
+
 def lookup_local_poi_candidates(text: str, region_hint: Optional[str] = None) -> list[dict[str, Any]]:
     """Tra cứu các POI cục bộ khớp tên/alias (0 ms), có lọc theo region_hint nếu cung cấp."""
-    if not text:
+    if not text or not _local_poi_enabled():
         return []
     pois = _load_local_pois()
     if not pois:
@@ -186,6 +191,44 @@ def lookup_university_poi(text: str, region_hint: Optional[str] = None) -> Optio
     """Tra cứu nhanh POI cục bộ từ từ điển (0 ms), trả 1 POI phù hợp nhất (giữ tương thích ngược)."""
     candidates = lookup_local_poi_candidates(text, region_hint)
     return candidates[0] if candidates else None
+
+
+def find_poi_in_text(user_text: str, region_hint: Optional[str] = None) -> Optional[str]:
+    """Dò tìm tên riêng/alias của POI cục bộ nằm nguyên cụm bên trong câu nói người dùng."""
+    norm_u = norm_key(user_text or "")
+    if not norm_u:
+        return None
+    pois = _load_local_pois()
+    if not pois:
+        return None
+
+    hits: list[tuple[int, dict[str, Any]]] = []
+    for poi in pois:
+        names = [poi.get("name", ""), poi.get("short_name", "")] + list(poi.get("aliases", []))
+        best_len = 0
+        for raw_name in names:
+            k = norm_key(raw_name)
+            # Chỉ dò cụm từ >= 3 ký tự khớp nguyên ranh giới từ để tránh trùng ngẫu nhiên
+            if len(k) < 3:
+                continue
+            if re.search(rf"(?:^|\s){re.escape(k)}(?:\s|$)", norm_u):
+                best_len = max(best_len, len(k))
+        if best_len > 0:
+            hits.append((best_len, poi))
+
+    if not hits:
+        return None
+
+    hits.sort(key=lambda item: item[0], reverse=True)
+    max_len = hits[0][0]
+    top_pois = [p for ln, p in hits if ln == max_len]
+    if len(top_pois) > 1 and region_hint:
+        norm_hint = norm_key(region_hint)
+        for p in top_pois:
+            p_reg = norm_key(p.get("region", ""))
+            if p_reg and (p_reg in norm_hint or norm_hint in p_reg):
+                return str(p.get("name") or "") or None
+    return str(top_pois[0].get("name") or "") or None
 
 
 def _dedot(name: Optional[str]) -> str:

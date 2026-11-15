@@ -2,7 +2,7 @@
 ### Hệ Thống Hỗ Trợ Ra Quyết Định Tìm Kiếm Phòng Trọ Thông Minh
 > **Đồ Án Tốt Nghiệp** — Khoa Khoa học Máy tính / Kỹ thuật Phần mềm  
 > Trường Đại học Công nghệ Thông tin — ĐHQG TP.HCM (**UIT - VNU-HCM**)  
-> **Điểm Đánh Giá Hội Đồng Nghiên Cứu:** **`98.13 / 100.0`** (Xếp loại: **XUẤT SẮC - EXCELLENT**)
+> **Kiểm Chứng Hệ Thống:** **826 Python Unit/Integration Tests** (`AI Agent: 585 passed`, `Backend: 83 passed`, `Crawler & ML v2: 158 passed`) | **Thesis Rubric (`--with-model`):** **`100.0 / 100.0` (100% Coverage)** | **Agent `pass^3`:** **`100.0%` (`15/15`)**
 
 ---
 
@@ -10,11 +10,11 @@
 
 **Homigo** là nền tảng tìm kiếm và hỗ trợ ra quyết định thuê phòng trọ thông minh thế hệ mới dành cho sinh viên và người đi làm tại các đô thị lớn. Khác biệt với các nền tảng đăng tin truyền thống (vốn chỉ dừng lại ở các bộ lọc thuộc tính tĩnh hoặc đối sánh từ khóa đơn thuần), Homigo xây dựng một hệ sinh thái toàn diện kết hợp giữa **Kỹ thuật dữ liệu (Data Engineering)**, **Học máy (Machine Learning)**, **Truy xuất thông tin lai (Hybrid Information Retrieval)** và **Tác tử AI hỗ trợ ra quyết định (LangGraph State Machine AI Agent)**:
 
-1. **Tìm kiếm lai (Hybrid Search)**: Kết hợp tuyến tính giữa biểu diễn ngữ nghĩa dày đặc (**Dense pgvector Embedding** 768 chiều từ `intfloat/multilingual-e5-base` / `keepitreal/vietnamese-sbert`) và chỉ mục từ khóa thưa thớt (**Sparse PostgreSQL Full-Text Search**) theo tỷ lệ tối ưu $70\% : 30\%$.
-2. **Trọng số thích ứng theo ý định (Intent-Aware Dynamic MCDM)**: Tự động phân tích ý định từ ngôn ngữ tự nhiên của người dùng để kích hoạt các hệ số nhân ưu tiên (**Intent Multipliers**: giá rẻ $2.0\times$, sát trường $2.0\times$, an ninh cho nữ $2.0\times$, full nội thất $1.8\times$) và chuẩn hoá vector trọng số theo $L_1$-norm ($\sum w_i = 1.0$).
-3. **Máy trạng thái điều phối AI Agent 8 Node (LangGraph State Machine)**: Quản lý quy trình hội thoại khép kín gồm: Phòng thủ Guardrail an toàn, Trích xuất NLU & Tích lũy trạng thái đa lượt (Multi-turn Memory), Hỏi làm rõ khi mơ hồ, Định tuyến Kỹ năng chuyên sâu (Advisory Skills), Truy xuất lai & Rerank động, Phân tích đối sánh đánh đổi (**Trade-off Analysis Top 1 vs Top 2**), Tự kiểm chứng trung thực (**Self-RAG Grounding Verification**) và Đóng gói phản hồi chuẩn hóa.
+1. **Tìm kiếm lai (Hybrid Search)**: Kết hợp tuyến tính giữa biểu diễn ngữ nghĩa dày đặc (**Dense pgvector Embedding** 768 chiều từ `intfloat/multilingual-e5-base`) và chỉ mục từ khóa thưa thớt (**Sparse PostgreSQL Full-Text Search**) theo tỷ lệ tối ưu $70\% : 30\%$.
+2. **Trọng số thích ứng theo ngữ cảnh (NLU-Driven Dynamic MCDM)**: NLU LLM (`intelligence/nlu.py`) tự phân tích ngữ cảnh hội thoại để gán mức ưu tiên `Priorities` (`lower: 0.5×`, `normal: 1.0×`, `high: 2.0×`, `very_high: 3.0×`) thay vì rule từ khóa cứng dễ hiểu nhầm, tự động bật/tắt tiêu chí động (`location`, `amenity`) và chuẩn hoá vector trọng số theo $L_1$-norm ($\sum w_i = 1.0$).
+3. **Máy trạng thái điều phối AI Agent 8 Node (LangGraph State Machine)**: Quản lý quy trình hội thoại khép kín gồm: Phòng thủ Guardrail an toàn, Trích xuất NLU & Tích lũy trạng thái đa lượt (Multi-turn Memory), Hỏi làm rõ khi mơ hồ, Định tuyến Kỹ năng chuyên sâu (Advisory Skills), Truy xuất lai & Rerank động (giữ lọc cứng nghiêm ngặt, tóm tắt `dropped_summary` khi 0 phòng), Phản hồi Markdown tự do qua ReAct `decision_agent` (`HOMIGO_CONSTRAINED_GENERATION=false` mặc định) hoặc phân tích nguyên nhân 0 phòng kèm đối chiếu dữ liệu thị trường, Tự kiểm chứng trung thực (**Self-RAG Grounding Verification**) và Đóng gói phản hồi chuẩn hóa.
 4. **Cơ chế phân vùng công cụ (Tool Partitioning)**: Chia tách công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giảm hơn **65% token overhead** và ngăn ngừa triệt để hiện tượng Tool Hallucination.
-5. **Thẩm định giá thuê bằng Machine Learning & Conformal Prediction**: Kết hợp mô hình **LightGBM + XGBoost Blend**, **Inverse-Distance Weighted Spatial Target Encoding (`SpatialTE`)**, và **Mondrian Conformal Prediction** để ước lượng khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ trên 9.693 bản ghi sạch toàn quốc ($R^2 = 0.6659$, $\text{MAE} = 599.687\ \text{VNĐ}$), lượng hóa thành điểm số `price_score` $\in [0.0, 1.0]$.
+5. **Thẩm định giá thuê bằng Machine Learning & Conformal Prediction**: Kết hợp mô hình **LightGBM + XGBoost Blend**, **Inverse-Distance Weighted Spatial Target Encoding (`SpatialTE`)**, và **Mondrian Conformal Prediction** để ước lượng khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ trên 9.693 bản ghi sạch toàn quốc ($R^2 = 0.6689$, Log-$R^2 = 0.7235$, $\text{MAE} = 598.769\ \text{VNĐ}$, coverage thực tế $83.15\%$), lượng hóa thành điểm số `price_score` $\in [0.0, 1.0]$.
 6. **Chu trình ETL & Trích xuất thuộc tính có kiểm chứng (Evidence Verification)**: Thu thập dữ liệu đa nguồn (Nhà Tốt, PhongTrọ123), đệm SQLite WAL $O(1)$, bóc tách thuộc tính sâu bằng LLM Gemini có cơ chế so khớp nguyên văn chống bịa đặt bằng chứng.
 7. **Bảo mật đa tầng (Dual-layer Security)**:
    - **Tầng Backend API**: Middleware chống tấn công **SQL Injection** trong query/path params và **Rate Limiting** thuật toán Sliding Window bảo vệ tài nguyên máy chủ.
@@ -73,78 +73,90 @@
 ├── backend/                       # [Service 1] FastAPI Backend Core + Hybrid Search (Port 8000)
 │   ├── app/
 │   │   ├── api/v1/                # Router & Controllers
-│   │   │   ├── controllers/       # listings, locations, geocode, room_type, health
+│   │   │   ├── controllers/       # listings, location, room_type, geocoding, health
 │   │   │   └── router.py          # Tổng hợp router v1
-│   │   ├── core/                  # Cấu hình Pydantic Settings, Database connection pool, Exceptions
+│   │   ├── core/                  # Cấu hình Pydantic Settings, Database connection pool, Exceptions, Paths
 │   │   ├── middleware/            # Security Middleware (SQLi Defense, IP Rate Limiter, Request Logger)
 │   │   ├── models/                # SQLAlchemy ORM Models (Listing, Location, RoomType, User, Embedding)
-│   │   ├── repositories/          # Tầng truy vấn DB (Hybrid Search 70% Dense + 30% Sparse FTS)
-│   │   ├── schemas/               # Pydantic Request/Response DTOs
-│   │   ├── services/              # Nghiệp vụ: ListingService, Geocoder, Embedding, Reranker
+│   │   ├── repositories/          # Tầng truy vấn DB (Hybrid Search 70% Dense + 30% Sparse FTS, Location)
+│   │   ├── schemas/               # Pydantic Request/Response DTOs (listing, analytics, geocode, ...)
+│   │   ├── services/              # Nghiệp vụ: ListingService, LocationService, Geocoder, Embedding, Reranker
 │   │   │   └── reranker.py        # MCDM Dynamic Reranking Engine (5 tiêu chí, explain_match)
-│   │   ├── utils/                 # Tiện ích tương thích ngược
 │   │   └── main.py                # FastAPI App Entrypoint & Lifespan handler
-│   ├── tests/                     # 48 unit & integration tests (Embedding, MCDM Rerank, Security Middleware)
+│   ├── migrations/                # SQL Migrations (HNSW & GIN indexes) & runner
+│   ├── tests/                     # 83 unit & integration tests (Embedding, MCDM Rerank, Security Middleware)
 │   ├── run.py                     # Script khởi chạy Backend nhanh qua Uvicorn
 │   ├── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
 │   └── requirements.txt           # Quản lý phụ thuộc pip
-│
+
 ├── frontend/                      # [Service 2] Giao diện Web (Next.js 16 App Router + React 19) (Port 3000)
 │   ├── src/
-│   │   ├── app/                   # App Router Pages
+│   │   ├── app/                   # App Router Pages & Global Error/404 boundaries
 │   │   │   ├── page.tsx           # Trang chủ (Hero search, tin đăng mới nhất, khu vực nổi bật)
 │   │   │   ├── tim-kiem/          # Tìm kiếm & Bộ lọc nâng cao đa tiêu chí
 │   │   │   ├── phong-tro/[id]/    # Chi tiết phòng trọ (Ảnh, thông tin, bảng điểm ML/An toàn/Tiện nghi)
 │   │   │   ├── tim-kiem-ai/       # AI Decision Workspace 3 cột (Chat SSE, Danh sách Rerank, Bản đồ & Trade-offs)
 │   │   │   │   └── _components/   # AiChatPanel, RoomResultsPanel, RoomMapPanel, AgentInsightPanel
 │   │   │   └── tra-cuu-gia-tro/   # Tra cứu & Báo cáo biến động giá thị trường thời gian thực
-│   │   ├── components/            # UI Components tái sử dụng (Navbar, Footer, FilterModal, ListingCard...)
+│   │   ├── components/            # UI Components tái sử dụng (SiteLayout, Navbar, Footer, FilterModal, ListingCard, skeleton/)
 │   │   ├── hooks/                 # Custom React Hooks (useLocations, useFilterOptions...)
-│   │   ├── lib/                   # API Client kết nối Backend (8000) & AI Agent (8001), hằng số, formatters
-│   │   └── types/                 # TypeScript interfaces & DTOs đồng bộ 1-1 với backend
+│   │   ├── lib/                   # API Client kết nối Backend (8000) & AI Agent (8001), constants, utils/
+│   │   └── types/                 # TypeScript interfaces & DTOs đồng bộ 1-1 với backend & ai-agent
 │   └── package.json               # Next.js 16, React 19, Tailwind CSS v4, TypeScript 5
-│
+
 ├── ai-agent/                      # [Service 3] AI Agent Ra Quyết Định (LangGraph 8 Node) (Port 8001)
-│   ├── api/                       # REST & Server-Sent Events Endpoints (/chat, /chat/stream, /health)
+│   ├── api/                       # REST & SSE Endpoints (/chat, /chat/stream, /health) & HousingAgentService
 │   ├── core/                      # Config (Pydantic Settings), LLM Factory, Paths, SQLite SessionStore
-│   ├── domain/                    # Schemas chuẩn (AgentResponse, RoomItem, DecisionInsight), Enums, Budget Parser
+│   ├── domain/                    # Schemas chuẩn (AgentResponse, RoomItem, DecisionInsight), Enums, Filters, Budget
 │   ├── intelligence/              # Trí tuệ & Ra quyết định
 │   │   ├── intent_weights.py      # Engine nhận diện Intent Multipliers & chuẩn hóa L1 Dynamic Weights
-│   │   ├── nlu.py / nlu_fallback  # NLU bóc tách tiêu chí có fallback regex heuristics
+│   │   ├── nlu.py                 # NLU bóc tách tiêu chí & PreferencePatch
+│   │   ├── understand.py          # Tổng hợp ngữ cảnh lượt hội thoại & kích hoạt Dynamic Skill
 │   │   ├── payload_builder.py     # Chuyển đổi trạng thái NLU sang payload gọi Backend /vector-search
 │   │   ├── decision.py            # Phân tích đánh đổi (Trade-offs Top 1 vs Top 2) & Tạo checklist đi xem phòng
-│   │   └── advice.py              # Tư vấn đàm phán khi kết quả rỗng (Zero-Result Conversational Advisory)
-│   ├── safety/                    # Rào chắn bảo mật & Kiểm chứng
+│   │   ├── insights.py            # Sinh giải thích DecisionInsight & template trả lời trung thực
+│   │   └── advice.py              # Schema đầu ra có cấu trúc (Advice, ZeroResultAdvice) cho chế độ constrained (tùy chọn)
+│   ├── prompts/                   # System prompts tách biệt (nlu_prompt, decision_prompt, advisory_prompt)
+│   ├── safety/                    # Rào chắn bảo mật, Kiểm chứng Self-RAG & DoD Verifier độc lập
 │   │   ├── guardrails.py          # Chặn Prompt Injection, Jailbreak, Normalizer Homoglyph & ZWSP
-│   │   └── grounding.py           # Self-RAG Grounding: Kiểm chứng trung thực 100% ID, Giá, Diện tích, Toạ độ
-│   ├── graph/                     # LangGraph State Machine 8 Node
+│   │   ├── grounding.py           # Self-RAG Grounding 3 tầng: Kiểm chứng 100% ID, Giá, Diện tích, Toạ độ
+│   │   └── dod_verifier.py        # Bộ kiểm định Definition of Done (DoD) độc lập trên state & trace đóng băng
+│   ├── graph/                     # LangGraph State Machine 8 Node & TraceStore JSONL
 │   │   ├── builder.py             # Xây dựng StateGraph, định nghĩa node & conditional edges
-│   │   ├── state.py               # HousingAgentState TypedDict
+│   │   ├── state.py               # HousingAgentState TypedDict (kèm dropped_summary, market_context, verifier_result)
 │   │   ├── routing.py             # Logic điều hướng sau Guardrail, Understand, Verify
+│   │   ├── deps.py / replies.py   # Dependency injection & Fallback replies
+│   │   ├── tracing.py             # TraceStore JSONL cô lập theo run_id/seq + che PII
 │   │   └── nodes/                 # guardrail, understand, clarification, advisory, retrieval, decision, verify, formatter
 │   ├── tools/                     # Native Tools & Cơ chế Phân Vùng Công Cụ (Tool Partitioning)
 │   │   ├── housing_tools.py       # Tools: search_rooms, geocode_location, get_listing_detail, consult_housing_skill
+│   │   ├── location_service.py    # Chuẩn hóa & tra cứu địa danh hành chính
 │   │   ├── registry.py            # Scopes: RETRIEVAL_TOOLS, DETAIL_TOOLS, ADVISORY_TOOLS
 │   │   └── http.py                # Pooled HTTPX Client tái sử dụng kết nối
 │   ├── skills/                    # Kỹ năng chuyên gia động (Dynamic Skill Discovery qua YAML frontmatter)
 │   │   ├── skills_discovery.py    # Tự động phát hiện Kỹ năng không cần sửa code graph
 │   │   └── rental-contract-advisor/ # Kỹ năng tư vấn hợp đồng thuê trọ, tiền cọc, rủi ro pháp lý
-│   ├── eval/                      # Bộ đánh giá định lượng 5 trụ cột (NLU, Retrieval, Grounding, Decision, Safety)
-│   ├── tests/                     # 575 Unit & Integration Tests (100% Passed)
+│   ├── eval/                      # Bộ đánh giá định lượng (run.py, thesis_eval_rubric.py, stability_and_regression.py, answer_relevance.py)
+│   ├── eval_results/              # Báo cáo & JSON kết quả các kỳ đánh giá
+│   ├── utils/                     # Tiện ích chuẩn hóa text, khoảng cách geo & đóng băng bất biến (freeze.py)
+│   ├── tests/                     # 585 Unit & Integration Tests (100% Passed)
 │   ├── main.py                    # Uvicorn entrypoint (Port 8001)
-│   ├── service.py                 # HousingAgentService shim tương thích ngược
-│   └── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv (không còn requirements.txt)
-│
+│   └── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
+
 ├── crawler/                       # [Service 4] Thu Thập, Trích Xuất LLM, Định Giá ML & ETL Pipeline
+│   ├── config/                    # Settings, Paths & danh mục POI Toàn Quốc (poi_locations.json)
 │   ├── spiders/                   # Spiders cào dữ liệu có Resume Checkpoint (NhaTot, PhongTro123)
 │   ├── staging_db.py              # SQLite Staging DB duy nhất (chế độ WAL, index O(1), trạng thái is_processed)
+│   ├── scheduler.py               # Cron Job Scheduler Daemon (daily_crawl 02:00 & weekly_verify Chủ Nhật 04:00)
 │   ├── model/
 │   │   ├── llm/                   # Gemini Dynamic Chunking & Metadata Extraction có Evidence Verification
 │   │   └── ml/                    # LightGBM + XGBoost Blend & Mondrian Conformal Prediction v2 (19 features)
 │   │       ├── feature_extractor.py # Trích xuất vector đặc trưng Toàn Quốc & bộ lọc thích ứng loại phòng
 │   │       ├── models.py          # Kiến trúc Weighted SpatialTE, Mondrian CQR & InputGuard Toàn Quốc
 │   │       ├── price_evaluator.py # Service suy luận tính điểm price_score (0.0 - 1.0)
-│   │       └── artifacts/         # Lưu trữ model đã huấn luyện (rent_pipeline.joblib, guard.joblib)
+│   │       ├── train_price_model.py # Huấn luyện Optuna 5-Fold Stratified CV & xuất artifacts
+│   │       ├── evaluate_model.py  # EDA, Feature Ablation & đánh giá mô hình ML
+│   │       └── artifacts/         # Lưu trữ model đã huấn luyện (rent_pipeline.joblib, guard.joblib, evaluation_report.*)
 │   ├── etl/                       # Chu trình ETL tự động
 │   │   ├── extract.py             # Trích xuất dữ liệu thô từ staging.db (hỗ trợ incremental)
 │   │   ├── text_cleaner.py        # Chuẩn hóa Unicode NFC, xóa SĐT, URL, Emoji, Spam CTAs
@@ -154,22 +166,25 @@
 │   │   ├── load.py                # Bộ nạp đa đích: PostgreSQL (pgvector), Parquet, CSV, JSON
 │   │   └── pipeline.py            # CLI điều phối toàn bộ chu trình ETL khép kín
 │   ├── schema/                    # Danh mục chuẩn (enums.py) & Pydantic schemas (listing.py)
-│   ├── tests/                     # 81 Unit & Integration Tests Crawler & ML v2 (100% Passed)
+│   ├── tests/                     # 158 Unit & Integration Tests Crawler & ML v2 (100% Passed)
 │   ├── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
 │   └── requirements.txt
-│
+
+├── docs/                          # Kho Tri Thức & Tài Liệu Kỹ Thuật (Architecture, Contracts, Evaluation, Features, Maintenance)
 ├── models_cache/                  # Cache offline cục bộ cho SentenceTransformer (intfloat/multilingual-e5-base)
-├── AGENTS.md                      # Tài liệu kỹ thuật chuyên sâu dành cho AI Agents & Contributor
+├── AGENTS.md                      # Hiến pháp & Quy chuẩn làm việc cho AI Coding Agents
 └── README.md                      # Tài liệu tổng quan toàn bộ hệ thống (File này)
 ```
 
 ### 📖 Danh Sách Tài Liệu Chuyên Sâu Từng Module:
+* 📚 **Kho Tri Thức & Kiến Trúc Hệ Thống**: [`docs/README.md`](docs/README.md) & [`docs/architecture/tech-stack.md`](docs/architecture/tech-stack.md)
 * ⚡ **FastAPI Backend & MCDM Reranker**: [`backend/README.md`](backend/README.md)
 * 💻 **Next.js Frontend**: [`frontend/README.md`](frontend/README.md)
 * 🤖 **LangGraph AI Agent**: [`ai-agent/README.md`](ai-agent/README.md)
 * 🕷️ **Crawler & ETL Pipeline**: [`crawler/README.md`](crawler/README.md)
 * 🧠 **Machine Learning Conformal Prediction**: [`crawler/model/ml/README.md`](crawler/model/ml/README.md)
-* 🤖 **Hướng Dẫn Kiến Trúc & Quy Chuẩn Cho Agent**: [`AGENTS.md`](AGENTS.md)
+* 📊 **Khung Đánh Giá & Benchmarks**: [`docs/evaluation/README.md`](docs/evaluation/README.md)
+* 🤖 **Quy Chuẩn Làm Việc Cho AI Agent**: [`AGENTS.md`](AGENTS.md)
 
 ---
 
@@ -183,18 +198,17 @@ Top 50 ứng viên tốt nhất sau bước lọc ràng buộc cứng (Hard Cons
 
 ---
 
-### 4.2. Trọng Số Thích Ứng Theo Ý Định (Intent-Aware Dynamic MCDM)
-Hệ thống giải quyết bài toán cá nhân hóa kết quả tìm kiếm bằng cách tự động phát hiện các từ khóa nhấn mạnh trong câu nói tự nhiên của người dùng để gán **Hệ số nhân ý định (Intent Multipliers $m_i$)**:
+### 4.2. Trọng Số Thích Ứng Theo Ngữ Cảnh (NLU-Driven Dynamic MCDM)
+Hệ thống cá nhân hóa thứ hạng tìm kiếm bằng cách để NLU LLM (`intelligence/nlu.py`) tự đánh giá ngữ cảnh câu nói (phân biệt giữa ưu tiên thật sự vs than phiền/so sánh như *"mắc hơn"*, và bỏ override từ khóa tăng/giảm ngân sách trong `interpret_turn()`) để xuất mức độ ưu tiên `Priorities` cho từng trụ cột:
 
-| Tiêu chí ($i$) | Mẫu từ khóa nhận diện ý định ưu tiên | Hệ số nhân ($m_i$) | Trạng thái kích hoạt (Active Status) |
-| :--- | :--- | :---: | :--- |
-| **Giá cả (`price`)** | `r"rẻ\s*nhất|giá\s*rẻ|tiết\s*kiệm|ngân\s*sách\s*(hẹp|thấp)|hạt\s*dẻ|rẻ\s*nữa"` | $\mathbf{\times 2.0}$ | Luôn bật (Bắt buộc) |
-| **Vị trí (`location`)** | `r"sát\s*(bên|nách)|đi\s*bộ\s*được|ngay\s*cạnh|rất\s*gần|sát\s*trường|gần\s*uit"` | $\mathbf{\times 2.0}$ | Động: Chỉ bật khi có tọa độ hoặc tên địa điểm |
-| **An ninh (`safety`)** | `r"an\s*ninh|an\s*toàn|nữ\s*ở\s*một\s*mình|sợ\s*trộm|khóa\s*vân\s*tay|bảo\s*vệ"` | $\mathbf{\times 2.0}$ | Luôn bật (Bắt buộc) |
-| **Tiện nghi (`amenity`)** | `r"full\s*nội\s*thất|đầy\s*đủ\s*đồ|tiện\s*nghi\s*cao|nội\s*thất\s*xịn"` | $\mathbf{\times 1.8}$ | Động: Chỉ bật khi người dùng yêu cầu tiện ích |
-| **Ngữ nghĩa (`semantic`)** | Khớp ngữ cảnh bài đăng tổng quát | $\mathbf{\times 1.0}$ | Luôn bật (Bắt buộc) |
+| Mức độ ưu tiên (`Priorities`) | Hệ số nhân (`LEVEL_TO_MULT`) | Ý nghĩa áp dụng |
+| :--- | :---: | :--- |
+| **`lower`** | $\mathbf{\times 0.5}$ | Giảm tầm quan trọng của tiêu chí (với `price`, `location`, `amenity`, `safety`) |
+| **`normal`** | $\mathbf{\times 1.0}$ | Mức cơ sở mặc định |
+| **`high`** | $\mathbf{\times 2.0}$ | Người dùng nhấn mạnh ưu tiên tiêu chí này |
+| **`very_high`** | $\mathbf{\times 3.0}$ | Ưu tiên tối đa theo ngữ cảnh hội thoại |
 
-Sau khi áp dụng hệ số nhân cho các tiêu chí đang bật, vector trọng số được chuẩn hoá theo công thức $L_1$-norm:
+Các tiêu chí được bật/tắt động (`location` chỉ bật khi có tọa độ hoặc tên địa điểm; `amenity` chỉ bật khi có yêu cầu tiện nghi), sau đó vector trọng số được chuẩn hoá theo công thức $L_1$-norm:
 $$w_i = \frac{w_{\text{base}, i} \cdot m_i}{\sum_{k \in \text{active}} (w_{\text{base}, k} \cdot m_k)} \quad \text{với} \quad \sum_{i \in \text{active}} w_i = 1.0$$
 
 Hàm `explain_match` tính toán đóng góp thành phần (Component Influence) của từng tiêu chí để cung cấp giải thích minh bạch cho người dùng.
@@ -249,9 +263,9 @@ Nhằm loại bỏ hiện tượng bịa đặt thông tin (Hallucination) — v
 Thay vì dùng đơn giá thô `price / area_m2` (vốn sai lệch lớn khi diện tích nhỏ hoặc phòng Sleepbox/Studio full nội thất cao cấp), Homigo áp dụng mô hình máy học v2 chuẩn hóa toàn quốc:
 - **Ensemble Blend**: Kết hợp **LightGBM** và **XGBoost** được tối ưu siêu tham số tự động bằng Optuna (5-Fold Stratified CV) trên không gian logarit $\ln(1 + \text{price})$ kèm hiệu chỉnh chệch Smearing Correction.
 - **Inverse-Distance Weighted SpatialTE**: Trích xuất thống kê giá láng giềng $k \in \{5, 20\}$ phòng gần nhất có trọng số nghịch đảo khoảng cách trên `BallTree(haversine)`, khử hoàn toàn rò rỉ dữ liệu (Zero Leakage).
-- **Mondrian Conformal Prediction**: Dự đoán khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ với độ tin cậy được đảm bảo theo 5 phân khúc giá (độ phủ danh định $80\%$, thực tế đạt $82.5\%$).
+- **Conformal Coverage Thực Tế**: Dự đoán khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ với độ phủ danh định $80\%$, thực tế đạt **$83.15\%$** (Median Width: $1.981.681\ \text{VNĐ}$).
 - **InputGuard Toàn Quốc**: Kiểm soát biên tọa độ lãnh thổ Việt Nam ($\text{lat} \in [8.0, 23.5]$, $\text{lng} \in [102.0, 110.0]$) và thích ứng ngưỡng giá/diện tích/đơn giá cho 5 loại phòng (bảo vệ phân khúc KTX/Sleepbox/ở ghép).
-- **Kết Quả Thực Nghiệm**: Huấn luyện trên **9.693 bản ghi sạch toàn quốc** (24 tỉnh/thành) đạt **$R^2 = 0.6659$** (Log-$R^2 = 0.7220$), **$\text{MAE} = 599.687\ \text{VNĐ}$** (giảm 40.3% so với mô hình cũ).
+- **Kết Quả Thực Nghiệm**: Huấn luyện trên **9.693 bản ghi sạch toàn quốc** đạt **$R^2 = 0.6689$** (Log-$R^2 = 0.7235$), **$\text{MAE} = 598.769\ \text{VNĐ}$** (giảm 36.6% so với Baseline Room-Type Median và giảm 40.4% so với mô hình v1).
 - **Công thức tính điểm hợp lý giá (`price_score`)**:
   $$\mu = \frac{\ln(1 + P_{\text{low}}) + \ln(1 + P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ln(1 + P_{\text{high}}) - \ln(1 + P_{\text{low}})}{2}, 10^{-6}\right)$$
   $$z = \frac{\ln(1 + P_{\text{actual}}) - \mu}{\sigma}, \quad \text{PriceScore} = \frac{\text{clip}(50 - 25 \cdot z,\ 0,\ 100)}{100} \in [0.0, 1.0]$$
@@ -327,7 +341,7 @@ Tạo file cấu hình `.env` cho từng module:
 | Module | Đường dẫn file | Nội dung mẫu |
 | :--- | :--- | :--- |
 | **Backend** | `backend/.env` | `POSTGRES_SERVER=localhost`<br>`POSTGRES_PORT=5432`<br>`POSTGRES_USER=postgres`<br>`POSTGRES_PASSWORD=postgres`<br>`POSTGRES_DB=smart_housing_db`<br>`RATE_LIMIT_PER_MINUTE=120`<br>`CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]` |
-| **AI Agent** | `ai-agent/.env` | `OPENAI_API_KEY=your_key_here`<br>`MODEL_NAME=gpt-4o-mini`<br>`SEARCH_ROOM_API_BASE=http://localhost:8000/api/v1` |
+| **AI Agent** | `ai-agent/.env` | `OPENAI_API_KEY=your_key_here`<br>`MODEL_NAME=gpt-4o-mini`<br>`SEARCH_ROOM_API_BASE=http://localhost:8000/api/v1`<br>`HOMIGO_CONSTRAINED_GENERATION=false` *(tùy chọn)* |
 | **Crawler** | `crawler/.env` | `POSTGRES_SERVER=localhost`<br>`POSTGRES_PORT=5432`<br>`POSTGRES_USER=postgres`<br>`POSTGRES_PASSWORD=postgres`<br>`POSTGRES_DB=smart_housing_db`<br>`GEMINI_API_KEY=your_gemini_key` *(chỉ cần khi bóc tách LLM)* |
 | **Frontend** | `frontend/.env.local` | `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`<br>`NEXT_PUBLIC_AI_AGENT_URL=http://localhost:8001` |
 
@@ -414,44 +428,80 @@ cd frontend; npm run dev
 
 ## 🧪 6. Kiểm Thử Hệ Thống & Báo Cáo Đánh Giá Chất Lượng
 
-Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **704 unit & integration tests** (AI Agent: 575, Backend: 48, Crawler & ML v2: 81):
+Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **826 Python unit & integration tests** (AI Agent: **585**, Backend: **83**, Crawler & ML v2: **158**):
 
 ### 6.1. Chạy Toàn Bộ Test Suite Tự Động
 
 ```powershell
-# 1. Kiểm thử AI Agent (575 tests passed)
-ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
+# 1. Kiểm thử AI Agent (585 tests)
+.\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 
-# 2. Kiểm thử Backend (48 tests passed)
-backend\.venv\Scripts\pytest.exe backend/tests -q
+# 2. Kiểm thử Backend (83 tests)
+.\backend\.venv\Scripts\pytest.exe backend/tests -q
 
-# 3. Kiểm thử Crawler & ML v2 (81 tests passed)
-crawler\.venv\Scripts\pytest.exe crawler/tests -q
+# 3. Kiểm thử Crawler & ML v2 (158 tests)
+.\crawler\.venv\Scripts\pytest.exe crawler/tests -q
 
-# 4. Kiểm thử Frontend Type-safety & Linting (0 errors)
+# 4. Kiểm thử Frontend Type-safety & Linting
 cd frontend; npm run lint; npx tsc --noEmit; cd ..
 ```
 
 ---
 
-### 6.2. Kết Quả Đánh Giá Định Lượng Hội Đồng Đồ Án (Thesis Evaluation Rubric)
+### 6.2. Chạy Bộ Đánh Giá Định Lượng (Evaluation Suites)
 
-Hệ thống AI Agent Homigo đã trải qua kỳ đánh giá độc lập nghiêm ngặt theo rubric chuẩn gồm **5 Trụ Cột**:
+```powershell
+# 1. Đánh giá AI Agent toàn diện (Guardrail 137 ca + Grounding 600 ca + Agent Eval pass^3 + Ablation E2E)
+# Lưu ý: Ablation E2E gọi LLM + Backend API thực (cần bật Backend port 8000; dùng --pacing 4.5 cho Gemini Free Tier 15 RPM)
+cd ai-agent; .\.venv\Scripts\python.exe -m eval.run guardrail grounding agent_eval ablation --pacing 4.5 --out eval_results; cd ..
 
-| STT | Trụ Cột Đánh Giá | Trọng Số | Điểm Đạt Được | Tỷ Lệ | Đánh Giá |
+# (Hoặc chỉ chạy các suite offline không cần Backend/E2E LLM):
+cd ai-agent; .\.venv\Scripts\python.exe -m eval.run guardrail grounding agent_eval --out eval_results; cd ..
+
+# 2. Đánh giá Thang Điểm 5 Trụ Cột Đồ Án (Offline Deterministic — thêm --with-model để chấm NLU LLM)
+cd ai-agent; .\.venv\Scripts\python.exe -m eval.thesis_eval_rubric --with-model; cd ..
+
+# 3. Đánh giá Mô Hình Định Giá ML v2 (EDA, Feature Ablation, Holdout Test & Conformal Coverage)
+.\crawler\.venv\Scripts\python.exe -m crawler.model.ml.evaluate_model
+```
+
+---
+
+### 6.3. Kết Quả Đánh Giá Định Lượng Thực Tế
+
+#### A. Thang Điểm 5 Trụ Cột (`eval.thesis_eval_rubric --with-model` — Chế độ LLM)
+Khi chạy với cờ `--with-model`, hệ thống đánh giá đầy đủ **17/17 tiêu chí (độ phủ phép đo 100%)**, bao gồm cả phân loại ý định NLU bằng LLM (`12/12` đúng) và Answer Relevance Judge:
+
+| STT | Trụ Cột Đánh Giá | Trọng Số | Điểm Đạt Được | Tỷ Lệ | Trạng thái |
 | :---: | :--- | :---: | :---: | :---: | :---: |
-| **1** | **NLU & Trạng Thái Tích Lũy (State Tracking)** | 25.0 | **`24.11`** | 96.4% | 🟢 Hoàn thành xuất sắc |
-| **2** | **Dynamic MCDM & Độ Liên Quan Truy Xuất (Retrieval)** | 25.0 | **`25.00`** | 100.0% | 🟢 Hoàn thành xuất sắc |
-| **3** | **Self-RAG & Kiểm Chứng Grounding (Faithfulness)** | 20.0 | **`20.00`** | 100.0% | 🟢 Hoàn thành xuất sắc |
-| **4** | **Hỗ Trợ Ra Quyết Định & Cố Vấn (Decision Support)** | 15.0 | **`15.00`** | 100.0% | 🟢 Hoàn thành xuất sắc |
-| **5** | **An Toàn Hệ Thống & Hiệu Năng Vận Hành (Safety & SLA)** | 15.0 | **`15.00`** | 100.0% | 🟢 Hoàn thành xuất sắc |
-| | **TỔNG KẾT ĐỒ ÁN** | **100.0** | **`99.11`** | **`99.1%`** | 🏆 **`XUẤT SẮC (EXCELLENT)`** |
+| **1** | **NLU & Trạng Thái Tích Lũy (State Tracking)** | 25.0 | **`25.00 / 25.00`** | 100.0% | ✅ `PASS` (`1.1`–`1.3`) |
+| **2** | **Dynamic MCDM & Độ Liên Quan Truy Xuất (Retrieval)** | 25.0 | **`25.00 / 25.00`** | 100.0% | ✅ `PASS` (`2.1`–`2.3`) |
+| **3** | **Self-RAG & Kiểm Chứng Grounding (Faithfulness)** | 20.0 | **`20.00 / 20.00`** | 100.0% | ✅ `PASS` (`3.1`–`3.4`) |
+| **4** | **Hỗ Trợ Ra Quyết Định & Cố Vấn (Decision Support)** | 15.0 | **`15.00 / 15.00`** | 100.0% | ✅ `PASS` (`4.1`–`4.3`) |
+| **5** | **An Toàn Hệ Thống & Hiệu Năng Vận Hành (Safety & SLA)** | 15.0 | **`15.00 / 15.00`** | 100.0% | ✅ `PASS` (`5.1`–`5.4`) |
+| | **TỔNG KẾT ĐỒ ÁN** | **100.0** | **`100.00 / 100.0`** | **`100.0%`** | 🏆 **`XUẤT SẮC (EXCELLENT)`** |
 
-#### Những Chỉ Số Định Lượng Nổi Bật:
-* **Grounding Accuracy**: Đạt **$100\%$ ($480/480$ ca tiêm lỗi)** trong việc phát hiện và chặn đứng mọi thông tin bịa đặt về ID phòng, giá thuê, diện tích và khoảng cách.
-* **Guardrail Defense Recall**: Chặn đứng **$100\%$ ($83/83$ ca)** các cuộc tấn công Prompt Injection / Jailbreak có biến đổi Homoglyph và Zero-Width Space với chi phí **$0$ token LLM**.
-* **Hiệu Quả Tiết Kiệm Token**: Rút gọn **$78.2\%$ token rác** nhờ cơ chế phân vùng công cụ và tối ưu hóa context window.
-* **Thời Gian Chuẩn Bị Context**: Chỉ **$0.15\text{ ms}$**, đảm bảo SLA phản hồi hội thoại luôn dưới $25\text{s}$.
+#### B. Kết Quả Suite `eval.run` & Hiệu Năng Thành Phần:
+* **Guardrail (`137 ca`):** Recall tấn công ngoài nhóm HARD đạt **`100.0%` (`83/83`)** (tính cả 4 ca nhóm HARD là `95.4%`, `83/87`); tỷ lệ chặn nhầm câu hợp lệ **`0.0%` (`0/40`)** với chi phí **$0$ token LLM**.
+* **Grounding (`600 ca` tổng hợp, seed 7):** Phát hiện lỗi tiêm vào **`100.0%` (`480/480`)** trên 8 loại lỗi (ID giả, giá sai định dạng `k`/`tr`/`triệu`/`đ`, diện tích, khoảng cách, tiền cọc); gắn cờ nhầm câu sạch **`0.0%` (`0/120`)**.
+* **Độ ổn định & Trajectory (`agent_eval`, `k=3`):** `pass^3 = 100.0%` (**`15/15` cases**), tỷ lệ đạt Trajectory **`100.0%` (`45/45`)**, DoD Verifier **`100.0%` (`33/33`)**, không có case bất ổn định.
+* **Độ trễ xử lý nội tại (200 lượt sau 20 warm-up, không gồm LLM/IO):** **p50 = `0.369 ms`**, **p95 = `0.695 ms`**, **max = `0.951 ms`** (ngân sách p95 $\le 10\text{ ms}$); nén payload chi tiết giảm **`89.5%`**.
+
+#### C. Thực Nghiệm Ablation Study End-to-End (`eval.run ablation` — 10 kịch bản, 17 lượt/cấu hình):
+
+| Chỉ số | `B_+NLU` | `C_+constrained` | `D_+verify_no_retry` | `E_full` (Production) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Tỉ lệ kiểm tra đạt (Checks)** | `100.0% (39/39)` | `100.0% (39/39)` | `100.0% (39/39)` | **`100.0% (39/39)`** |
+| **Lượt bị cờ lỗi ở nháp đầu** | `8.3% (1/12)` | `0.0% (0/12)` | `16.7% (2/12)` | **`8.3% (1/12)`** |
+| **Lỗi lọt tới tay người dùng** | `8.3% (1/12)` | `0.0% (0/12)` | `0.0% (0/12)` | **`0.0% (0/12)`** |
+| **Phải fallback câu trả lời mẫu** | `0.0% (0/12)` | `0.0% (0/12)` | `16.7% (2/12)` | **`0.0% (0/12)`** |
+| **Số lời gọi LLM / lượt (TB)** | `1.12` | `1.59` | `1.59` | `1.71` |
+| **Token ước lượng / lượt (TB)** | `2,435` | `3,420` | `3,422` | `3,483` |
+| **Độ trễ thực p50 / p95 (s)** | `5.80 / 6.68` | `5.64 / 6.94` | `5.79 / 6.51` | `5.80 / 8.68` |
+
+> **Nhận xét Ablation:** Cấu hình thiếu kiểm chứng (`B_+NLU`) để lọt **`8.3% (1/12)`** lượt có lỗi tới tay người dùng; cấu hình có kiểm chứng nhưng tắt self-heal (`D_+verify_no_retry`) chặn được lỗi lọt nhưng phải fallback câu trả lời mẫu **`16.7% (2/12)`** lượt; cấu hình đầy đủ **`E_full`** tự sửa thành công nháp đầu bị cờ lỗi, giữ **cả hai tỷ lệ lỗi tới user và tỷ lệ fallback đều ở mức `0.0% (0/12)`**.
+
+> 📄 Xem **Báo cáo tổng hợp đầy đủ** (AI Agent + Ablation + ML v2 + Khung Human Eval chờ số liệu mới) tại [`docs/evaluation/reports/2026-11-evaluation-summary.md`](docs/evaluation/reports/2026-11-evaluation-summary.md) và file kết quả thô [`ai-agent/eval_results/report.md`](ai-agent/eval_results/report.md).
 
 ---
 

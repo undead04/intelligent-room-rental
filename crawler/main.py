@@ -14,6 +14,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+from crawler.config import settings
 from crawler.spiders.nhatot import NhaTotSpider
 from crawler.spiders.phongtro123 import PhongTro123Spider
 from crawler.etl.pipeline import run_pipeline
@@ -92,8 +93,8 @@ def main():
         "--region",
         type=str,
         default="all",
-        choices=["hcm", "hanoi", "danang", "binhduong", "dongnai", "cantho", "all"],
-        help="Khu vực cào (mặc định: 'hcm')."
+        choices=[*settings.REGIONS.keys(), "all"],
+        help=f"Khu vực cào (mặc định: 'all' - gồm {', '.join(settings.REGIONS.keys())})."
     )
     parser.add_argument(
         "--mode",

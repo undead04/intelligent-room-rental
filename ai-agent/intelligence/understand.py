@@ -24,7 +24,12 @@ from intelligence.nlu import (
     sanitize_user_text,
 )
 from utils.text import norm_key, strip_accents
-from tools.location_service import _PLACE_HINTS, infer_region_from_location_text
+from tools.location_service import (
+    _PLACE_HINTS,
+    find_poi_in_text,
+    infer_region_from_location_text,
+    lookup_local_poi_candidates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +63,86 @@ class TurnPlan:
     final_text: Optional[str] = None
     blocked_reason: Optional[str] = None
     vague_location_info: Optional[dict[str, Any]] = None
+    skill_context: Optional[dict[str, Any]] = None
+    current_task: Optional[str] = None
+    pending_tasks: list[str] = field(default_factory=list)
     commit: bool = False                # True => wrapper ghi preferences/multipliers vào session
     semantic_query: Optional[str] = None
 
 
+def _build_skill_context(analysis: TurnAnalysis, user_text: str, pref: UserPreferenceState) -> Optional[dict[str, Any]]:
+    """Tạo ngữ cảnh riêng cho skill cần tra cứu theo địa danh (không ghi đè session.preferences)."""
+    if analysis.skill_slug != "market-price-advisor":
+        return None
+    loc_text = (analysis.patch.location_text or "").strip() or None
+    loc_kind = analysis.patch.location_kind
+    loc_region = (analysis.patch.location_region or "").strip() or None
+    if not loc_text and pref.location_text:
+        clean_q = strip_accents(sanitize_user_text(user_text)).lower()
+        if re.search(r"\b(?:o day|o do|khu nay|khu do|khu vuc nay|khu vuc do|quan nay|cho nay|cho do)\b", clean_q):
+            loc_text = pref.location_text
+            loc_kind = pref.location_kind
+    room_type = (
+        analysis.patch.allowed_room_types[0].value
+        if len(analysis.patch.allowed_room_types) == 1
+        else None
+    )
+    return {
+        "location_text": loc_text,
+        "location_kind": loc_kind,
+        "location_region": loc_region,
+        "room_type": room_type,
+    }
+
+
 def _rooms_brief(rooms: list) -> str:
     return "; ".join(f"Top {r.rank}: {r.title} ({r.price})" for r in rooms[:5])
+
+
+_SEARCH_ORDER_RE = re.compile(
+    r"\b(?:tim(?:\s+(?:phong|nha|can|giup|cho|them|moi|o|gan|khu|sang|ben))?|doi\s+sang|chuyen\s+sang|loc|kiem\s+(?:phong|cho)|tim\s+lai|goi\s+y|de\s+xuat)\b",
+    re.I,
+)
+_FOLLOWUP_ORDER_RE = re.compile(
+    r"\b(?:(?:phong|can)\s+(?:so|thu|dau(?:\s+tien)?|top|nay|do|kia|vua\s+tim|\d+)\b|top\s*\d+\b|(?:xem|check|coi|kiem\s+tra|hoi)\s+(?:chi\s+tiet|them\s+ve|giup)?\s*(?:phong|can)|dien\s+nuoc|tien\s+coc|chu\s+nha|chu\s+tro)",
+    re.I,
+)
+_ADVISORY_ORDER_RE = re.compile(
+    r"\b(?:tu\s+van|hop\s+dong|phap\s+ly|cam\s+nang|kinh\s+nghiem|quyen\s+loi|dat\s+coc|hoan\s+coc|luu\s+y(?:\s+gi|\s+khi)?|gia\s+(?:phong(?:\s+tro)?\s+)?trung\s+binh|mat\s+bang\s+gia|thong\s+ke\s+gia|gia\s+ca)\b",
+    re.I,
+)
+
+
+def _plan_multi_intent_order(
+    user_text: str,
+    intent: str,
+    *,
+    has_followup: bool,
+    has_search: bool,
+    has_advisory: bool,
+    has_old_rooms: bool,
+) -> list[str]:
+    """Sắp xếp danh sách tác vụ đa mệnh lệnh theo đúng thứ tự mệnh đề trong câu người dùng."""
+    clean = strip_accents(sanitize_user_text(user_text)).lower()
+    fallback_base = len(clean) + 10
+    m_search = _SEARCH_ORDER_RE.search(clean)
+    m_follow = _FOLLOWUP_ORDER_RE.search(clean)
+    m_adv = _ADVISORY_ORDER_RE.search(clean)
+
+    pos: dict[str, int] = {}
+    if has_search:
+        pos["search"] = m_search.start() if m_search else (-1 if intent in ("new_search", "refine_search") else fallback_base + 1)
+    if has_followup:
+        pos["followup"] = m_follow.start() if m_follow else (-1 if intent == "room_followup" else fallback_base + 2)
+    if has_advisory:
+        pos["advisory"] = m_adv.start() if m_adv else (-1 if intent == "skill_advice" else fallback_base + 3)
+
+    if "followup" in pos:
+        search_before_followup = ("search" in pos) and (pos["search"] < pos["followup"])
+        if not has_old_rooms and not search_before_followup:
+            pos.pop("followup")
+
+    return [task for task, _ in sorted(pos.items(), key=lambda kv: kv[1])]
 
 
 def _build_multi_intent_reply(
@@ -152,6 +231,47 @@ def _build_revert_preferences(
     return pref
 
 
+def _match_pending_ambiguous_candidate(
+    user_text: str,
+    patch_location: Optional[str],
+    pending_cands: list[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    """Khớp lựa chọn của user với 1 ứng viên trong danh sách ambiguous vừa hỏi (theo STT hoặc tên riêng)."""
+    if not pending_cands:
+        return None
+
+    clean_u = norm_key(sanitize_user_text(user_text))
+    # 1. Chọn theo số thứ tự / từ chỉ định vị trí ('1', 'số 2', 'cái đầu')
+    m_idx = re.fullmatch(r"(?:chon|lay|so|thu|cai(?:\s+thu)?|phuong\s+an|lua\s+chon)?\s*([1-5])", clean_u)
+    if m_idx:
+        idx = int(m_idx.group(1)) - 1
+        if 0 <= idx < len(pending_cands):
+            return pending_cands[idx]
+    if re.fullmatch(r"(?:cai|phuong\s+an)?\s*(?:dau|dau\s+tien|thu\s+nhat)", clean_u):
+        return pending_cands[0]
+
+    # 2. Khớp theo tên ứng viên (vd bấm chip follow-up hoặc gõ đúng 1 ứng viên duy nhất)
+    probes = [p for p in (norm_key(patch_location or ""), clean_u) if p and len(p) >= 2]
+    for probe in probes:
+        exact_hits = [c for c in pending_cands if norm_key(str(c.get("name") or "")) == probe]
+        if len(exact_hits) == 1:
+            return exact_hits[0]
+        # Trường hợp user bấm chip bị cắt bởi '...' hoặc gõ phân đoạn đủ dài của tên/địa chỉ
+        partial_hits = []
+        for c in pending_cands:
+            c_name = norm_key(str(c.get("name") or ""))
+            c_addr = norm_key(str(c.get("address") or ""))
+            if not c_name:
+                continue
+            if (len(probe) >= 4 and (probe in c_name or probe in c_addr)) or (
+                len(c_name) >= 4 and c_name in probe
+            ):
+                partial_hits.append(c)
+        if len(partial_hits) == 1:
+            return partial_hits[0]
+    return None
+
+
 def interpret_turn(
     user_text: str,
     session: Any,
@@ -233,25 +353,45 @@ def interpret_turn(
         reason = "PROMPT_INJECTION_DETECTED" if intent == "prompt_injection" else "OFF_TOPIC_QUERY"
         return plan(blocked_reason=reason, final_text=SAFE_TEXT[reason])
 
-    # 1.5) Chặn mềm Đa Mệnh Lệnh (Multi-Intent Soft Guardrail): lưu sẵn tiêu chí và phản hồi tự nhiên
+    # 1.5) Lập kế hoạch thực thi tuần tự cho Đa Mệnh Lệnh (Plan & Execute):
+    # Sắp xếp tự do theo đúng thứ tự mệnh đề user yêu cầu (hỗ trợ mọi hoán vị followup / search / advisory).
+    multi_tasks: list[str] = []
+    multi_has_followup = False
+    multi_has_search = False
+    multi_has_advisory = False
     if getattr(analysis, "is_multi_intent", False):
-        has_patch = not analysis.patch.is_empty()
-        pref = apply_patch(pref0, analysis.patch) if has_patch else pref0
-        mult = apply_priorities(mult0, analysis.priorities, reset=analysis.reset_priorities) if has_patch else mult0
-        explanations = [r for r in analysis.priority_reasons if r][:3] if has_patch else []
-        reply_text = _build_multi_intent_reply(analysis, skills, has_patch)
-        return plan(
-            preferences=pref,
-            multipliers=mult,
-            weight_explanations=explanations,
-            direct_reply=True,
-            needs_clarification=True,
-            final_text=reply_text,
-            commit=has_patch,
+        followup_requested = (analysis.referenced_room_rank is not None or intent == "room_followup")
+        multi_has_advisory = bool(analysis.skill_slug)
+        multi_has_search = (not analysis.patch.is_empty()) or (
+            intent in ("new_search", "refine_search") and not followup_requested and not multi_has_advisory
         )
+        multi_tasks = _plan_multi_intent_order(
+            user_text,
+            intent,
+            has_followup=followup_requested,
+            has_search=multi_has_search,
+            has_advisory=multi_has_advisory,
+            has_old_rooms=bool(rooms),
+        )
+        multi_has_followup = "followup" in multi_tasks
+
+        if multi_tasks and not multi_has_search:
+            focus_rank = (
+                analysis.referenced_room_rank
+                if analysis.referenced_room_rank is not None
+                else (getattr(session, "focused_room_rank", None) or 1)
+            )
+            return plan(
+                matched_skill=analysis.skill_slug if multi_has_advisory else None,
+                skill_context=_build_skill_context(analysis, user_text, pref0) if multi_has_advisory else None,
+                is_followup=(multi_tasks[0] == "followup"),
+                focus_rank=focus_rank if multi_has_followup else None,
+                current_task=multi_tasks[0],
+                pending_tasks=multi_tasks[1:],
+            )
 
     # 2) Hỏi tiếp về phòng đã đề xuất
-    if intent == "room_followup":
+    if intent == "room_followup" and not multi_tasks:
         if not rooms:
             # Chưa có phòng nào được đề xuất trong phiên -> chuyển sang hỏi làm rõ nhu cầu
             return plan(needs_clarification=True)
@@ -263,8 +403,8 @@ def interpret_turn(
         return plan(is_followup=True, focus_rank=current_focus or 1)
 
     # 3) Tư vấn kỹ năng
-    if intent == "skill_advice":
-        return plan(matched_skill=analysis.skill_slug)
+    if intent == "skill_advice" and not multi_tasks:
+        return plan(matched_skill=analysis.skill_slug, skill_context=_build_skill_context(analysis, user_text, pref0))
 
     # 4) Chào hỏi / mơ hồ -> để clarification_node trả lời
     if intent == "smalltalk":
@@ -326,12 +466,31 @@ def interpret_turn(
         pref = apply_patch(base_pref, analysis.patch)
         mult = apply_priorities(mult0, analysis.priorities, reset=analysis.reset_priorities)
 
-        # Kết hợp lại với địa danh đang hỏi dở (ambiguous) nếu lượt này user chỉ trả lời ngắn quận/tỉnh/cơ sở
+        # Kết hợp lại với địa danh đang hỏi dở (ambiguous) nếu lượt này user chọn 1 ứng viên hoặc trả lời ngắn quận/tỉnh/cơ sở
         pending_loc = getattr(session, "pending_ambiguous_location", None)
+        pending_cands = list(getattr(session, "pending_ambiguous_candidates", []) or [])
         is_pivot = bool(
             re.search(r"\b(?:thoi|doi\s+sang|khong\s+tim|tim\s+cho\s+khac|khu\s+khac|chuyen\s+sang|bo\s+qua)\b", clean_user_text)
         )
-        if pending_loc and not is_pivot:
+        matched_cand = (
+            _match_pending_ambiguous_candidate(user_text, analysis.patch.location_text, pending_cands)
+            if (pending_cands and not is_pivot)
+            else None
+        )
+        if matched_cand is not None:
+            cand_name = str(matched_cand.get("name") or pending_loc or user_text).strip()
+            if matched_cand.get("lat") is not None and matched_cand.get("lng") is not None:
+                pref.set_location(cand_name, kind="place")
+                pref.lat = float(matched_cand["lat"])
+                pref.lng = float(matched_cand["lng"])
+                explanations.append(f"chọn đúng tọa độ ứng viên '{cand_name}' từ danh sách gợi ý")
+            elif pending_loc and norm_key(pending_loc) not in norm_key(cand_name):
+                pref.set_location(f"{pending_loc}, {cand_name}", kind="place")
+                explanations.append(f"ghép '{pending_loc}' với lựa chọn '{cand_name}'")
+            else:
+                pref.set_location(cand_name, kind="admin" if matched_cand.get("level") else None)
+                explanations.append(f"chọn ứng viên '{cand_name}' từ danh sách gợi ý")
+        elif pending_loc and not is_pivot:
             new_loc = (analysis.patch.location_text or "").strip()
             loc_region = (analysis.patch.location_region or "").strip()
             if new_loc and norm_key(pending_loc) not in norm_key(new_loc):
@@ -352,37 +511,79 @@ def interpret_turn(
                 explanations.append(f"ghép địa điểm đang làm rõ '{pending_loc}' với '{loc_region}'")
     explanations.extend([r for r in analysis.priority_reasons if r][:3])
 
-    # Xử lý ưu tiên giá rẻ ("rẻ hơn", "hạ giá") khi người dùng không nêu con số cụ thể
-    cheaper_kws = ("re hon", "re nua", "ha gia", "giam gia", "bot tien", "tiet kiem hon", "thap hon")
-    is_asking_cheaper = _has_unnegated_keyword(clean_user_text, cheaper_kws)
-    if is_asking_cheaper and analysis.patch.max_price is None:
-        mult["price"] = max(mult.get("price", 1.0), 2.0)
-        explanations.append("ưu tiên tìm các phòng có giá rẻ nhất trong ngân sách đã đặt")
-
-    # Xử lý ưu tiên phòng tiện nghi hơn ("đắt hơn", "mắc hơn", "phòng xịn hơn") khi người dùng không nêu con số cụ thể
-    higher_kws = (
-        "dat hon", "mac hon", "noi gia", "tang ngan sach", "tang gia", "cao hon",
-        "phong xin hon", "phong dep hon", "phong cao cap hon"
-    )
-    is_asking_higher = _has_unnegated_keyword(clean_user_text, higher_kws)
-    if is_asking_higher and analysis.patch.max_price is None:
-        mult["amenity"] = max(mult.get("amenity", 1.0), 1.8)
-        explanations.append("ưu tiên tìm các phòng có độ tiện nghi cao nhất trong ngân sách")
+    is_vague_loc = bool(analysis.patch.location_is_vague)
+    if is_vague_loc:
+        if pref.has_point:
+            is_vague_loc = False
+        else:
+            # Nếu LLM lỡ đánh nhầm địa danh có tên riêng (vd 'KCN Amata Biên Hòa') là location_is_vague -> giải cứu sang tìm kiếm ngay
+            patch_loc = (analysis.patch.location_text or "").strip()
+            if patch_loc and (
+                lookup_local_poi_candidates(patch_loc, analysis.patch.location_region)
+                or analysis.patch.location_kind == "place"
+            ):
+                pref.set_location(patch_loc, kind=analysis.patch.location_kind or "place")
+                is_vague_loc = False
+            elif pref.location_text and (
+                lookup_local_poi_candidates(pref.location_text, analysis.patch.location_region)
+                or analysis.patch.location_kind == "place"
+            ):
+                is_vague_loc = False
+            else:
+                matched_poi = find_poi_in_text(user_text, analysis.patch.location_region)
+                if matched_poi:
+                    pref.set_location(matched_poi, kind="place")
+                    is_vague_loc = False
+                elif analysis.patch.vague_category and lookup_local_poi_candidates(
+                    analysis.patch.vague_category, analysis.patch.location_region
+                ):
+                    pref.set_location(analysis.patch.vague_category, kind="place")
+                    is_vague_loc = False
 
     vague_info = None
-    if analysis.patch.location_is_vague:
+    if is_vague_loc:
         vague_info = {"category": analysis.patch.vague_category, "region": analysis.patch.location_region}
     elif analysis.patch.location_region:
         vague_info = {"category": None, "region": analysis.patch.location_region}
 
     has_loc = bool(pref.location_text or pref.has_point or pref.district_id or pref.city_id)
     has_budget = bool(pref.max_price or pref.min_price)
-    if analysis.patch.location_is_vague:
+    if is_vague_loc:
         needs_clarify = True
     elif has_history:
         needs_clarify = False
     else:
         needs_clarify = not has_loc and not has_budget and not pref.amenities
+
+    if multi_tasks:
+        followup_after_search = (
+            "search" in multi_tasks
+            and "followup" in multi_tasks
+            and multi_tasks.index("search") < multi_tasks.index("followup")
+        )
+        focus_rank = (
+            (
+                analysis.referenced_room_rank
+                if analysis.referenced_room_rank is not None
+                else (1 if followup_after_search else (getattr(session, "focused_room_rank", None) or 1))
+            )
+            if multi_has_followup
+            else None
+        )
+        return plan(
+            preferences=pref,
+            multipliers=mult,
+            weight_explanations=explanations,
+            needs_clarification=needs_clarify,
+            vague_location_info=vague_info,
+            matched_skill=analysis.skill_slug if multi_has_advisory else None,
+            skill_context=_build_skill_context(analysis, user_text, pref) if multi_has_advisory else None,
+            is_followup=(multi_tasks[0] == "followup"),
+            focus_rank=focus_rank,
+            current_task=multi_tasks[0],
+            pending_tasks=multi_tasks[1:],
+            commit=commit,
+        )
 
     return plan(
         preferences=pref,

@@ -254,26 +254,26 @@ def test_everything_degrades_when_llm_is_unavailable():
     assert r2.text_reply and r2.need_clarification
 
 
-def test_multi_intent_soft_guardrail_saves_criteria_and_replies_naturally_without_buttons():
-    compound_turn = nlu("new_search", location_text="UIT", location_kind="place", max_price=3_500_000, amenities_add=["ml"]).model_copy(
-        update={"skill_slug": SKILL.slug}
-    )
-    next_turn = nlu("refine_search")
-    llm = FakeLLM().on("TurnAnalysis", compound_turn, next_turn).on("Advice", GOOD_ADVICE)
+def test_multi_turn_compound_executes_search_then_advisory_in_one_turn():
+    compound_turn = nlu(
+        "new_search",
+        location_text="UIT",
+        location_kind="place",
+        max_price=3_500_000,
+        amenities_add=["ml"],
+        semantic_query="phòng trọ gần UIT dưới 3.5 triệu có máy lạnh",
+    ).model_copy(update={"skill_slug": SKILL.slug})
+    advisory_reply = "Về hợp đồng thuê trọ, bạn cần kiểm tra kỹ điều khoản hoàn trả tiền cọc và thời hạn báo trước 30 ngày."
+    llm = FakeLLM().on("TurnAnalysis", compound_turn).on("Advice", GOOD_ADVICE).on("text", advisory_reply)
     h = Harness(llm, THREE)
 
-    # Lượt 1: Người dùng nhập gộp vừa tìm phòng vừa hỏi cẩm nang hợp đồng
     r1 = h.turn("tìm phòng gần UIT dưới 3.5 triệu có máy lạnh, tiện hỏi hợp đồng đặt cọc cần lưu ý gì?")
-    assert r1.rooms == [] and h.search_calls == [] and h.skill_calls == []
-    assert r1.need_clarification is True
-    assert r1.follow_up_questions == []   # không sinh nút bấm máy móc, trả lời bằng đoạn chat tự nhiên
-    assert "ghi nhận sẵn các tiêu chí tìm phòng" in r1.text_reply
-    assert h.session.preferences.location_text == "UIT" and h.session.preferences.max_price == 3_500_000
-
-    # Lượt 2: Người dùng nhắn tự nhiên "tìm phòng trước giúp mình nhé" -> dùng ngay tiêu chí đã lưu ở lượt 1
-    r2 = h.turn("tìm danh sách phòng trọ trước giúp mình nhé")
-    assert len(r2.rooms) == 3 and len(h.search_calls) == 1
+    assert len(r1.rooms) == 3 and len(h.search_calls) == 1 and len(h.skill_calls) == 1
+    assert r1.searched is True
     assert h.search_calls[0]["max_price"] == 3_500_000 and h.search_calls[0]["amenities"] == ["aircon"]
+    assert "mình tìm được vài phòng" in r1.text_reply.lower()
+    assert "hoàn trả tiền cọc" in r1.text_reply
+    assert h.session.preferences.location_text == "UIT" and h.session.preferences.max_price == 3_500_000
 
 
 def test_multi_turn_skill_advisory_passes_compact_history_and_preserves_kv_cache_prefix():

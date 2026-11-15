@@ -63,12 +63,27 @@ def test_clear_guardrail_protects_all_six_groups():
 
 
 def test_budget_adjustment_two_way_cheaper_and_higher():
-    """Kiểm tra ưu tiên 2 chiều: 'rẻ hơn' (tăng trọng số giá, giữ nguyên ngân sách) và 'phòng xịn hơn' (tăng trọng số tiện nghi, giữ nguyên ngân sách)."""
+    """Kiểm tra ưu tiên 2 chiều do NLU LLM quyết định theo ngữ cảnh, không bị keyword cứng ép trọng số."""
     session = SessionData("test_budget_adj")
     session.preferences = UserPreferenceState(location_text="UIT", max_price=4_000_000.0)
 
-    # 1. Người dùng nói "rẻ hơn nữa nha" -> Giữ nguyên ngân sách 4tr, tăng multiplier giá = 2.0
-    fake_model = FakeLLM().on(
+    # 1. NLU hiểu ý định tìm rẻ hơn -> đặt priorities.price='high', giữ nguyên ngân sách 4tr, multiplier giá = 2.0
+    model_cheaper = FakeLLM().on(
+        TurnAnalysis,
+        TurnAnalysis(
+            intent="refine_search",
+            patch=PreferencePatch(),
+            priorities=Priorities(price="high"),
+            priority_reasons=["ưu tiên tìm phòng giá rẻ hơn trong ngân sách hiện tại"],
+        ),
+    )
+    plan_cheaper = interpret_turn("tìm phòng rẻ hơn nữa nha", session, model_cheaper)
+    assert plan_cheaper.preferences.max_price == 4_000_000.0
+    assert plan_cheaper.multipliers.get("price") == 2.0
+    assert any("giá rẻ" in exp for exp in plan_cheaper.weight_explanations)
+
+    # 2. Câu chỉ so sánh/than phiền có chữ 'mắc hơn' nhưng NLU không tăng priorities -> không tự ép amenity=1.8
+    model_complaint = FakeLLM().on(
         TurnAnalysis,
         TurnAnalysis(
             intent="refine_search",
@@ -76,16 +91,23 @@ def test_budget_adjustment_two_way_cheaper_and_higher():
             priorities=Priorities(),
         ),
     )
-    plan_cheaper = interpret_turn("tìm phòng rẻ hơn nữa nha", session, fake_model)
-    assert plan_cheaper.preferences.max_price == 4_000_000.0
-    assert plan_cheaper.multipliers.get("price") == 2.0
-    assert any("ưu tiên tìm các phòng có giá rẻ nhất trong ngân sách đã đặt" in exp for exp in plan_cheaper.weight_explanations)
+    plan_complaint = interpret_turn("khu này mắc hơn quận 12 nhỉ, tìm tiếp xem sao", session, model_complaint)
+    assert plan_complaint.preferences.max_price == 4_000_000.0
+    assert plan_complaint.multipliers.get("amenity") == 1.0
 
-    # 2. Người dùng nói "nới giá lên xíu phòng xịn hơn cũng được" -> Giữ nguyên ngân sách, tăng multiplier tiện nghi = 1.8
-    plan_higher = interpret_turn("nới giá lên xíu phòng xịn hơn cũng được", session, fake_model)
+    # 3. NLU hiểu ý định nâng chất lượng tiện nghi -> đặt priorities.amenity='high' (2.0)
+    model_higher = FakeLLM().on(
+        TurnAnalysis,
+        TurnAnalysis(
+            intent="refine_search",
+            patch=PreferencePatch(),
+            priorities=Priorities(amenity="high"),
+            priority_reasons=["ưu tiên phòng tiện nghi tốt hơn trong ngân sách"],
+        ),
+    )
+    plan_higher = interpret_turn("tìm phòng xịn hơn có nhiều nội thất chút", session, model_higher)
     assert plan_higher.preferences.max_price == 4_000_000.0
-    assert plan_higher.multipliers.get("amenity") == 1.8
-    assert any("ưu tiên tìm các phòng có độ tiện nghi cao nhất trong ngân sách" in exp for exp in plan_higher.weight_explanations)
+    assert plan_higher.multipliers.get("amenity") == 2.0
 
 
 def test_session_focus_rank_retention_and_persistence(tmp_path):

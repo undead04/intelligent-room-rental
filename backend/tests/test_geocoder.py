@@ -1,7 +1,7 @@
 """Black-box tests cho module Geocoding (Backend /geocode & GeocodeCache).
 
 Bao phủ 4 nhóm theo chuẩn rigorous-testing:
-1. Happy Path: 6 vùng hỗ trợ, Nominatim, Photon fallback, Goong API hook, FastAPI endpoint.
+1. Happy Path: 6 vùng hỗ trợ, TrackAsia (ưu tiên VN) -> Nominatim fallback, FastAPI endpoint.
 2. Boundary & Edge Cases: Region Bounding-Box rejection, gom cụm 500m (<=500m vs >500m), ngoại biên VN.
 3. State Mutation & Cache Isolation: Tách key (query_norm, hint_norm), không nhiễm bẩn copy, không cache lỗi.
 4. Persistence & TTL: SQLite bền vững qua restart (`GeocodeCache` instance mới) và hết hạn TTL.
@@ -33,7 +33,7 @@ def isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> GeocodeCa
     cache = GeocodeCache(db_path=db_file, ttl_seconds=3600)
     monkeypatch.setattr(geocoder, "GEOCODE_CACHE_DB_PATH", db_file)
     monkeypatch.setattr(geocoder, "_default_cache", cache)
-    monkeypatch.setattr(settings, "GOONG_API_KEY", None)
+    monkeypatch.setattr(settings, "TRACKASIA_API_KEY", None)
     return cache
 
 
@@ -84,8 +84,10 @@ def test_six_regions_bbox_sanity_and_lang_dh_overlap() -> None:
     assert is_in_region_bbox(10.87, 106.80, "Bình Dương")
 
 
-def test_resolve_location_nominatim_single_hit_and_photon_fallback(isolated_cache: GeocodeCache) -> None:
-    # 1. Nominatim trả 1 điểm hợp lệ trong Đà Nẵng
+def test_resolve_location_trackasia_priority_and_nominatim_fallback(
+    isolated_cache: GeocodeCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 1. Nominatim trả 1 điểm hợp lệ trong Đà Nẵng (khi chưa bật TrackAsia)
     nominatim_ok = _mock_http_response(
         200,
         [{"lat": "16.0748", "lon": "108.1510", "name": "ĐH Bách Khoa Đà Nẵng", "display_name": "ĐH Bách Khoa, Liên Chiểu, Đà Nẵng, Việt Nam"}],
@@ -98,56 +100,71 @@ def test_resolve_location_nominatim_single_hit_and_photon_fallback(isolated_cach
     assert res.lon == pytest.approx(108.1510)
     assert res.provider == "Nominatim OSM"
 
-    # 2. Nominatim 503 -> Photon fallback trả điểm ở Cần Thơ
-    def _fallback_get(url: str, **kwargs):
-        if "nominatim" in url:
+    # 2. Khi bật TrackAsia nhưng TrackAsia lỗi 503 -> fallback sang Nominatim trả điểm ở Cần Thơ
+    monkeypatch.setattr(settings, "TRACKASIA_API_KEY", "test-trackasia-key")
+
+    def _trackasia_to_nominatim_fallback(url: str, **kwargs):
+        if "maps.track-asia.com" in url:
             return _mock_http_response(503, {})
+        assert "nominatim.openstreetmap.org" in url
         return _mock_http_response(
             200,
-            {
-                "features": [
-                    {
-                        "geometry": {"coordinates": [105.7706, 10.0299]},
-                        "properties": {"countrycode": "VN", "name": "ĐH Cần Thơ", "district": "Ninh Kiều", "city": "Cần Thơ"},
-                    }
-                ]
-            },
+            [{"lat": "10.0299", "lon": "105.7706", "name": "ĐH Cần Thơ", "display_name": "ĐH Cần Thơ, Ninh Kiều, Cần Thơ, Việt Nam"}],
         )
 
-    with patch("app.services.geocoder._session.get", side_effect=_fallback_get):
+    with patch("app.services.geocoder._session.get", side_effect=_trackasia_to_nominatim_fallback):
         res_ct = resolve_location("Đại học Cần Thơ", "Cần Thơ", cache=isolated_cache)
     assert res_ct is not None
-    assert res_ct.provider == "Photon Komoot"
+    assert res_ct.provider == "Nominatim OSM"
     assert res_ct.lat == pytest.approx(10.0299)
     assert res_ct.lon == pytest.approx(105.7706)
 
 
-def test_goong_optional_hook_used_when_api_key_present(
+def test_trackasia_textsearch_resolves_vn_poi_and_broad_area(
     isolated_cache: GeocodeCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(settings, "GOONG_API_KEY", "test-goong-key")
+    """TrackAsia Text Search v2 (new_admin=true) giải quyết cả KCN và khu vực dân gian rộng trong 1 request."""
+    monkeypatch.setattr(settings, "TRACKASIA_API_KEY", "test-trackasia-key")
 
-    def _goong_get(url: str, **kwargs):
-        assert "rsapi.goong.io" in url
-        assert kwargs["params"]["api_key"] == "test-goong-key"
+    def _trackasia_get(url: str, **kwargs):
+        assert "maps.track-asia.com/api/v2/place/textsearch/json" in url
+        assert kwargs["params"]["key"] == "test-trackasia-key"
+        assert kwargs["params"]["new_admin"] == "true"
+        q = kwargs["params"]["query"]
+        if "Amata" in q:
+            return _mock_http_response(
+                200,
+                {
+                    "results": [
+                        {
+                            "name": "KCN Amata",
+                            "formatted_address": "KCN Amata, Phường Long Bình, Tỉnh Đồng Nai",
+                            "geometry": {"location": {"lat": 10.9542, "lng": 106.9019}},
+                        }
+                    ]
+                },
+            )
         return _mock_http_response(
             200,
             {
                 "results": [
                     {
-                        "name": "KCN Amata",
-                        "formatted_address": "KCN Amata, Biên Hòa, Đồng Nai",
-                        "geometry": {"location": {"lat": 10.9465, "lng": 106.8852}},
+                        "name": "Làng Đại học",
+                        "formatted_address": "Làng Đại học, Phường Đông Hòa, Thành phố Hồ Chí Minh",
+                        "geometry": {"location": {"lat": 10.88756, "lng": 106.78085}},
                     }
                 ]
             },
         )
 
-    with patch("app.services.geocoder._session.get", side_effect=_goong_get):
-        res = resolve_location("KCN Amata", "Đồng Nai", cache=isolated_cache)
-    assert res is not None
-    assert res.provider == "Goong Maps"
-    assert res.lat == pytest.approx(10.9465)
+    with patch("app.services.geocoder._session.get", side_effect=_trackasia_get):
+        res_amata = resolve_location("KCN Amata", "Đồng Nai", cache=isolated_cache)
+        res_lang = resolve_location("Làng Đại học Hồ Chí Minh", "TP.HCM", cache=isolated_cache)
+    assert res_amata is not None and res_amata.provider == "TrackAsia"
+    assert res_amata.lat == pytest.approx(10.9542)
+    assert res_lang is not None and res_lang.provider == "TrackAsia"
+    assert res_lang.ambiguous is False
+    assert res_lang.lat == pytest.approx(10.88756)
 
 
 def test_controller_endpoint_returns_ambiguous_and_single(isolated_cache: GeocodeCache) -> None:
@@ -187,9 +204,9 @@ def test_region_bbox_rejects_wrong_province_instead_of_mismatching(isolated_cach
 
 def test_region_bbox_filters_mixed_top5_and_keeps_matching_region(isolated_cache: GeocodeCache) -> None:
     mixed = [
-        {"lat": "21.0050", "lon": "105.8430", "name": "Cơ sở Hà Nội", "display_name": "Hà Nội, Việt Nam"},
-        {"lat": "16.0748", "lon": "108.1510", "name": "Cơ sở Đà Nẵng", "display_name": "Đà Nẵng, Việt Nam"},
-        {"lat": "10.0299", "lon": "105.7706", "name": "Cơ sở Cần Thơ", "display_name": "Ninh Kiều, Cần Thơ, Việt Nam"},
+        {"lat": "21.0050", "lon": "105.8430", "name": "Văn phòng ABC Hà Nội", "display_name": "Văn phòng ABC, Hà Nội, Việt Nam"},
+        {"lat": "16.0748", "lon": "108.1510", "name": "Văn phòng ABC Đà Nẵng", "display_name": "Văn phòng ABC, Đà Nẵng, Việt Nam"},
+        {"lat": "10.0299", "lon": "105.7706", "name": "Văn phòng ABC Cần Thơ", "display_name": "Văn phòng ABC, Ninh Kiều, Cần Thơ, Việt Nam"},
     ]
     with patch("app.services.geocoder._session.get", return_value=_mock_http_response(200, mixed)):
         res = resolve_location("Văn phòng ABC", "Cần Thơ", cache=isolated_cache)
@@ -213,14 +230,45 @@ def test_clustering_500m_boundary_merges_close_nodes_and_splits_far_campuses(iso
 
     # Hai điểm cách ~700m (> 500m threshold) -> trả ambiguous=True kèm 2 ứng viên
     far_nodes = [
-        {"lat": "10.8700", "lon": "106.8030", "name": "Cơ sở A", "display_name": "Cơ sở A, Linh Trung, Thủ Đức, TP.HCM"},
-        {"lat": "10.8765", "lon": "106.8030", "name": "Cơ sở B", "display_name": "Cơ sở B, Linh Xuân, Thủ Đức, TP.HCM"},
+        {"lat": "10.8700", "lon": "106.8030", "name": "Cơ sở test 700m A", "display_name": "Cơ sở test 700m A, Linh Trung, Thủ Đức, TP.HCM"},
+        {"lat": "10.8765", "lon": "106.8030", "name": "Cơ sở test 700m B", "display_name": "Cơ sở test 700m B, Linh Xuân, Thủ Đức, TP.HCM"},
     ]
     with patch("app.services.geocoder._session.get", return_value=_mock_http_response(200, far_nodes)):
         res_ambig = resolve_location("Cơ sở test 700m", "TP.HCM", cache=isolated_cache)
     assert res_ambig is not None
     assert res_ambig.ambiguous is True
     assert len(res_ambig.candidates) == 2
+
+
+def test_rejects_irrelevant_provider_match_for_nonexistent_place(isolated_cache: GeocodeCache) -> None:
+    """Địa điểm không tồn tại nhưng API bản đồ trả kết quả rác vì chỉ khớp 'trường'/'đại học' -> BẮT BUỘC trả None/404."""
+    nominatim_junk = [
+        {"lat": "10.7935", "lon": "106.8591", "name": "Trường Đại học Luật TP.HCM", "display_name": "Trường Đại học Luật TP.HCM, TP Thủ Đức, TP.HCM, Việt Nam"},
+        {"lat": "10.7320", "lon": "106.6985", "name": "Trường Đại học Tôn Đức Thắng", "display_name": "Trường Đại học Tôn Đức Thắng, Quận 7, TP.HCM, Việt Nam"},
+        {"lat": "10.7921", "lon": "106.7317", "name": "Trường Đại học Giao thông Vận tải TP.HCM", "display_name": "Trường Đại học Giao thông Vận tải TP.HCM, TP Thủ Đức, TP.HCM, Việt Nam"},
+    ]
+
+    client = TestClient(app)
+    with patch("app.services.geocoder._session.get", return_value=_mock_http_response(200, nominatim_junk)):
+        res = resolve_location("trường đại học xyz không có thật", "TP.HCM", cache=isolated_cache)
+        http_res = client.get("/api/v1/geocode/", params={"q": "trường đại học xyz không có thật", "hint": "TP.HCM"})
+
+    assert res is None
+    assert http_res.status_code == 404
+
+
+def test_broad_area_merges_internal_nodes_without_ambiguous_list(isolated_cache: GeocodeCache) -> None:
+    """Khuôn viên/khu vực rộng lớn (vd Khu đô thị Ecopark / Làng ĐH) có các điểm cách ~1.5km -> gom 1 tâm duy nhất."""
+    broad_nodes = [
+        {"lat": "20.9610", "lon": "105.9300", "name": "Khu đô thị Ecopark - West Bay", "display_name": "Khu đô thị Ecopark, Văn Giang, Hà Nội, Việt Nam"},
+        {"lat": "20.9735", "lon": "105.9320", "name": "Khu đô thị Ecopark - Aqua Bay", "display_name": "Khu đô thị Ecopark, Văn Giang, Hà Nội, Việt Nam"},
+    ]
+    with patch("app.services.geocoder._session.get", return_value=_mock_http_response(200, broad_nodes)):
+        res = resolve_location("Khu đô thị Ecopark", "Hà Nội", cache=isolated_cache)
+
+    assert res is not None
+    assert res.ambiguous is False
+    assert res.lat == pytest.approx(20.9610)
 
 
 # ==============================================================================
@@ -234,7 +282,7 @@ def test_cache_isolates_hint_keys_and_never_caches_failures(isolated_cache: Geoc
 
     # 2. Gọi lại thành công cho (ĐH Kinh tế, Hà Nội) và tách biệt với (ĐH Kinh tế, TP.HCM)
     hn_payload = [{"lat": "21.0365", "lon": "105.7824", "name": "ĐH Kinh tế ĐHQGHN", "display_name": "Cầu Giấy, Hà Nội"}]
-    hcm_payload = [{"lat": "10.7854", "lon": "106.6949", "name": "UEH Cơ sở A", "display_name": "Quận 3, TP.HCM"}]
+    hcm_payload = [{"lat": "10.7854", "lon": "106.6949", "name": "UEH Cơ sở A (ĐH Kinh tế TP.HCM)", "display_name": "Quận 3, TP.HCM"}]
 
     with patch("app.services.geocoder._session.get", return_value=_mock_http_response(200, hn_payload)):
         r_hn = resolve_location("ĐH Kinh tế", "Hà Nội", cache=isolated_cache)

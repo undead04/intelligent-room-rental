@@ -71,7 +71,12 @@ def count_llm_calls(deps: Deps, stats: CallStats) -> Deps:
     return deps
 
 
-def run_scenarios(make_deps: Callable[[], Deps], scenarios: Optional[list[Scenario]] = None, flags: Optional[dict[str, Any]] = None) -> dict:
+def run_scenarios(
+    make_deps: Callable[[], Deps],
+    scenarios: Optional[list[Scenario]] = None,
+    flags: Optional[dict[str, Any]] = None,
+    pacing: float = 0.0,
+) -> dict:
     scenarios = scenarios or SCENARIOS
     turns: list[dict] = []
     for sc in scenarios:
@@ -124,6 +129,8 @@ def run_scenarios(make_deps: Callable[[], Deps], scenarios: Optional[list[Scenar
                 for name, _ in turn.checks:
                     row["checks"][name] = False
             turns.append(row)
+            if pacing > 0 and calls:
+                time.sleep(pacing * len(calls))
     return {"flags": flags or {}, "turns": turns, "summary": summarize_turns(turns)}
 
 
@@ -144,5 +151,13 @@ def summarize_turns(turns: list[dict]) -> dict:
     }
 
 
-def run_ablation(make_deps: Callable[[], Deps], scenarios: Optional[list[Scenario]] = None, configs: Optional[dict[str, dict[str, Any]]] = None) -> dict:
-    return {name: run_scenarios(make_deps, scenarios, flags) for name, flags in (configs or ABLATION_CONFIGS).items()}
+def run_ablation(
+    make_deps: Callable[[], Deps],
+    scenarios: Optional[list[Scenario]] = None,
+    configs: Optional[dict[str, dict[str, Any]]] = None,
+    pacing: float = 0.0,
+) -> dict:
+    return {
+        name: run_scenarios(make_deps, scenarios, flags, pacing=pacing)
+        for name, flags in (configs or ABLATION_CONFIGS).items()
+    }

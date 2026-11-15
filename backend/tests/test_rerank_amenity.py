@@ -54,20 +54,21 @@ def test_amenity_fit_fallback_overall():
 
 
 def test_dynamic_weights():
-    # Only price, safety, semantic active when no coords and no preferred amenities
+    # Basic (nói chung chung): price, safety, semantic + amenity mức nền nhẹ
     w_basic = _dynamic_weights({}, DEFAULT_WEIGHTS)
-    assert set(w_basic.keys()) == {"price", "safety", "semantic"}
+    assert set(w_basic.keys()) == {"price", "safety", "amenity", "semantic"}
     assert round(sum(w_basic.values()), 5) == 1.0
 
-    # Mandatory amenities alone -> amenity is NOT active in MCDM (already hard-filtered)
+    # Mandatory amenities alone -> amenity giữ nguyên mức nền nhẹ (không bị nâng lên 0.20)
     w_mandatory = _dynamic_weights({"amenities": ["aircon"]}, DEFAULT_WEIGHTS)
-    assert "amenity" not in w_mandatory
-    assert set(w_mandatory.keys()) == {"price", "safety", "semantic"}
+    assert set(w_mandatory.keys()) == {"price", "safety", "amenity", "semantic"}
+    assert w_mandatory["amenity"] == pytest.approx(w_basic["amenity"])
     assert round(sum(w_mandatory.values()), 5) == 1.0
 
-    # Preferred amenities requested -> amenity active
+    # Preferred amenities requested -> amenity bật mức đầy đủ (cao hơn mức nền)
     w_pref = _dynamic_weights({"preferred_amenities": ["aircon"]}, DEFAULT_WEIGHTS)
     assert "amenity" in w_pref
+    assert w_pref["amenity"] > w_basic["amenity"]
     assert round(sum(w_pref.values()), 5) == 1.0
 
     # AI Agent passes explicit amenity weight (e.g., user emphasized 'full nội thất') -> amenity active
@@ -75,14 +76,15 @@ def test_dynamic_weights():
     assert "amenity" in w_explicit
     assert round(sum(w_explicit.values()), 5) == 1.0
 
-    # Location provided -> location active
+    # Location provided -> location active, amenity giữ mức nền nhẹ (< 0.20)
     w_loc = _dynamic_weights({"lat": 10.8, "lng": 106.7}, DEFAULT_WEIGHTS)
     assert "location" in w_loc
-    assert "amenity" not in w_loc
+    assert "amenity" in w_loc
+    assert w_loc["amenity"] == pytest.approx(0.10 / 0.90)
 
-    # include_amenity_overall requested -> amenity active
+    # include_amenity_overall requested -> amenity bật mức đầy đủ (0.20 / 0.75)
     w_overall = _dynamic_weights({"include_amenity_overall": True}, DEFAULT_WEIGHTS)
-    assert "amenity" in w_overall
+    assert w_overall["amenity"] == pytest.approx(0.20 / 0.75)
 
 
 def test_rerank_with_candidates():

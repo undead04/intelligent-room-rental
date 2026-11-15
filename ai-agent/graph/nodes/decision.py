@@ -21,7 +21,10 @@ from intelligence.payload_builder import (
     build_decision_context_message,
     build_decision_query_message,
 )
-from prompts.decision_prompt import build_zero_result_user_prompt
+from prompts.decision_prompt import (
+    build_zero_result_system_prompt,
+    build_zero_result_user_prompt,
+)
 from tools.housing_tools import compact_listing_detail, dump, fetch_listing_detail
 from utils.text import extract_message_text
 
@@ -51,13 +54,23 @@ def followup_fallback_reply(room: Optional[Any], details: Optional[dict[str, Any
 
 
 def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: list, pref: UserPreferenceState, trace: Any) -> tuple[str, list[str]]:
-    """Hỏi tiếp về phòng đã đề xuất: agent có công cụ get_listing_detail; trả (văn bản, bằng chứng từ công cụ)."""
+    """Tư vấn tự do qua ReAct Decision Agent (cho cả hỏi tiếp chi tiết lẫn kết quả tìm mới khi constrained_generation=False)."""
     agent = deps.decision_agent() if deps.decision_agent else None
     if agent is None:
         return "", []
 
-    focus_rank = state.get("focus_rank") or getattr(session, "focused_room_rank", None) or 1
-    target_room = rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None)
+    is_followup = bool(state.get("is_followup"))
+    explicit_focus = state.get("focus_rank")
+    focus_rank: Optional[int] = (
+        explicit_focus
+        if explicit_focus is not None
+        else ((getattr(session, "focused_room_rank", None) or 1) if is_followup else None)
+    )
+    target_room = (
+        (rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None))
+        if focus_rank is not None
+        else None
+    )
     compact_detail: dict[str, Any] = {}
     room_detail_str = ""
 
@@ -108,7 +121,7 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
         logger.warning("_followup_via_agent: agent invoke gặp lỗi", exc_info=True)
 
     model = deps.get_llm("main")
-    if model is not None and target_room and compact_detail:
+    if is_followup and model is not None and target_room and compact_detail:
         try:
             dep_val = compact_detail.get("deposit_million")
             dep_str = f"{dep_val} triệu" if dep_val else "Thoả thuận"
@@ -139,8 +152,10 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
         except Exception:
             logger.warning("_followup_via_agent: single-pass fallback gặp lỗi", exc_info=True)
 
-    fallback_ans = followup_fallback_reply(target_room, compact_detail)
-    return fallback_ans, evidence
+    if is_followup:
+        fallback_ans = followup_fallback_reply(target_room, compact_detail)
+        return fallback_ans, evidence
+    return "", evidence
 
 
 def make_decision_node(deps: Deps):
@@ -150,6 +165,7 @@ def make_decision_node(deps: Deps):
         session = deps.sessions.get_or_create_session(state["session_id"])
         if not rooms:
             text = ""
+            evidence_blocks: list[str] = []
             model = deps.get_llm("main")
             if model is not None and not state.get("search_error") and not state.get("admin_not_found") and not state.get("location_not_found") and not state.get("ambiguous_candidates"):
                 try:
@@ -158,6 +174,7 @@ def make_decision_node(deps: Deps):
                     loc = (market.area_name if market and market.area_name else None) or pref.location_text or "khu vực này"
                     search_args = state.get("last_search_args") or {}
                     neighbor_bullets = _format_nearby_bullets(pref, search_args)
+                    dropped_summary = [str(x).strip() for x in (state.get("dropped_summary") or []) if str(x).strip()]
 
                     market_ctx = []
                     if market and market.market_min_price_str:
@@ -168,7 +185,17 @@ def make_decision_node(deps: Deps):
                         market_ctx.append(f"Ngân sách người dùng: {market.user_budget_str}")
                     market_str = ", ".join(market_ctx) if market_ctx else "Chưa có số liệu giá chi tiết"
 
+                    if market_ctx:
+                        evidence_blocks.append(market_str)
+                    if neighbor_bullets:
+                        evidence_blocks.append(neighbor_bullets)
+                    if dropped_summary:
+                        evidence_blocks.extend(dropped_summary)
+
                     amenities_desc = ", ".join(amenity_label(a) for a in pref.amenities) if pref.amenities else "Không yêu cầu tiện ích bắt buộc"
+                    radius_km = search_args.get("max_distance_km") if isinstance(search_args, dict) else None
+                    if radius_km is not None:
+                        evidence_blocks.append(f"Bán kính tìm kiếm tối đa: {float(radius_km):g} km")
 
                     prompt = build_zero_result_user_prompt(
                         user_message=state.get("user_message", ""),
@@ -177,23 +204,50 @@ def make_decision_node(deps: Deps):
                         amenities_desc=amenities_desc,
                         market_str=market_str,
                         neighbor_bullets=neighbor_bullets,
+                        pref_summary=pref.to_context_string(),
+                        radius_km=float(radius_km) if radius_km is not None else None,
+                        dropped_summary=dropped_summary,
+                        retry_issues=state.get("answer_issues") or (),
                     )
-                    z_advice = traced_call(
-                        trace,
-                        lambda: model.with_structured_output(ZeroResultAdvice).invoke([
-                            ("system", deps.base_prompt),
-                            ("human", prompt),
-                        ]),
-                        node="decision_node",
-                        input_data=[("system", deps.base_prompt), ("human", prompt)],
+
+                    model_queues = getattr(model, "queues", None)
+                    use_legacy_zero_schema = (
+                        isinstance(model_queues, dict)
+                        and ("ZeroResultAdvice" in model_queues)
+                        and ("text" not in model_queues)
                     )
-                    z_advice = z_advice if isinstance(z_advice, ZeroResultAdvice) else ZeroResultAdvice.model_validate(z_advice)
-                    text = render_zero_result_advice(z_advice, loc)
+                    if use_legacy_zero_schema:
+                        z_advice = traced_call(
+                            trace,
+                            lambda: model.with_structured_output(ZeroResultAdvice).invoke([
+                                ("system", deps.base_prompt),
+                                ("human", prompt),
+                            ]),
+                            node="decision_node",
+                            input_data=[("system", deps.base_prompt), ("human", prompt)],
+                        )
+                        z_advice = z_advice if isinstance(z_advice, ZeroResultAdvice) else ZeroResultAdvice.model_validate(z_advice)
+                        text = render_zero_result_advice(z_advice, loc)
+                    else:
+                        zero_sys = build_zero_result_system_prompt(deps.base_prompt)
+                        reply = traced_call(
+                            trace,
+                            lambda: model.invoke([
+                                ("system", zero_sys),
+                                ("human", prompt),
+                            ]),
+                            message_count=2,
+                            node="decision_node",
+                            input_data=[("system", zero_sys), ("human", prompt)],
+                        )
+                        cand_text = extract_message_text(reply).strip()
+                        if len(cand_text) >= MIN_AGENT_REPLY:
+                            text = cand_text
                 except Exception:
                     logger.warning("decision_node: LLM sinh lời khuyên 0 phòng gặp lỗi, dùng fallback code", exc_info=True)
             if not text:
                 text = reply_when_no_rooms(state, session)
-            return {"insights": None, "final_text": text, "tool_evidence": []}
+            return {"insights": None, "final_text": text, "tool_evidence": evidence_blocks}
 
         pref = state.get("preferences") or UserPreferenceState()
         insights = build_decision_insights(rooms, state.get("weight_explanations"))

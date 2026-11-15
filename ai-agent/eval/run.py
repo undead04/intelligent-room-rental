@@ -15,6 +15,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from core.llm import get_llm
+from eval import report
+from eval.datasets.agent_eval_set import AGENT_EVAL_CASES
+from eval.datasets.scenarios import SCENARIOS
+from eval.stability_and_regression import compare_regression, run_repeated_eval
+from eval.suites import e2e, grounding, guardrail, nlu
+from graph import default_deps
+
 if sys.platform.startswith("win"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -35,22 +43,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--k", type=int, default=3, help="số lần chạy lặp mỗi case cho agent_eval (pass^k)")
     ap.add_argument("--threshold", type=float, default=0.85, help="ngưỡng pass_all_k_rate công bố trước khi chạy agent_eval")
     ap.add_argument("--baseline", default="", help="đường dẫn file results.json của baseline để chạy kiểm định Regression")
+    ap.add_argument("--pacing", type=float, default=0.0, help="thời gian nghỉ (giây) mỗi LLM call trong e2e/ablation để tránh 429 RPM")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.ERROR)
 
-    from eval import report
-
     results: dict[str, Any] = {}
     if "guardrail" in args.suites:
-        from eval.suites import guardrail
         results["guardrail"] = guardrail.run()
     if "grounding" in args.suites:
-        from eval.suites import grounding
         results["grounding"] = grounding.run(args.seed)
     if "nlu" in args.suites:
         if args.llm:
-            from core.llm import get_llm
-            from eval.suites import nlu
             model = get_llm("fast")
             if model is None:
                 print("Không có LLM (kiểm tra cấu hình) - bỏ qua NLU bằng LLM", file=sys.stderr)
@@ -59,18 +62,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("Bộ đo NLU cần LLM thật (thêm --llm để chạy).", file=sys.stderr)
     if "e2e" in args.suites or "ablation" in args.suites:
-        from eval.datasets.scenarios import SCENARIOS
-        from eval.suites import e2e
-        from graph import default_deps
         picked = [s for s in SCENARIOS if not args.scenarios or s.name in args.scenarios.split(",")]
         if "ablation" in args.suites:
-            results["ablation"] = e2e.run_ablation(default_deps, picked)
+            results["ablation"] = e2e.run_ablation(default_deps, picked, pacing=args.pacing)
         else:
-            results["e2e"] = e2e.run_scenarios(default_deps, picked)
+            results["e2e"] = e2e.run_scenarios(default_deps, picked, pacing=args.pacing)
     if "agent_eval" in args.suites:
-        from eval.datasets.agent_eval_set import AGENT_EVAL_CASES
-        from eval.stability_and_regression import compare_regression, run_repeated_eval
-
         picked_ids = {s.strip() for s in args.scenarios.split(",") if s.strip()} if args.scenarios else set()
         picked_cases = [c for c in AGENT_EVAL_CASES if not picked_ids or c.case_id in picked_ids]
         results["agent_eval"] = run_repeated_eval(picked_cases, k=args.k, pass_threshold=args.threshold)

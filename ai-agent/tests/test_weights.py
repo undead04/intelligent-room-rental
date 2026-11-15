@@ -32,16 +32,30 @@ def test_sum_is_one_and_non_negative_for_random_multipliers(has_point, has_amen)
 
 def test_active_keys_follow_preferences():
     ones = {k: 1.0 for k in CRITERIA}
-    assert set(compute_normalized_weights(_pref(False, False), ones)) == {"price", "safety", "semantic"}
-    assert set(compute_normalized_weights(_pref(True, False), ones)) == {"price", "safety", "semantic", "location"}
-    assert set(compute_normalized_weights(_pref(False, True), ones)) == {"price", "safety", "semantic", "amenity"}
-    assert set(compute_normalized_weights(_pref(True, True), ones)) == set(CRITERIA)
+    w_basic = compute_normalized_weights(_pref(False, False), ones)
+    assert set(w_basic) == {"price", "safety", "semantic", "amenity"}
+    assert w_basic["amenity"] < w_basic["price"]
+
+    w_loc = compute_normalized_weights(_pref(True, False), ones)
+    assert set(w_loc) == set(CRITERIA)
+    assert w_loc["amenity"] < w_loc["location"]
+
+    w_amen = compute_normalized_weights(_pref(False, True), ones)
+    assert set(w_amen) == {"price", "safety", "semantic", "amenity"}
+    assert w_amen["amenity"] == pytest.approx(w_amen["price"])
+
+    w_full = compute_normalized_weights(_pref(True, True), ones)
+    assert set(w_full) == set(CRITERIA)
+    assert w_full["amenity"] == pytest.approx(w_full["location"])
 
 
-def test_mandatory_amenities_alone_do_not_enable_amenity_weight():
+def test_mandatory_amenities_alone_do_not_boost_amenity_weight():
     p = UserPreferenceState(amenities=["aircon", "no_shared_landlord"])
     w = compute_normalized_weights(p, {k: 1.0 for k in CRITERIA})
-    assert "amenity" not in w
+    p_pref = UserPreferenceState(amenities=["aircon"], preferred_amenities=["window_balcony"])
+    w_pref = compute_normalized_weights(p_pref, {k: 1.0 for k in CRITERIA})
+    assert w["amenity"] < w["price"]
+    assert w["amenity"] < w_pref["amenity"]
 
 
 def test_admin_ids_alone_do_not_enable_location():

@@ -10,6 +10,7 @@ from langchain_core.tools import BaseTool
 from tools.housing_tools import (
     consult_housing_skill,
     get_listing_detail,
+    get_market_price_stats,
     list_housing_skills,
     search_rooms,
 )
@@ -28,6 +29,7 @@ DETAIL_TOOLS: List[BaseTool] = [
 ADVISORY_TOOLS: List[BaseTool] = [
     list_housing_skills,
     consult_housing_skill,
+    get_market_price_stats,
 ]
 
 # Tập hợp toàn bộ công cụ của Homigo Housing Agent
