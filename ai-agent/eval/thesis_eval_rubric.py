@@ -1,7 +1,7 @@
 """Thang điểm đánh giá định lượng 100 điểm cho Đồ án Tốt nghiệp (Homigo AI) — bản refactor.
 
 Phạm vi: kiểm thử mức THÀNH PHẦN (component-level), chạy offline, không gọi LLM khi model=None.
-Đánh giá end-to-end toàn diện nằm ở `python -m eval.run --suite agent_eval` (và `eval/run_recommendation_eval.py`).
+Đánh giá end-to-end toàn diện nằm ở `python -m eval.run agent_eval` (và `e2e` / `ablation`).
 
 5 trụ cột:
   1. NLU & Trạng thái tích lũy          - 25 điểm
@@ -49,10 +49,13 @@ from eval.eval_common import (
 
 ensure_project_root_on_path(__file__)
 
+from core.llm import get_llm  # noqa: E402
 from core.session_store import SessionData  # noqa: E402
 from domain.budget import MarketStats, propose_budget  # noqa: E402
 from domain.enums import Amenity, RoomType, normalize_amenities, normalize_room_type  # noqa: E402
 from domain.schemas import RoomItem, UserPreferenceState  # noqa: E402
+from eval.answer_relevance import RELEVANCE_CASES, evaluate_answer_relevance  # noqa: E402
+from graph.tracing import tool_event, traced_call  # noqa: E402
 from intelligence.advice import Advice, render_advice  # noqa: E402
 from intelligence.insights import FACTOR_VN, build_decision_insights, price_trade_off  # noqa: E402
 from intelligence.intent_weights import compute_normalized_weights  # noqa: E402
@@ -648,8 +651,6 @@ def _c_context_grounding() -> SubCriterionResult:
 
 def _c_trace(trace_events: Optional[Sequence[dict]]) -> SubCriterionResult:
     if trace_events is None:
-        from graph.tracing import tool_event, traced_call
-
         real_events: list[dict[str, Any]] = []
         tool_event(
             real_events,
@@ -674,8 +675,6 @@ def _c_trace(trace_events: Optional[Sequence[dict]]) -> SubCriterionResult:
 
 
 def _c_answer_relevance(model: Any = None) -> SubCriterionResult:
-    from eval.answer_relevance import RELEVANCE_CASES, evaluate_answer_relevance
-
     tp = fn = tn = fp = 0
     failures: list[str] = []
     for c in RELEVANCE_CASES:
@@ -1065,8 +1064,8 @@ LIMITATIONS = (
     "Bộ ca kiểm thử do chính nhóm phát triển viết, nên điểm số phản ánh mức tuân thủ các hành vi đã dự kiến, "
     "chưa phải khả năng tổng quát hoá. Nên bổ sung tập kiểm thử giữ riêng (held-out) lấy từ log thật, có người gán nhãn độc lập.",
     "Số ca mỗi tiêu chí nhỏ; hãy đọc cột khoảng tin cậy 95% (Wilson) thay vì chỉ nhìn phần trăm.",
-    "Đây là kiểm thử mức thành phần. Chất lượng truy xuất (Precision@k/Recall/nDCG), độ đúng của câu trả lời do LLM sinh "
-    "và độ trễ end-to-end được đo qua `python -m eval.run --suite agent_eval` và `eval/run_recommendation_eval.py`.",
+    "Đây là kiểm thử mức thành phần. Chất lượng hội thoại end-to-end, Trajectory và độ ổn định pass^k "
+    "được đo qua `python -m eval.run agent_eval` (hoặc `e2e`).",
     "Khi model=None, hệ thống đánh giá các mô-đun xác định (State Patching, MCDM Weights, Hard Constraints, Grounding, Guardrails) và đánh dấu SKIP trung thực đối với tiêu chí phân loại ý định NLU cần LLM.",
 )
 
@@ -1125,7 +1124,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     model = None
     if args.with_model:
         try:
-            from core.llm import get_llm
             model = get_llm("fast")
         except Exception as e:
             print(f"Cảnh báo: không thể khởi tạo LLM ({e}), chạy fallback.")

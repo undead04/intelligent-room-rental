@@ -23,18 +23,21 @@ backend/
 │   │   ├── config.py                  # Cấu hình biến môi trường & Connection Pool (Pydantic Settings)
 │   │   ├── database.py                # Quản lý kết nối & Connection Pool SQLAlchemy Session
 │   │   ├── exceptions.py              # Custom HTTP Exceptions & Global Error Handlers
-│   │   └── logging.py                 # Cấu hình logging hệ thống
+│   │   ├── logging.py                 # Cấu hình logging hệ thống
+│   │   └── paths.py                   # Quản lý đường dẫn chuẩn hóa
 │   ├── middleware/                    # Middlewares bảo vệ & quan sát hệ thống
 │   │   ├── logging_middleware.py      # Gắn Request ID duy nhất & ghi log
 │   │   ├── rate_limit_middleware.py   # Sliding-Window Rate Limiting theo IP
 │   │   └── security_middleware.py     # Chống SQL Injection trong query và đường dẫn
 │   ├── models/                        # SQLAlchemy ORM Models (Listing, ListingEmbedding, Location, RoomType, User)
 │   ├── repositories/                  # Truy vấn CSDL & Hybrid Search (70% Dense pgvector + 30% Sparse FTS)
-│   ├── schemas/                       # Pydantic v2 DTOs & Request Params (ListingQueryParams, VectorSearchBody...)
-│   ├── services/                      # Logic nghiệp vụ (ListingService, EmbeddingModel, GeocodeService)
+│   ├── schemas/                       # Pydantic v2 DTOs & Request Params (ListingQueryParams, VectorSearchBody, Analytics...)
+│   ├── services/                      # Logic nghiệp vụ (ListingService, LocationService, EmbeddingModel, GeocodeService)
 │   │   └── reranker.py                # MCDM Dynamic Reranking Engine (rerank, explain_match, component_influence)
 │   └── main.py                        # FastAPI App Entrypoint & Lifespan (nạp sẵn multilingual-e5-base)
-├── tests/                             # 48 Unit & Integration Tests (Embedding, MCDM Rerank, Lifecycle, Security Middleware)
+├── migrations/                        # SQL Migrations (001_add_hnsw_and_gin_indexes.sql & run_migration.py)
+├── tests/                             # 58 Unit & Integration Tests (Embedding, MCDM Rerank, Lifecycle, Security Middleware)
+├── pyproject.toml / uv.lock           # Quản lý phụ thuộc uv
 ├── requirements.txt
 └── run.py                             # Script khởi chạy nhanh Uvicorn server
 ```
@@ -84,7 +87,8 @@ Hàm `explain_match(breakdown)` xuất ra đóng góp của từng tiêu chí (`
 ### 4.1. Cấu Hình Môi Trường & Nạp Dữ Liệu (từ Crawler ETL)
 1. Cài đặt thư viện:
    ```powershell
-   .\.venv\Scripts\pip.exe install -r backend/requirements.txt
+   cd backend; uv sync; cd ..
+   # Hoặc dùng pip: .\backend\.venv\Scripts\pip.exe install -r backend/requirements.txt
    ```
 2. Tạo file `backend/.env` từ `backend/.env.example`:
    ```env
@@ -94,20 +98,20 @@ Hàm `explain_match(breakdown)` xuất ra đóng góp của từng tiêu chí (`
 3. Nạp dữ liệu vào PostgreSQL thông qua **Crawler ETL** (`crawler/etl/load.py` tự động tạo extension `pgvector`, khởi tạo bảng và nạp cả dữ liệu phòng lẫn vector 768 chiều):
    ```powershell
    # Cách 1: Nạp trực tiếp từ file JSON + Embeddings đã xử lý sẵn trong crawler/data/
-   .\.venv\Scripts\python.exe -m crawler.etl.load
+   .\crawler\.venv\Scripts\python.exe -m crawler.etl.load
 
    # Cách 2: Chạy full luồng ETL (Extract -> Transform -> Embed -> Load vào DB)
-   .\.venv\Scripts\python.exe -m crawler.etl.pipeline --dest db --embed --eval-price
+   .\crawler\.venv\Scripts\python.exe -m crawler.etl.pipeline --dest db --embed --eval-price
    ```
 
 ### 4.2. Chạy Server Phát Triển
 ```powershell
-.\.venv\Scripts\python.exe backend/run.py
+.\backend\.venv\Scripts\python.exe backend/run.py
 ```
 - **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 ### 4.3. Chạy Kiểm Thử (Unit Tests)
 ```powershell
-.\.venv\Scripts\python.exe -m pytest backend/tests -v
+.\backend\.venv\Scripts\pytest.exe backend/tests -v
 ```

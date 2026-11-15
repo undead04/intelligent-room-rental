@@ -104,16 +104,7 @@ def test_geocode_point_success_key_variants_and_not_found(be):
     assert ht.geocode_point("UIT") == {"lat": 10.87, "lng": 106.8}
     assert ht.geocode_point("ĐH Bách Khoa, Hà Nội") == {"lat": 21.005, "lng": 105.843}           # backend trả 'lng' thay vì 'lon'
     assert ht.geocode_point("không có chỗ này") is None and ht.geocode_point("  ") is None
-
-
-def test_geocode_point_404_triggers_llm_expansion_once(be, monkeypatch):
-    seen = []
-    monkeypatch.setattr(ht, "expand_location_with_llm", lambda q, h=None: seen.append((q, h)) or "UIT")
-    assert ht.geocode_point("trường it", hint="TP.HCM") == {"lat": 10.87, "lng": 106.8}
-    assert seen == [("trường it", "TP.HCM")]
-    seen.clear()
-    monkeypatch.setattr(ht, "expand_location_with_llm", lambda q, h=None: seen.append(1) or q)    # LLM không đổi gì -> không gọi lại vô tận
-    assert ht.geocode_point("zzz") is None and seen == [1]
+    assert not hasattr(ht, "expand_location_with_llm")
 
 
 # ---------------- tìm phòng ----------------
@@ -126,6 +117,9 @@ def test_search_rooms_api_builds_body_and_normalizes(be):
     assert be.calls[-1][0] == "POST" and body == {"query": "phòng", "limit": 20, "offset": 0, "lat": 10.87, "lng": 106.8, "room_type": "STUDIO",
                                                   "max_price": 3_000_000, "amenities": ["aircon", "mezzanine"], "weights": {"price": 0.5}}
     assert "city_id" not in body and "district_id" not in body                                       # có toạ độ -> bỏ ID hành chính
+
+    ht.search_rooms_api({"query": "phòng giá rẻ", "prefer_cheapest": True})
+    assert be.calls[-1][3]["prefer_cheapest"] is True
 
 
 def test_search_rooms_api_admin_ids_when_no_coordinates_and_limit_floor(be):
@@ -261,39 +255,19 @@ def test_search_rooms_api_min_bedrooms_and_compact_detail(be):
     assert compact["bedrooms"] == 2 and compact["bathrooms"] == 2
 
 
-def test_geocode_point_lazy_llm_skips_llm_on_step1_hit_and_never_drops_hint(be, monkeypatch):
-    ht.clear_geocode_point_cache()
-    llm_calls: list[tuple[str, str | None]] = []
-    monkeypatch.setattr(ht, "expand_location_with_llm", lambda q, h=None: llm_calls.append((q, h)) or "UIT")
-
-    # Bước 1 hit ngay (0 LLM)
+def test_geocode_point_always_preserves_hint_and_never_retries_without_hint(be):
     res_hit = ht.geocode_point("UIT", hint="TP.HCM")
     assert res_hit == {"lat": 10.87, "lng": 106.8}
-    assert llm_calls == []
     assert be.calls[-1][2] == {"q": "UIT", "hint": "TP.HCM"}
 
-    # Bước 1 miss (404) -> gọi LLM đúng 1 lần và giữ nguyên hint ở mọi request
     be.calls.clear()
-    res_exp = ht.geocode_point("khu it thu duc test", hint="TP.HCM")
-    assert res_exp == {"lat": 10.87, "lng": 106.8}
-    assert llm_calls == [("khu it thu duc test", "TP.HCM")]
-    assert len(be.calls) == 2
-    assert all(c[2].get("hint") == "TP.HCM" for c in be.calls)
-
-    # Lần 2 dùng cache key gốc -> không gọi lại LLM hay backend
-    be.calls.clear()
-    llm_calls.clear()
-    res_cached = ht.geocode_point("Khu IT Thu Duc Test", hint="tp.hcm")
-    assert res_cached == {"lat": 10.87, "lng": 106.8}
-    assert llm_calls == [] and be.calls == []
-    ht.clear_geocode_point_cache()
+    res_miss = ht.geocode_point("dia diem khong ton tai xyz", hint="TP.HCM")
+    assert res_miss is None
+    assert len(be.calls) == 1
+    assert be.calls[0][2] == {"q": "dia diem khong ton tai xyz", "hint": "TP.HCM"}
 
 
-def test_geocode_point_forwards_ambiguous_and_skips_llm_on_5xx(monkeypatch):
-    ht.clear_geocode_point_cache()
-    llm_called = []
-    monkeypatch.setattr(ht, "expand_location_with_llm", lambda q, h=None: llm_called.append(q) or "UIT")
-
+def test_geocode_point_forwards_ambiguous_and_handles_5xx():
     def _ambig_handler(req: httpx.Request) -> httpx.Response:
         if req.url.params.get("q") == "Bách Khoa":
             return httpx.Response(
@@ -317,11 +291,7 @@ def test_geocode_point_forwards_ambiguous_and_skips_llm_on_5xx(monkeypatch):
         assert ambig and ambig["ambiguous"] is True
         assert len(ambig["candidates"]) == 2
         assert ambig["candidates"][0]["lng"] == pytest.approx(106.6578)
-        assert llm_called == []
 
-        # Lỗi 503 từ backend không được tốn LLM mở rộng
         assert ht.geocode_point("địa điểm 503", hint="TP.HCM") is None
-        assert llm_called == []
     finally:
         http.set_client(None)
-        ht.clear_geocode_point_cache()

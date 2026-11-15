@@ -33,6 +33,8 @@ from domain.schemas import (
     UserPreferenceState,
     format_vnd_million,
 )
+from intelligence.payload_builder import compact_room
+from tools.housing_tools import fetch_price_stats
 from utils.geo import haversine_km
 
 logger = logging.getLogger(__name__)
@@ -255,8 +257,7 @@ def verify_context_grounding(
 
 
 def backend_market_fetcher(**kw: Any) -> Optional[dict[str, Any]]:
-    """Cầu nối tới backend (import trong hàm để tránh vòng phụ thuộc grounding <-> tools). Thiếu city_id hoặc lỗi -> None."""
-    from tools.housing_tools import fetch_price_stats
+    """Cầu nối tới backend. Thiếu city_id hoặc lỗi -> None."""
     return fetch_price_stats(kw.get("city_id"), kw.get("district_id"), kw.get("room_type_id"))
 
 
@@ -821,7 +822,6 @@ def critic_answer_validation(
     if model is None or not (answer_text or "").strip():
         return CriticVerificationReport()
 
-    from intelligence.payload_builder import compact_room
     data = json.dumps([compact_room(r) for r in rooms], ensure_ascii=False)
     tool_data = "\n".join(extra_texts)[:6000]
     user_section = f"<user_query>\n{user_text}\n</user_query>\n" if (user_text or "").strip() else ""

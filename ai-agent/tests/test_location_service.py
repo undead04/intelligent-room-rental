@@ -234,3 +234,30 @@ def test_expanded_poi_six_regions_and_ambiguous_poi_0ms():
     # Địa giới hành chính chưa có trong DB vẫn giữ nguyên contract admin_not_found
     res_missing = resolve_location("Quảng Ngãi", "admin", FakeDB(), lambda q, h: called.append(q))
     assert res_missing.kind == "admin_not_found" and called == []
+
+
+def test_broad_area_defers_to_geocode_and_poi_dict_can_be_disabled(monkeypatch):
+    from tools.location_service import find_poi_in_text
+
+    # Khu đô thị / khu vực rộng (Làng Đại học, Phú Mỹ Hưng...) không hardcode trong POI dict -> đi qua geocode (Goong Places)
+    called = []
+    res_broad = resolve_location(
+        "Làng Đại học Hồ Chí Minh",
+        None,
+        FakeDB(),
+        lambda q, h: called.append(q) or {"lat": 10.8758, "lng": 106.8015},
+    )
+    assert res_broad.kind == "point" and res_broad.lat == 10.8758
+    assert called == ["Làng Đại học Hồ Chí Minh"]
+
+    # Tắt POI cục bộ qua HOMIGO_USE_LOCAL_POI=false -> mọi địa điểm đều đi qua Backend Goong/Nominatim
+    called.clear()
+    monkeypatch.setenv("HOMIGO_USE_LOCAL_POI", "false")
+    res_no_poi = resolve_location("UIT", "place", FakeDB(), lambda q, h: called.append(q) or {"lat": 10.87, "lng": 106.8})
+    assert res_no_poi.kind == "point" and called == ["UIT"]
+    monkeypatch.delenv("HOMIGO_USE_LOCAL_POI", raising=False)
+
+    # find_poi_in_text vẫn giải cứu KCN Amata Biên Hòa và giữ nguyên None cho câu mơ hồ chung chung
+    assert find_poi_in_text("Tìm trọ gần KCN Amata Biên Hòa dưới 3tr") == "KCN Amata Biên Hòa"
+    assert find_poi_in_text("Tìm phòng gần khu công nghiệp ở Bình Dương") is None
+    assert find_poi_in_text("Tìm trọ gần trường đại học") is None

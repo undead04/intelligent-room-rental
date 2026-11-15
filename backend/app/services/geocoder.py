@@ -60,6 +60,7 @@ _REGION_HINT_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 AMBIGUOUS_CLUSTER_KM = 0.5
+BROAD_AREA_CLUSTER_KM = 3.5
 _DEFAULT_HEADERS = {"User-Agent": "SmartHousingPlatform/1.0 (contact@housing.internal)"}
 
 # Pattern nhận diện và bóc tách các tiền tố học viện / cơ sở / trường học phổ biến
@@ -68,6 +69,24 @@ PREFIX_PATTERN = re.compile(
     r"^(?:trường\s+đại\s+học|đại\s+học|trường\s+đh|đh|trường|học\s+viện|ký\s*túc\s*xá|ktx)\s+",
     re.IGNORECASE,
 )
+
+# Các từ chung chung không mang tính định danh riêng (tránh Photon OR-match trả 5 địa điểm rác)
+_GENERIC_PLACE_STOPWORDS = frozenset({
+    "truong", "dai", "hoc", "dh", "ky", "tuc", "xa", "ktx",
+    "benh", "vien", "bv", "kcn", "khu", "cong", "nghiep", "che", "xuat",
+    "do", "thi", "kdt", "kdc", "ben", "xe", "bx", "ga", "metro",
+    "tttm", "cho", "nga", "tu", "duong", "phuong", "quan", "huyen",
+    "tinh", "thanh", "tp", "gan", "quanh", "tai", "co", "so", "cs", "o",
+})
+
+# Khu vực/khuôn viên rộng lớn (tính chất 1 vùng duy nhất rộng 1.5-3.5km, tránh tách nhỏ thành ambiguous)
+_BROAD_AREA_PATTERN = re.compile(
+    r"\b(?:lang\s+dai\s+hoc|dai\s+hoc\s+quoc\s+gia|dhqg|khu\s+do\s+thi|kdt|"
+    r"khu\s+cong\s+nghiep|kcn|khu\s+che\s+xuat|kcx|khu\s+cong\s+nghe\s+cao|kcnc|"
+    r"khu\s+dan\s+cu|kdc|khu\s+du\s+lich|phu\s+my\s+hung|thao\s+dien|"
+    r"vinhomes|ecopark|sala|hoa\s+lac|san\s+bay|cong\s+vien)\b"
+)
+_SUB_CAMPUS_PATTERN = re.compile(r"\b(?:co\s*so|chi\s+nhanh|cs)\b")
 
 # Tái sử dụng HTTP connection pool qua Session cho geocoding requests
 _session = requests.Session()
@@ -217,7 +236,8 @@ class GeocodeCache:
     def make_key(query: str, hint: Optional[str]) -> tuple[str, str, str]:
         qn = _norm_text(query)
         hn = _norm_text(hint)
-        return f"{qn}||{hn}", qn, hn
+        # Prefix v3 để vô hiệu hoá cache cũ khi chuyển sang TrackAsia
+        return f"v3||{qn}||{hn}", qn, hn
 
     def get(self, query: str, hint: Optional[str] = None, *, now: Optional[float] = None) -> Optional[GeocodeResponse]:
         if self.ttl_seconds <= 0:
@@ -301,23 +321,28 @@ def clear_geocode_cache() -> None:
     get_geocode_cache().clear()
 
 
-def geocode_goong_candidates(
+def geocode_trackasia_candidates(
     query: str,
     api_key: Optional[str] = None,
     *,
     target_region: Optional[str] = None,
     limit: int = 5,
 ) -> list[GeocodeCandidate]:
-    """Hook tùy chọn gọi Goong Geocode API khi cấu hình GOONG_API_KEY."""
-    key = (api_key or settings.GOONG_API_KEY or "").strip()
+    """Tra cứu địa danh Việt Nam qua TrackAsia Text Search v2 (hỗ trợ cả địa giới cũ & mới)."""
+    key = (api_key or settings.TRACKASIA_API_KEY or "").strip()
     clean = (query or "").strip()
     if not key or not clean:
         return []
-    url = "https://rsapi.goong.io/geocode"
-    params = {"address": clean, "api_key": key}
+    url = "https://maps.track-asia.com/api/v2/place/textsearch/json"
+    params: dict[str, object] = {
+        "query": clean,
+        "key": key,
+        "new_admin": "true",
+        "include_old_admin": "true",
+    }
     out: list[GeocodeCandidate] = []
     try:
-        res = _session.get(url, params=params, headers=_DEFAULT_HEADERS, timeout=3)
+        res = _session.get(url, params=params, headers=_DEFAULT_HEADERS, timeout=4)
         if res.status_code != 200:
             return []
         for item in (res.json().get("results") or [])[:limit]:
@@ -336,7 +361,7 @@ def geocode_goong_candidates(
                     lat=lat_f,
                     lon=lon_f,
                     formatted_address=addr,
-                    provider="Goong Maps",
+                    provider="TrackAsia",
                 )
             )
     except Exception:
@@ -392,55 +417,87 @@ def geocode_nominatim_candidates(
     return out
 
 
-def geocode_photon_candidates(
-    query: str,
-    *,
-    target_region: Optional[str] = None,
-    limit: int = 5,
-) -> list[GeocodeCandidate]:
-    """Lấy tối đa top `limit` ứng viên Photon hợp lệ trong Việt Nam và vùng target_region."""
-    clean = (query or "").strip()
-    if not clean:
+_REGION_CANONICAL_TOKENS: dict[str, tuple[str, ...]] = {
+    "TP.HCM": ("ho", "chi", "minh", "hcm", "tphcm", "sai", "gon", "saigon"),
+    "Hà Nội": ("ha", "noi", "hanoi"),
+    "Đà Nẵng": ("da", "nang", "danang"),
+    "Bình Dương": ("binh", "duong"),
+    "Đồng Nai": ("dong", "nai"),
+    "Cần Thơ": ("can", "tho"),
+}
+
+
+def _extract_distinctive_tokens(query: str, hint: Optional[str] = None) -> list[str]:
+    """Trích các token định danh riêng từ query (bỏ stopword loại hình & tên vùng từ hint)."""
+    norm_q = _norm_text(query)
+    if not norm_q:
         return []
-    url = "https://photon.komoot.io/api/"
-    bbox = VN_BBOX
-    if target_region and target_region in REGION_BBOXES:
-        min_lon, min_lat, max_lon, max_lat = REGION_BBOXES[target_region]
-        bbox = f"{min_lon},{min_lat},{max_lon},{max_lat}"
-    params = {"q": clean, "limit": limit, "bbox": bbox}
-    out: list[GeocodeCandidate] = []
-    try:
-        res = _session.get(url, params=params, headers=_DEFAULT_HEADERS, timeout=3)
-        if res.status_code != 200:
-            return []
-        for f in res.json().get("features", []):
-            props = f.get("properties", {})
-            if props.get("countrycode") != "VN":
-                continue
-            lon_val, lat_val = f["geometry"]["coordinates"]
-            lat_f, lon_f = float(lat_val), float(lon_val)
-            if not is_in_region_bbox(lat_f, lon_f, target_region):
-                continue
-            parts = [props.get(k) for k in ("name", "street", "district", "city", "state")]
-            addr = ", ".join(dict.fromkeys(p for p in parts if p))
-            formatted = f"{addr}, Việt Nam" if addr else f"{clean}, Việt Nam"
-            out.append(
-                GeocodeCandidate(
-                    name=_build_short_name(props.get("name"), addr or clean),
-                    lat=lat_f,
-                    lon=lon_f,
-                    formatted_address=formatted,
-                    provider="Photon Komoot",
-                )
-            )
-    except Exception:
+    # Bỏ hậu tố ", <hint>" nếu trùng ở cuối câu truy vấn để lấy phần tên địa điểm lõi
+    if "," in query:
+        head, tail = [p.strip() for p in query.rsplit(",", 1)]
+        if infer_target_region(tail) and head:
+            norm_q = _norm_text(head)
+
+    all_tokens = [t for t in norm_q.split() if t and t not in _GENERIC_PLACE_STOPWORDS]
+    if not all_tokens:
         return []
-    return out
+
+    hint_tokens: set[str] = set()
+    if hint:
+        hint_tokens.update(_norm_text(hint).split())
+        inferred = infer_target_region(hint)
+        if inferred:
+            hint_tokens.update(_norm_text(inferred).split())
+            hint_tokens.update(_REGION_CANONICAL_TOKENS.get(inferred, ()))
+    hint_tokens -= _GENERIC_PLACE_STOPWORDS
+
+    non_hint = [t for t in all_tokens if t not in hint_tokens]
+    return non_hint if non_hint else all_tokens
+
+
+def _is_candidate_relevant(
+    original_query: str,
+    candidate: GeocodeCandidate,
+    hint: Optional[str] = None,
+) -> bool:
+    """Chặn kết quả lạc đề từ Photon/Nominatim khi tên ứng viên không khớp tên địa danh người dùng nhập."""
+    check_tokens = _extract_distinctive_tokens(original_query, hint)
+    if not check_tokens:
+        # Truy vấn chỉ toàn từ chung chung (vd 'trường đại học', 'khu công nghiệp') -> không đoán bừa tọa độ
+        return False
+
+    cand_text = _norm_text(f"{candidate.name} {candidate.formatted_address}")
+    if not cand_text:
+        return False
+    cand_words = set(cand_text.split())
+    cand_compact = cand_text.replace(" ", "")
+
+    if len(check_tokens) >= 2 and "".join(check_tokens) in cand_compact:
+        return True
+
+    matched = 0
+    for tok in check_tokens:
+        if tok in cand_words or (len(tok) >= 4 and tok in cand_compact):
+            matched += 1
+
+    if len(check_tokens) <= 2:
+        return matched >= len(check_tokens)
+    required = math.ceil(len(check_tokens) * 0.65)
+    return matched >= required
+
+
+def _select_cluster_threshold_km(original_query: str) -> float:
+    """Chọn ngưỡng bán kính gom cụm: 3.5km cho khu vực/khuôn viên rộng, 0.5km cho địa điểm thường."""
+    norm_q = _norm_text(original_query)
+    if _BROAD_AREA_PATTERN.search(norm_q) and not _SUB_CAMPUS_PATTERN.search(norm_q):
+        return BROAD_AREA_CLUSTER_KM
+    return AMBIGUOUS_CLUSTER_KM
 
 
 def _candidates_to_response(original_query: str, candidates: list[GeocodeCandidate]) -> Optional[GeocodeResponse]:
-    """Chuyển danh sách ứng viên thành 1 điểm duy nhất hoặc response ambiguous (>500m)."""
-    clusters = _cluster_candidates(candidates, threshold_km=AMBIGUOUS_CLUSTER_KM)
+    """Chuyển danh sách ứng viên thành 1 điểm duy nhất hoặc response ambiguous."""
+    threshold_km = _select_cluster_threshold_km(original_query)
+    clusters = _cluster_candidates(candidates, threshold_km=threshold_km)
     if not clusters:
         return None
     if len(clusters) == 1:
@@ -488,12 +545,6 @@ class _NominatimCacheShim:
 _lookup_nominatim_cached = _NominatimCacheShim()
 
 
-def geocode_photon(query: str) -> Optional[GeocodeResponse]:
-    """Tra cứu một truy vấn qua Photon (tương thích ngược)."""
-    cands = geocode_photon_candidates(query, limit=5)
-    return _candidates_to_response(query, cands)
-
-
 def resolve_location(
     user_input: str,
     hint: Optional[str] = None,
@@ -538,14 +589,17 @@ def resolve_location(
     query_variants: list[str] = list(dict.fromkeys(with_hint + no_hint))
 
     providers = []
-    if (settings.GOONG_API_KEY or "").strip():
-        providers.append(lambda q_str: geocode_goong_candidates(q_str, target_region=target_region, limit=5))
+    if (settings.TRACKASIA_API_KEY or "").strip():
+        providers.append(lambda q_str: geocode_trackasia_candidates(q_str, target_region=target_region, limit=5))
     providers.append(lambda q_str: geocode_nominatim_candidates(q_str, target_region=target_region, limit=5))
-    providers.append(lambda q_str: geocode_photon_candidates(q_str, target_region=target_region, limit=5))
 
     for fetch_candidates in providers:
         for variant in query_variants:
-            cands = fetch_candidates(variant)
+            raw_cands = fetch_candidates(variant)
+            if not raw_cands:
+                continue
+            # Lọc bỏ các ứng viên lạc đề không khớp từ khóa định danh riêng của địa điểm
+            cands = [c for c in raw_cands if _is_candidate_relevant(query, c, hint)]
             if not cands:
                 continue
             resp = _candidates_to_response(user_input, cands)

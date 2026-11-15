@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time as _time
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -27,6 +28,7 @@ from prompts.nlu_prompt import (
     NLU_RULES,
     build_nlu_system_prompt,
 )
+from skills.skills_discovery import discover_housing_skills, skills_catalog_for_prompt
 from utils.text import norm_key, strip_accents
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ class Priorities(BaseModel):
 
     price: Optional[Level] = Field(
         None,
-        description="Đặt 'high' hoặc 'very_high' khi người dùng nhấn mạnh giá rẻ, tiết kiệm, sinh viên nghèo, rẻ hơn",
+        description="Đặt 'high' hoặc 'very_high' khi người dùng nhấn mạnh giá rẻ, tiết kiệm, sinh viên nghèo, hoặc muốn tìm phòng rẻ hơn trong ngân sách",
     )
     location: Optional[Level] = Field(
         None,
@@ -69,7 +71,7 @@ class Priorities(BaseModel):
     )
     amenity: Optional[Level] = Field(
         None,
-        description="Đặt 'high' hoặc 'very_high' khi người dùng nhấn mạnh full nội thất xịn, đầy đủ tiện nghi cao cấp",
+        description="Đặt 'high' hoặc 'very_high' khi người dùng thực sự nhấn mạnh full nội thất xịn, phòng đẹp/tiện nghi cao cấp hơn (không đặt chỉ vì câu than phiền/so sánh 'đắt hơn')",
     )
     semantic: Optional[Level] = Field(
         None,
@@ -423,24 +425,51 @@ def _postprocess(
     else:
         valid_slug = None
 
-    valid_rank: Optional[int] = (
-        a.referenced_room_rank
-        if (n_rooms > 0 and a.referenced_room_rank is not None and 1 <= a.referenced_room_rank <= n_rooms)
-        else None
-    )
-
     # Nếu intent chính là skill_advice và không có tiêu chí tìm kiếm cốt lõi (địa điểm cụ thể, giá trần, loại phòng)
     # thì xoá các trường phụ bị rò rỉ trong patch (tránh chặn nhầm câu hỏi hợp đồng dài thành đa mệnh lệnh).
+    # Riêng skill 'market-price-advisor' khi chỉ hỏi mặt bằng giá theo khu vực (không nêu giá trần/tiện ích/tìm phòng)
+    # thì giữ lại location_text/allowed_room_types trong patch để advisory_node tra cứu, không bật đa mệnh lệnh.
+    clean_for_intent = strip_accents(user_text or "").lower()
+    has_explicit_room_search = bool(
+        re.search(
+            r"\b(?:tim|kiem|goi y|de xuat|liet ke|xem danh sach)\s+(?:giup\s+|cho\s+)?(?:phong|can ho|nha|ktx|sleepbox)\b",
+            clean_for_intent,
+        )
+    )
+    has_non_market_filter = bool(
+        a.patch.max_price is not None
+        or a.patch.min_price is not None
+        or a.patch.min_area is not None
+        or a.patch.max_area is not None
+        or a.patch.min_bedrooms is not None
+        or a.patch.max_distance_km is not None
+        or a.patch.excluded_room_types
+        or a.patch.amenities_add
+        or a.patch.preferred_amenities_add
+        or a.patch.special_requirements_add
+    )
+    is_pure_market_price_query = (
+        a.intent == "skill_advice"
+        and valid_slug == "market-price-advisor"
+        and not a.is_multi_intent
+        and not has_explicit_room_search
+        and not has_non_market_filter
+    )
+
     has_concrete_search_target = bool(
         (a.patch.location_text and not a.patch.location_is_vague)
         or a.patch.max_price is not None
         or bool(a.patch.allowed_room_types)
     )
-    if a.intent == "skill_advice" and not has_concrete_search_target:
+    has_vague_search = bool(a.patch.location_is_vague or a.patch.vague_category) and (
+        has_explicit_room_search or a.intent in ("new_search", "refine_search")
+    )
+    if a.intent == "skill_advice" and not has_concrete_search_target and not is_pure_market_price_query and not has_vague_search:
         a.patch = PreferencePatch()
 
-    has_search_patch = bool(
+    has_search_patch = False if is_pure_market_price_query else bool(
         has_concrete_search_target
+        or has_vague_search
         or a.patch.min_price is not None
         or a.patch.min_area is not None
         or a.patch.max_area is not None
@@ -448,6 +477,12 @@ def _postprocess(
         or a.patch.excluded_room_types
         or a.patch.amenities_add
         or a.patch.preferred_amenities_add
+    )
+    max_valid_rank = max(n_rooms, 5) if (has_search_patch and a.intent in ("new_search", "refine_search")) else n_rooms
+    valid_rank: Optional[int] = (
+        a.referenced_room_rank
+        if (max_valid_rank > 0 and a.referenced_room_rank is not None and 1 <= a.referenced_room_rank <= max_valid_rank)
+        else None
     )
     has_skill = valid_slug is not None
     has_followup = (valid_rank is not None) or (a.intent == "room_followup" and n_rooms > 0)
@@ -578,10 +613,7 @@ def analyze_turn(
     if model is None or not text:
         return None
     if skills is None:
-        from skills.skills_discovery import discover_housing_skills
-
         skills = discover_housing_skills()
-    from skills.skills_discovery import skills_catalog_for_prompt
 
     messages = [
         ("system", build_nlu_system_prompt(skills_catalog_for_prompt(skills))),
@@ -591,7 +623,6 @@ def analyze_turn(
     method = os.environ.get("NLU_STRUCTURED_METHOD")
     if method:
         kwargs["method"] = method
-    import time as _time
 
     analysis: Optional[TurnAnalysis] = None
     for attempt in range(3):

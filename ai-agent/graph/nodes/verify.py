@@ -47,6 +47,19 @@ def make_verify_node(deps: Deps):
         trace_store = resolve_trace_target(deps)
         frozen_trace = trace_store.frozen_snapshot()
         update: dict[str, Any] = {}
+        pending_tasks = list(state.get("pending_tasks") or [])
+        cur_task = state.get("current_task")
+        is_multi_step = bool(pending_tasks or state.get("partial_replies"))
+        eff_skill = None if ("advisory" in pending_tasks or cur_task in ("followup", "search")) else matched_skill
+        if cur_task == "followup":
+            eff_intent = "room_followup"
+            eff_user_msg = "" if is_multi_step else user_msg
+        elif cur_task == "search":
+            eff_intent = "new_search" if intent in ("skill_advice", "room_followup") else intent
+            eff_user_msg = (state.get("semantic_query") or "") if is_multi_step else user_msg
+        else:
+            eff_intent = intent
+            eff_user_msg = user_msg
 
         # Bổ sung ngữ cảnh thị trường/ngân sách khi kiểm tra trường hợp 0 phòng
         extra_texts = list(evidence)
@@ -83,10 +96,10 @@ def make_verify_node(deps: Deps):
             critic_res = traced_call(
                 trace_store.sink(),
                 lambda: critic_answer_validation(
-                    fast_llm, final_text, rooms, extra_texts, user_text=user_msg
+                    fast_llm, final_text, rooms, extra_texts, user_text=eff_user_msg
                 ),
                 node="verify_node",
-                input_data={"user_text": user_msg, "room_count": len(rooms)},
+                input_data={"user_text": eff_user_msg, "room_count": len(rooms)},
             )
             for c in critic_res.unsupported_claims:
                 msg = f"Phát biểu thiếu căn cứ trong dữ liệu: {c}"
@@ -123,10 +136,10 @@ def make_verify_node(deps: Deps):
         search_args = state.get("last_search_args") or {}
         effective_radius = search_args.get("radius_km") if isinstance(search_args, dict) else None
         spec = derive_dod_spec(
-            intent,
+            eff_intent,
             pref,
-            user_message=user_msg,
-            matched_skill=matched_skill,
+            user_message=eff_user_msg,
+            matched_skill=eff_skill,
             effective_radius_km=effective_radius,
             include_answer_checks=True,
         )
@@ -284,6 +297,53 @@ def make_verify_node(deps: Deps):
                 "dod_report": dod_dict,
             },
         })
+        if answer_grounded and pending_tasks:
+            step_reply = str(update.get("final_text", final_text) or "").strip()
+            partials = list(state.get("partial_replies") or [])
+            if step_reply:
+                partials.append(step_reply)
+            next_task = pending_tasks[0]
+            rest_tasks = pending_tasks[1:]
+            # Khi chạy search -> followup mà search ra 0 phòng: bỏ qua followup để tránh lặp lỗi 0 phòng
+            if next_task == "followup" and not rooms:
+                next_task = rest_tasks[0] if rest_tasks else None
+                rest_tasks = rest_tasks[1:] if rest_tasks else []
+            if next_task is None:
+                update.update({
+                    "partial_replies": partials,
+                    "current_task": None,
+                    "pending_tasks": [],
+                    "is_followup": False,
+                    "final_text": "",
+                })
+            else:
+                update.update({
+                    "partial_replies": partials,
+                    "current_task": next_task,
+                    "pending_tasks": rest_tasks,
+                    "is_followup": (next_task == "followup"),
+                    "answer_retry_count": 0,
+                    "answer_issues": [],
+                    "answer_grounded": True,
+                })
+                if next_task == "search":
+                    update.update({
+                        "retrieved_rooms": [],
+                        "insights": None,
+                        "final_text": "",
+                        "tool_evidence": [],
+                    })
+                elif next_task == "followup":
+                    update.update({
+                        "final_text": "",
+                        "tool_evidence": [],
+                    })
+        elif answer_grounded:
+            update.update({
+                "current_task": None,
+                "pending_tasks": [],
+                "is_followup": False,
+            })
         return update
 
     return verify_node

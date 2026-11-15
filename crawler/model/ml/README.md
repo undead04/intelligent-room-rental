@@ -51,11 +51,11 @@ Mỗi tin đăng được trích xuất thành vector 19 đặc trưng cốt lõ
 
 | Chỉ Số Đánh Giá (Trên Tập Test Độc Lập 15%) | Mô Hình v1 (1.249 mẫu) | Mô Hình v2 (9.693 mẫu - 19 Features) | Mức Cải Thiện |
 | :--- | :---: | :---: | :---: |
-| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$599.687\ \text{VNĐ}$** | **$-40,3\%$ sai số** |
-| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$860.175\ \text{VNĐ}$** | **$-42,6\%$ sai số** |
-| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6659$** | **Tăng $\times 2,14$ lần (+35,48 điểm %)** |
-| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7220$** | Giải thích $> 72,2\%$ phương sai |
-| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$82,5\%$** | Đạt chuẩn $[78\%, 85\%]$ |
+| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$598.769\ \text{VNĐ}$** | **$-40,4\%$ sai số** |
+| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$856.392\ \text{VNĐ}$** | **$-42,9\%$ sai số** |
+| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6689$** | **Tăng $\times 2,15$ lần (+35,78 điểm %)** |
+| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7235$** | Giải thích $> 72,3\%$ phương sai |
+| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$83,15\%$** | Đạt chuẩn $[78\%, 85\%]$ |
 
 ### 2.5. Phân Tích Dữ Liệu (EDA), Giải Trình Đặc Trưng & Đánh Giá Chi Tiết
 Xem báo cáo đầy đủ được sinh tự động tại [`artifacts/evaluation_report.md`](./artifacts/evaluation_report.md) và [`artifacts/evaluation_report.json`](./artifacts/evaluation_report.json):

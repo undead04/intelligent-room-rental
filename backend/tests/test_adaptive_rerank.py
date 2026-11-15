@@ -179,18 +179,19 @@ def test_l1_normalization_when_location_inactive():
     assert w_a["semantic"] < w_a["amenity"]
     assert min(w_a, key=w_a.get) == "semantic"
 
-    # Kịch bản B: Không có location, không có amenity ưu tiên (bật: price, safety, semantic)
+    # Kịch bản B: Không có location, không có amenity ưu tiên (bật: price, safety, semantic + amenity nền nhẹ)
     pref_minimal = {}
     w_b = _dynamic_weights(pref_minimal, DEFAULT_WEIGHTS)
 
-    assert set(w_b.keys()) == {"price", "safety", "semantic"}
+    assert set(w_b.keys()) == {"price", "safety", "amenity", "semantic"}
     assert sum(w_b.values()) == pytest.approx(1.0)
 
-    # Tổng cơ sở bật = 0.25 + 0.20 + 0.10 = 0.55
-    assert w_b["price"] == pytest.approx(0.25 / 0.55)
-    assert w_b["safety"] == pytest.approx(0.20 / 0.55)
-    assert w_b["semantic"] == pytest.approx(0.10 / 0.55)
-    assert min(w_b, key=w_b.get) == "semantic"
+    # Tổng cơ sở bật = 0.25 + 0.20 + 0.10 (amenity nền) + 0.10 = 0.65
+    assert w_b["price"] == pytest.approx(0.25 / 0.65)
+    assert w_b["safety"] == pytest.approx(0.20 / 0.65)
+    assert w_b["amenity"] == pytest.approx(0.10 / 0.65)
+    assert w_b["semantic"] == pytest.approx(0.10 / 0.65)
+    assert w_b["amenity"] < w_a["amenity"]
 
 
 # ============================================================================
@@ -296,4 +297,62 @@ def test_zero_weights_raises_value_error():
     zero_weights = {"price": 0.0, "safety": 0.0, "semantic": 0.0, "location": 0.0, "amenity": 0.0}
     with pytest.raises(ValueError, match="Tổng trọng số của các tiêu chí đang bật phải > 0"):
         _dynamic_weights({"lat": 10.77, "lng": 106.65}, base=zero_weights)
+
+
+def test_vague_query_does_not_over_reward_cheap_low_quality_rooms():
+    """Khi người dùng nói chung chung (chỉ có max_price, không tọa độ, không preferred_amenities,
+    không prefer_cheapest):
+    - Trọng số price sau chuẩn hóa L1 (> 0.28) KHÔNG được tự kích hoạt chế độ 'prefer_cheap'.
+    - Phòng chất lượng ổn & giá hời theo ML (3.5tr) phải xếp trên phòng siêu rẻ kém tiện nghi (1.6tr).
+    - Phòng thiếu dữ liệu tiện nghi (amenity_overall=None) không được thưởng điểm ảo 1.0.
+    """
+    cheap_low_quality = {
+        "id": "cheap_poor",
+        "listing": {
+            "id": "cheap_poor",
+            "price_vnd": 1_600_000,
+            "price_score": 0.40,
+            "safety_score": 0.40,
+            "amenity_overall": 0.15,
+            "concept_scores": {},
+            "similarity_score": 0.70,
+        },
+    }
+    good_value_room = {
+        "id": "good_value",
+        "listing": {
+            "id": "good_value",
+            "price_vnd": 3_500_000,
+            "price_score": 0.88,
+            "safety_score": 0.75,
+            "amenity_overall": 0.85,
+            "concept_scores": {"amenity_overall": 0.85},
+            "similarity_score": 0.75,
+        },
+    }
+    missing_amenity_room = {
+        "id": "missing_meta",
+        "listing": {
+            "id": "missing_meta",
+            "price_vnd": 2_000_000,
+            "price_score": 0.60,
+            "safety_score": 0.50,
+            "amenity_overall": None,
+            "concept_scores": {},
+            "similarity_score": 0.70,
+        },
+    }
+
+    vague_pref = {"max_price": 4_000_000}
+    results = rerank([cheap_low_quality, missing_amenity_room, good_value_room], user_pref=vague_pref, limit=5)
+    assert results[0][1]["id"] == "good_value"
+    # Phòng thiếu dữ liệu amenity_overall bị gán UNKNOWN_SCORE (0.0) ở chế độ nền
+    missing_bd = next(bd for bd, item in results if item["id"] == "missing_meta")
+    assert missing_bd["parts"]["amenity"] == UNKNOWN_SCORE
+
+    # Khi bật tường minh prefer_cheapest=True, phòng rẻ 1.6tr được ưu tiên theo savings_ratio
+    cheapest_pref = {"max_price": 4_000_000, "prefer_cheapest": True}
+    cheap_bd = rerank([cheap_low_quality, good_value_room], user_pref=cheapest_pref, limit=5)
+    bd_map = {item["id"]: bd for bd, item in cheap_bd}
+    assert bd_map["cheap_poor"]["parts"]["price"] > bd_map["good_value"]["parts"]["price"]
 

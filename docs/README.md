@@ -29,13 +29,12 @@ docs/
 │   ├── in-progress/              # - Tính năng đang triển khai
 │   └── released/                 # - Tính năng đã phát hành & kiểm thử hoàn tất
 │       ├── listing-lifecycle-sync.md
-│       ├── ml-price-model-v2.md
-│       └── ai-agent-recommendation-eval.md
+│       └── ml-price-model-v2.md
 │
 ├── evaluation/                   # 4. 📊 ĐO LƯỜNG CHẤT LƯỢNG & BENCHMARKS
-│   ├── README.md                 # - Khung đo lường & 3 nhóm chỉ số (IR, Compliance, Rubric)
-│   ├── human-eval-protocol.md    # - Bộ tiêu chí & kịch bản đánh giá chất lượng gợi ý
-│   └── reports/                  # - Báo cáo thực nghiệm (Human Eval 4.42/5.0 & Recommendation Eval)
+│   ├── README.md                 # - Khung đo lường & báo cáo đánh giá tổng hợp
+│   ├── human-eval-protocol.md    # - Giao thức khảo sát người dùng thật (Human Evaluation)
+│   └── reports/                  # - Báo cáo thực nghiệm (Evaluation Summary & Human Eval)
 │
 └── maintenance/                  # 5. 🛠️ BẢO TRÌ, SỬA LỖI & NÂNG CẤP HỆ THỐNG
     ├── README.md                 # - Dashboard theo dõi tiến độ sửa lỗi & bảo trì

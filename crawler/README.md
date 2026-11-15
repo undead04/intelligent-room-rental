@@ -85,6 +85,8 @@ flowchart TD
 ```text
 crawler/
 ├── config/
+│   ├── paths.py                 # Quản lý đường dẫn chuẩn hóa
+│   ├── poi_locations.json       # Danh mục 48 trung tâm đô thị & 50 cụm đại học toàn quốc
 │   └── settings.py              # Cấu hình User-Agent, API parameters, timeouts
 ├── data/
 │   ├── raw/
@@ -119,10 +121,11 @@ crawler/
 │   ├── count_token.py           # Đếm token đầu vào cho LLM
 │   ├── http.py                  # Client HTTP với Retry & Exponential Backoff
 │   └── parser.py                # Bóc tách và chuẩn hóa dữ liệu thô từ payload API (kèm bedrooms, bathrooms)
-├── tests/                       # 150 Unit & Integration tests (Async Spider/Semaphore, Scheduler, Schema, Staging DB, Transform, ML v2)
+├── tests/                       # 158 Unit & Integration tests (Async Spider/Semaphore, Scheduler, Schema, Staging DB, Transform, ML v2)
 ├── staging_db.py                # SQLite Staging DB interface & schema (WAL mode + threading.RLock an toàn đa luồng)
 ├── main.py                      # CLI điều khiển chính của Crawler
 ├── scheduler.py                 # Cron Job Scheduler Daemon (daily_crawl 02:00 & weekly_verify Chủ Nhật 04:00)
+├── pyproject.toml / uv.lock     # Quản lý phụ thuộc uv
 ├── README.md                    # Tài liệu hướng dẫn chi tiết
 └── requirements.txt             # Danh sách thư viện phụ thuộc
 ```

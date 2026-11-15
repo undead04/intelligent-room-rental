@@ -11,6 +11,7 @@ from typing import Mapping, Optional
 from domain.schemas import UserPreferenceState
 
 DEFAULT_BASE_WEIGHTS = {"price": 1.0, "safety": 1.0, "semantic": 1.0, "location": 1.0, "amenity": 1.0}
+BASELINE_AMENITY_SCALE = 0.5
 
 
 def compute_normalized_weights(
@@ -21,14 +22,14 @@ def compute_normalized_weights(
 ) -> dict[str, float]:
     """Vector trọng số chuẩn hoá L1 (tổng = 1.0).
 
-    price, safety, semantic: luôn bật. location: chỉ khi có toạ độ.
-    amenity: CHỈ bật khi có tiện ích ưu tiên mềm (preferred_amenities) hoặc khi người dùng
-    nhấn mạnh mức độ tiện nghi tổng thể (multipliers['amenity'] > 1.0).
-    Nếu chỉ có tiện ích bắt buộc (amenities) thì tắt vì đã lọc cứng tại SQL & Grounding.
-    Tiêu chí tắt thì KHÔNG có khoá trong kết quả.
+    price, safety, semantic, amenity: luôn bật. location: chỉ khi có toạ độ.
+    amenity bật ở mức đầy đủ khi có tiện ích ưu tiên mềm (preferred_amenities) hoặc khi người dùng
+    nhấn mạnh tiện nghi (multipliers['amenity'] > 1.0). Khi nói chung chung hoặc chỉ có tiện ích bắt buộc
+    (amenities), amenity vẫn giữ mức nền nhẹ (BASELINE_AMENITY_SCALE) theo amenity_overall để cân bằng chất lượng.
     """
     base = base_weights or DEFAULT_BASE_WEIGHTS
-    amenity_active = bool(preferences.preferred_amenities) or multipliers.get("amenity", 1.0) > 1.0
+    has_explicit_amenity = bool(preferences.preferred_amenities) or multipliers.get("amenity", 1.0) > 1.0
+    amenity_active = has_explicit_amenity or (base_weights is None) or ("amenity" in base)
 
     active = {
         "price": True,
@@ -38,12 +39,14 @@ def compute_normalized_weights(
         "amenity": amenity_active,
     }
 
-    raw = {
-        k: max(0.0, base.get(k, 1.0) * multipliers.get(k, 1.0))
-        for k, on in active.items()
-        for _ in (None,)
-        if on
-    }
+    raw: dict[str, float] = {}
+    for k, on in active.items():
+        if not on:
+            continue
+        val = max(0.0, base.get(k, 1.0) * multipliers.get(k, 1.0))
+        if k == "amenity" and not has_explicit_amenity:
+            val *= BASELINE_AMENITY_SCALE
+        raw[k] = val
 
     total = sum(raw.values())
     if total <= 0:                       # tất cả bằng 0 -> chia đều

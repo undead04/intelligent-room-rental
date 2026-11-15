@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
 from domain.enums import amenity_label
@@ -18,6 +19,23 @@ logger = logging.getLogger(__name__)
 
 RESULT_LIMIT = 5
 OVERFETCH_LIMIT = 10        # có tiêu chí loại trừ -> lấy dư rồi lọc/cắt lại
+DEFAULT_RADIUS_KM = 2.5
+DEFAULT_ADAPTIVE_RADII_KM = (3.5, 5.0)
+BROAD_AREA_RADIUS_KM = 4.0
+BROAD_AREA_ADAPTIVE_RADII_KM = (5.0, 6.5)
+
+_BROAD_AREA_RE = re.compile(
+    r"\b(?:lang\s+dai\s+hoc|dai\s+hoc\s+quoc\s+gia|dhqg|khu\s+do\s+thi|kdt|"
+    r"khu\s+cong\s+nghiep|kcn|khu\s+che\s+xuat|kcx|khu\s+cong\s+nghe\s+cao|kcnc|"
+    r"khu\s+dan\s+cu|kdc|khu\s+du\s+lich|phu\s+my\s+hung|thao\s+dien|"
+    r"vinhomes|ecopark|sala|hoa\s+lac|san\s+bay|thanh\s+pho\s+moi)\b"
+)
+
+
+def _is_broad_area_location(location_text: Optional[str]) -> bool:
+    """Nhận diện khu vực/khuôn viên rộng (làng đại học, KĐT, KCN...) cần bán kính tìm kiếm rộng hơn điểm đơn lẻ."""
+    norm = norm_key(location_text or "")
+    return bool(norm and _BROAD_AREA_RE.search(norm))
 
 _MAJOR_CITY_KEYS = (
     "ho chi minh", "tp hcm", "tphcm", "sai gon",
@@ -107,6 +125,31 @@ def build_query(
         return synthesize_structured_query(pref)
     raw = sanitize_user_text(user_text)[:300]
     return raw or "Phòng trọ"
+
+
+def _summarize_dropped(rooms: list[RoomItem], dropped: list[tuple[str, str]], limit: int = 5) -> list[str]:
+    """Tạo tóm tắt ngắn các phòng bị loại bởi ràng buộc cứng để AI phân tích nguyên nhân khi 0 phòng."""
+    if not dropped:
+        return []
+    by_id = {r.id: r for r in rooms}
+    summary: list[str] = []
+    for rid, reason in dropped[:limit]:
+        r = by_id.get(rid)
+        if r is None:
+            summary.append(f"Phòng {rid}: bị loại do {reason}")
+            continue
+        meta_parts = [f"giá {r.price}" if r.price else "giá thoả thuận"]
+        if r.area_m2:
+            meta_parts.append(f"{r.area_m2:g}m²")
+        if r.room_type:
+            meta_parts.append(r.room_type.label_vi)
+        if r.distance:
+            meta_parts.append(f"cách {r.distance}")
+        title = (r.title or rid).strip()
+        if len(title) > 70:
+            title = title[:69] + "…"
+        summary.append(f"{title} ({', '.join(meta_parts)}): bị loại do {reason}")
+    return summary
 
 
 def make_retrieval_node(deps: Deps):
@@ -211,7 +254,8 @@ def make_retrieval_node(deps: Deps):
             return safe, cur_err, cur_ctx
 
         if status == "ok":
-            base_radius = pref.max_distance_km or 2.5
+            is_broad = _is_broad_area_location(pref.location_text)
+            base_radius = pref.max_distance_km or (BROAD_AREA_RADIUS_KM if is_broad else DEFAULT_RADIUS_KM)
             search_args = {
                 "query": build_query(
                     pref,
@@ -228,6 +272,7 @@ def make_retrieval_node(deps: Deps):
                 "preferred_amenities": [a.value for a in pref.preferred_amenities] or None,
                 "max_distance_km": base_radius if pref.has_point else None,
                 "weights": weights or None,
+                "prefer_cheapest": float(multipliers.get("price", 1.0)) > 1.0,
                 "limit": OVERFETCH_LIMIT if (pref.excluded_room_types or pref.allowed_room_types) else RESULT_LIMIT,
             }
             for key in ("city_id", "district_id", "ward_id", "min_bedrooms"):
@@ -247,7 +292,8 @@ def make_retrieval_node(deps: Deps):
 
             # Pha 2: Bán kính thích ứng (Adaptive Radius) khi có tọa độ và user không cố định bán kính
             if not search_error and pref.has_point and pref.max_distance_km is None:
-                for next_radius in (3.5, 5.0):
+                adaptive_steps = BROAD_AREA_ADAPTIVE_RADII_KM if _is_broad_area_location(pref.location_text) else DEFAULT_ADAPTIVE_RADII_KM
+                for next_radius in adaptive_steps:
                     if len(ctx.valid_rooms) >= 3:
                         break
                     emit_trace(
@@ -275,9 +321,13 @@ def make_retrieval_node(deps: Deps):
                 session.clear_latest_location_snapshot()
             if hasattr(session, "pending_ambiguous_location"):
                 session.pending_ambiguous_location = None
+            if hasattr(session, "pending_ambiguous_candidates"):
+                session.pending_ambiguous_candidates = []
         elif status == "ambiguous":
             if hasattr(session, "pending_ambiguous_location"):
                 session.pending_ambiguous_location = state_pref.location_text
+            if hasattr(session, "pending_ambiguous_candidates"):
+                session.pending_ambiguous_candidates = list(candidates)
             clean_pref = pref.model_copy(deep=True)
             clean_pref.clear_location()
             session.preferences = clean_pref
@@ -287,6 +337,8 @@ def make_retrieval_node(deps: Deps):
             session.preferences = pref
             if hasattr(session, "pending_ambiguous_location"):
                 session.pending_ambiguous_location = None
+            if hasattr(session, "pending_ambiguous_candidates"):
+                session.pending_ambiguous_candidates = []
 
         if search_error:
             return {
@@ -299,11 +351,14 @@ def make_retrieval_node(deps: Deps):
                 "admin_not_found": False,
                 "location_not_found": False,
                 "ambiguous_candidates": [],
+                "dropped_summary": [],
                 "last_search_args": search_args,
             }
 
         # 4) kết luận sau tìm kiếm và phân tích thị trường
+        dropped_summary: list[str] = []
         if status == "ok" and ctx:
+            dropped_summary = _summarize_dropped(rooms, ctx.dropped)
             rooms = ctx.valid_rooms[:RESULT_LIMIT]
             session.zero_result_streak = 0 if rooms else session.zero_result_streak + 1
             extra = {
@@ -322,6 +377,7 @@ def make_retrieval_node(deps: Deps):
             "admin_not_found": status == "admin_not_found",
             "location_not_found": status == "location_not_found",
             "ambiguous_candidates": candidates,
+            "dropped_summary": dropped_summary,
             "last_search_args": search_args,
             **extra,
         }

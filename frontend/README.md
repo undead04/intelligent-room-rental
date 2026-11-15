@@ -23,10 +23,13 @@ frontend/
 ├── src/
 │   ├── app/                     # App Router Pages & Layouts
 │   │   ├── layout.tsx           # Root layout chung (Fonts, metadata)
+│   │   ├── error.tsx / not-found.tsx # Error boundary & Trang 404
 │   │   ├── page.tsx             # Trang chủ (Hero search, tin mới đăng, khu vực hot)
+│   │   ├── _components/         # HeroSearch, AiSearchPromo, WhyChooseHomigo
+│   │   ├── _hooks/              # useHomeListings
 │   │   ├── tim-kiem/            # Trang tìm kiếm & lọc phòng trọ
 │   │   │   ├── page.tsx
-│   │   │   ├── _components/     # SearchToolbar, ResultsList, Pagination
+│   │   │   ├── _components/     # SearchToolbar
 │   │   │   └── _hooks/          # useSearchResults
 │   │   ├── phong-tro/[id]/      # Trang chi tiết phòng trọ
 │   │   │   ├── page.tsx
@@ -34,14 +37,15 @@ frontend/
 │   │   │   └── _hooks/          # useListingDetail, useSimilarListings
 │   │   ├── tim-kiem-ai/         # Không gian làm việc AI Agent (/tim-kiem-ai)
 │   │   │   ├── page.tsx         # Giao diện 3 cột: Chat AI, Danh sách phòng Rerank, Bản đồ & Giải thích MCDM
+│   │   │   ├── types.ts         # Types riêng cho AI Workspace
 │   │   │   ├── _components/     # AiChatPanel, RoomResultsPanel, RoomMapPanel, AgentInsightPanel
 │   │   │   └── _hooks/          # useAiChat
 │   │   └── tra-cuu-gia-tro/     # Trang tra cứu & phân tích thị trường giá trọ
 │   │       ├── page.tsx
 │   │       ├── _components/     # PriceStatsOverview, PriceStatsFilterBar, PriceStatsTable
 │   │       └── _hooks/          # usePriceStats
-│   ├── components/              # Các components tái sử dụng (SiteLayout, Header, Footer,
-│   │                            # FilterModal, KpiCard, Breadcrumbs, ImageWithFallback...)
+│   ├── components/              # Các components tái sử dụng (SiteLayout, Navbar, Footer,
+│   │                            # FilterModal, KpiCard, Breadcrumbs, BackendConnectionError, skeleton/...)
 │   ├── hooks/                   # Custom React Hooks (useFilterOptions, useLocations...)
 │   ├── lib/
 │   │   ├── api/                 # API Client gọi đến FastAPI Backend (client.ts)
@@ -101,8 +105,9 @@ cp .env.example .env.local
 Nội dung file `.env.local`:
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+NEXT_PUBLIC_AI_AGENT_URL=http://localhost:8001
 ```
-*(Trỏ tới URL của FastAPI backend đang chạy)*
+*(Trỏ tới URL của FastAPI Backend và AI Agent đang chạy)*
 
 ### 4. Khởi chạy Development Server
 

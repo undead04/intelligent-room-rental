@@ -1,6 +1,6 @@
 """Bộ kiểm thử Black-box độc lập cho Human Evaluation Stats Analyzer (MỐC 3).
 
-Đặc tả: docs/features/ai-agent-recommendation-eval.md (Trụ cột 3: Human Evaluation)
+Đặc tả: docs/evaluation/human-eval-protocol.md (Human Evaluation)
 Module kiểm thử:
 - ai-agent/eval/stats_analyzer.py
 

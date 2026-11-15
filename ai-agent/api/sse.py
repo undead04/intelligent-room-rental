@@ -95,7 +95,10 @@ def stream_graph_events(
         "user_message": user_message,
         "session_id": effective_session_id,
     }
-    effective_trace_store = trace_store if trace_store is not None else TraceStore(session_id=effective_session_id)
+    effective_trace_store = trace_store if trace_store is not None else TraceStore(
+        session_id=effective_session_id,
+        persist=True,
+    )
     emitted_event_count = 0
     final_resp: Optional[AgentResponse] = None
 

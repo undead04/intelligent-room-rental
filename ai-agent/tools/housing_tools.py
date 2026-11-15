@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import logging
 import re
@@ -11,11 +10,11 @@ from typing import Any, Optional
 
 from langchain_core.tools import tool
 
-from domain.enums import normalize_amenities
+from domain.enums import normalize_amenities, normalize_room_type
 from domain.schemas import format_vnd_million
 from skills.skills_discovery import discover_housing_skills, get_skill
 from tools.http import request
-from utils.text import norm_key
+from tools.location_service import infer_region_from_location_text, resolve_admin, resolve_location
 
 logger = logging.getLogger(__name__)
 
@@ -47,41 +46,6 @@ def admin_lookup(level: str, name: str, city_id: Optional[int] = None, district_
 # =============================================================================
 # Định vị điểm
 # =============================================================================
-def expand_location_with_llm(query: str, hint: Optional[str] = None) -> str:
-    """Pre-expansion tổng quát: nhờ LLM mở rộng viết tắt/tên lóng/cơ sở thành tên chuẩn OpenStreetMap. Lỗi -> giữ nguyên."""
-    try:
-        from core.llm import get_llm
-
-        model = get_llm("fast")
-        if model is None:
-            return query
-        where = f" tại khu vực {hint}" if hint else " tại Việt Nam"
-        prompt = (
-            "Bạn là chuyên gia địa lý Việt Nam. Hãy mở rộng tên viết tắt, tên thông tục hoặc cơ sở của địa điểm thành tên gọi chuẩn xác, tự nhiên nhất để tìm kiếm trên bản đồ OpenStreetMap (Ví dụ: 'ĐHQG TP.HCM' -> 'Khu đô thị Đại học Quốc gia TP.HCM', 'Bách Khoa CS2' -> 'Đại học Bách Khoa cơ sở 2', 'SPKT' -> 'Đại học Sư phạm Kỹ thuật TP.HCM'). "
-            "Chỉ trả về DUY NHẤT một dòng tên địa điểm, không giải thích."
-        )
-        res = model.invoke([
-            ("system", prompt),
-            ("human", f"Mở rộng địa điểm{where}: \"{query}\"")
-        ])
-        text = getattr(res, "content", res)
-        expanded = str(text).strip().strip("\"'")
-        if 3 < len(expanded) < 120 and not expanded.lower().startswith(("tôi", "xin lỗi")):
-            return expanded
-    except Exception:
-        logger.debug("expand_location_with_llm lỗi", exc_info=True)
-    return query
-
-
-_EXPANDED_GEOCODE_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
-_EXPANDED_GEOCODE_CACHE_MAX = 512
-
-
-def clear_geocode_point_cache() -> None:
-    """Xoá cache nội bộ của kết quả mở rộng địa danh LLM."""
-    _EXPANDED_GEOCODE_CACHE.clear()
-
-
 def _parse_geocode_payload(data: Any) -> Optional[dict[str, Any]]:
     """Chuẩn hoá response.data từ Backend /geocode (1 điểm hoặc danh sách ambiguous)."""
     if not isinstance(data, dict):
@@ -115,55 +79,17 @@ def _parse_geocode_payload(data: Any) -> Optional[dict[str, Any]]:
 
 
 def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, Any]]:
-    """Hàm lõi: tên địa điểm cụ thể -> {"lat","lng"} hoặc {"ambiguous": True, "candidates": ...} hoặc None.
-
-    Chiến lược Lazy AI Expansion:
-    1. Thử gọi Backend `/geocode(q_gốc, hint)` trước (0 LLM, tận dụng cache + Nominatim/Photon/Region BBox).
-    2. CHỈ gọi `expand_location_with_llm(q, hint)` khi bước 1 miss (404 / không tìm thấy).
-    3. Tuyệt đối KHÔNG tự bỏ `hint` sang None để tránh nhảy nhầm sang tỉnh/thành khác.
-    """
+    """Hàm lõi: gọi thẳng Backend `/geocode(query, hint)` (0 LLM, luôn giữ nguyên hint vùng)."""
     q = (query or "").strip()
     if not q:
         return None
-    h = (hint or "").strip() or None
-    cache_key = (norm_key(q), norm_key(h or ""))
-    cached = _EXPANDED_GEOCODE_CACHE.get(cache_key)
-    if cached is not None:
-        return copy.deepcopy(cached) if "candidates" in cached else dict(cached)
-
-    # 1. Thử truy vấn gốc kèm hint (0 LLM)
     params: dict[str, str] = {"q": q}
+    h = (hint or "").strip()
     if h:
         params["hint"] = h
     res = request("GET", "/geocode", params=params)
     if res.get("ok"):
-        parsed = _parse_geocode_payload(res.get("data"))
-        if parsed is not None:
-            return parsed
-
-    # Nếu lỗi mạng / lỗi server 5xx thay vì không tìm thấy (404), dừng lại để tránh gọi LLM vô ích
-    status = res.get("status")
-    err_msg = str(res.get("error") or "")
-    if "Không thể kết nối" in err_msg or (isinstance(status, int) and status >= 500):
-        return None
-
-    # 2. Lazy AI Expansion: chỉ gọi LLM mở rộng viết tắt/tên thông tục khi bước 1 miss
-    expanded = expand_location_with_llm(q, h)
-    if not expanded or norm_key(expanded) == norm_key(q):
-        return None
-
-    exp_params: dict[str, str] = {"q": expanded}
-    if h:
-        exp_params["hint"] = h
-    res_exp = request("GET", "/geocode", params=exp_params)
-    if res_exp.get("ok"):
-        parsed_exp = _parse_geocode_payload(res_exp.get("data"))
-        if parsed_exp is not None:
-            if len(_EXPANDED_GEOCODE_CACHE) >= _EXPANDED_GEOCODE_CACHE_MAX:
-                _EXPANDED_GEOCODE_CACHE.clear()
-            _EXPANDED_GEOCODE_CACHE[cache_key] = copy.deepcopy(parsed_exp) if "candidates" in parsed_exp else dict(parsed_exp)
-            return parsed_exp
-
+        return _parse_geocode_payload(res.get("data"))
     return None
 
 
@@ -205,6 +131,8 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
         body["excluded_room_types"] = [getattr(r, "value", r) for r in args["excluded_room_types"]]
     if args.get("weights"):
         body["weights"] = args["weights"]
+    if args.get("prefer_cheapest") is not None:
+        body["prefer_cheapest"] = bool(args["prefer_cheapest"])
 
     res = request("POST", "/listings/vector-search", json=body)
     if res.get("ok") and not res.get("data"):
@@ -250,6 +178,7 @@ def search_rooms(
     preferred_amenities: Optional[list[str]] = None,
     max_distance_km: Optional[float] = None,
     weights: Optional[dict[str, float]] = None,
+    prefer_cheapest: Optional[bool] = None,
     limit: int = 5,
 ) -> str:
     """Tìm kiếm phòng trọ bằng Vector Search kết hợp Rerank đa tiêu chí từ Backend.
@@ -286,7 +215,7 @@ def search_rooms(
         min_price=min_price, max_price=max_price, min_area=min_area, max_area=max_area,
         min_bedrooms=min_bedrooms,
         amenities=amenities, preferred_amenities=preferred_amenities, max_distance_km=max_distance_km,
-        weights=weights, limit=limit,
+        weights=weights, prefer_cheapest=prefer_cheapest, limit=limit,
     )))
 
 
@@ -405,14 +334,141 @@ def get_listing_detail(listing_id: str) -> str:
     return dump(res)
 
 
-def fetch_price_stats(city_id: Optional[int], district_id: Optional[int] = None, room_type_id: Optional[int] = None) -> Optional[dict[str, Any]]:
-    """Hàm lõi: `price_stats_general` hoặc None (lỗi/thiếu dữ liệu). Thiếu city_id -> None (không đoán thành phố)."""
+def fetch_full_price_stats(
+    city_id: Optional[int],
+    district_id: Optional[int] = None,
+    room_type_id: Optional[int] = None,
+) -> Optional[dict[str, Any]]:
+    """Hàm lõi: trả toàn bộ payload `/listings/price-stats` (`price_stats_general` + `price_stats_by_area`) hoặc None."""
     if city_id is None:
         return None
-    params = {"city_id": city_id, **({"district_id": district_id} if district_id is not None else {}), **({"room_type_id": room_type_id} if room_type_id is not None else {})}
+    params = {
+        "city_id": city_id,
+        **({"district_id": district_id} if district_id is not None else {}),
+        **({"room_type_id": room_type_id} if room_type_id is not None else {}),
+    }
     res = request("GET", "/listings/price-stats", params=params)
     data = res.get("data") if res.get("ok") else None
+    return data if isinstance(data, dict) else None
+
+
+def fetch_price_stats(city_id: Optional[int], district_id: Optional[int] = None, room_type_id: Optional[int] = None) -> Optional[dict[str, Any]]:
+    """Hàm lõi: `price_stats_general` hoặc None (lỗi/thiếu dữ liệu). Thiếu city_id -> None (không đoán thành phố)."""
+    data = fetch_full_price_stats(city_id, district_id=district_id, room_type_id=room_type_id)
     return data.get("price_stats_general") if isinstance(data, dict) else None
+
+
+def lookup_market_price_stats(
+    location_text: str,
+    *,
+    room_type: Optional[str] = None,
+    region_hint: Optional[str] = None,
+    location_kind: Optional[str] = None,
+    admin_lookup_fn: Optional[Any] = None,
+    geocode_fn: Optional[Any] = None,
+    price_stats_fn: Optional[Any] = None,
+    nearby_fn: Optional[Any] = None,
+) -> dict[str, Any]:
+    """Phân giải khu vực và tra cứu thống kê giá phòng trọ thực tế từ Backend."""
+    loc = (location_text or "").strip()
+    if not loc:
+        return {"ok": False, "error": "MISSING_LOCATION", "message": "Chưa có tên quận/huyện hoặc tỉnh/thành phố cần tra cứu giá."}
+
+    rt = normalize_room_type(room_type)
+    room_type_id = rt.type_id if rt is not None else None
+    if room_type and rt is None:
+        return {"ok": False, "error": "INVALID_ROOM_TYPE", "message": f"Loại phòng '{room_type}' không hợp lệ."}
+
+    adm_fn = admin_lookup_fn or admin_lookup
+    geo_fn = geocode_fn or geocode_point
+    stats_fn = price_stats_fn or fetch_full_price_stats
+    near_fn = nearby_fn or fetch_nearby_locations
+    effective_hint = region_hint or infer_region_from_location_text(loc)
+
+    res = resolve_admin(loc, adm_fn, region_hint=effective_hint)
+    if res.kind == "admin" and res.city_id is not None:
+        payload = stats_fn(res.city_id, res.district_id, room_type_id)
+        if not isinstance(payload, dict):
+            return {
+                "ok": False,
+                "error": "BACKEND_UNAVAILABLE",
+                "location": loc,
+                "message": "Không lấy được số liệu thống kê giá từ máy chủ lúc này.",
+            }
+        # Hỗ trợ cả caller trả dict đầy đủ lẫn chỉ trả price_stats_general
+        general = payload.get("price_stats_general") if "price_stats_general" in payload else payload
+        if not isinstance(general, dict):
+            general = {}
+        by_area = payload.get("price_stats_by_area") if isinstance(payload.get("price_stats_by_area"), list) else []
+
+        matched_ward = None
+        if res.ward_id is not None:
+            for item in by_area:
+                if isinstance(item, dict) and item.get("area_id") == res.ward_id:
+                    matched_ward = item
+                    break
+
+        return {
+            "ok": True,
+            "source": "price_stats",
+            "location": loc,
+            "city_id": res.city_id,
+            "district_id": res.district_id,
+            "ward_id": res.ward_id,
+            "room_type": rt.label_vi if rt is not None else None,
+            "total_listings": int(general.get("total_listings") or 0),
+            "average_price_vnd": general.get("average_price_vnd"),
+            "minimum_price_vnd": general.get("minimum_price_vnd"),
+            "maximum_price_vnd": general.get("maximum_price_vnd"),
+            "price_fluctuation_month": general.get("price_fluctuation_month"),
+            "area_hotspot": general.get("area_hotspot"),
+            "hotspot_posting_growth_month": general.get("hotspot_posting_growth_month"),
+            "by_area": by_area[:5],
+            "matched_ward_stats": matched_ward,
+        }
+
+    if res.kind == "ambiguous":
+        return {
+            "ok": False,
+            "error": "AMBIGUOUS_LOCATION",
+            "location": loc,
+            "candidates": list(res.candidates or []),
+            "message": f"Có nhiều địa danh khớp với '{loc}'.",
+        }
+
+    # Nếu không phải địa giới hành chính thuần (vd tên trường ĐH / KCN / địa điểm), thử geocode -> lấy thống kê vùng lân cận
+    if location_kind != "admin":
+        pt_res = resolve_location(loc, location_kind, adm_fn, geo_fn, region_hint=effective_hint)
+        if pt_res.kind == "ambiguous":
+            return {
+                "ok": False,
+                "error": "AMBIGUOUS_LOCATION",
+                "location": loc,
+                "candidates": list(pt_res.candidates or []),
+                "message": f"Có nhiều địa điểm khớp với '{loc}'.",
+            }
+        if pt_res.kind == "point" and pt_res.lat is not None and pt_res.lng is not None:
+            nearby = near_fn(
+                lat=pt_res.lat,
+                lng=pt_res.lng,
+                room_type=rt.value if rt is not None else None,
+                limit=4,
+            )
+            if nearby:
+                return {
+                    "ok": True,
+                    "source": "nearby_areas",
+                    "location": loc,
+                    "room_type": rt.label_vi if rt is not None else None,
+                    "nearby_areas": nearby[:4],
+                }
+
+    return {
+        "ok": False,
+        "error": "LOCATION_NOT_FOUND",
+        "location": loc,
+        "message": f"Không tìm thấy dữ liệu thống kê giá cho khu vực '{loc}'.",
+    }
 
 
 def fetch_nearby_locations(
@@ -508,3 +564,17 @@ def consult_housing_skill(skill_name: str, query: Optional[str] = None) -> str:
         JSON chứa toàn bộ nội dung hướng dẫn, checklist và lưu ý từ kỹ năng tương ứng.
     """
     return dump(consult_skill(skill_name, query))
+
+
+@tool
+def get_market_price_stats(location_text: str, room_type: Optional[str] = None) -> str:
+    """Tra cứu thống kê mặt bằng giá phòng trọ thực tế (giá trung bình, thấp nhất, cao nhất, tổng tin đăng) theo khu vực.
+
+    Args:
+        location_text: Tên quận/huyện, tỉnh/thành phố hoặc địa điểm cần tra cứu (ví dụ: 'Gò Vấp', 'Quận 7, TP.HCM').
+        room_type: Loại phòng tùy chọn ('ROOM', 'STUDIO', 'APARTMENT', 'SLEEPBOX', 'WHOLE_HOUSE').
+
+    Returns:
+        JSON chứa số liệu thống kê giá thực tế từ Backend hoặc thông báo lỗi nếu khu vực không xác định.
+    """
+    return dump(lookup_market_price_stats(location_text, room_type=room_type))

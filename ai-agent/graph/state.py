@@ -24,6 +24,10 @@ class HousingAgentState(TypedDict, total=False):
     needs_clarification: bool
     direct_reply: bool
     matched_skill: Optional[str]
+    skill_context: Optional[dict[str, Any]]
+    current_task: Optional[str]
+    pending_tasks: list[str]
+    partial_replies: list[str]
     is_followup: bool
     focus_rank: Optional[int]
     vague_location_info: Optional[dict[str, Any]]
@@ -38,6 +42,7 @@ class HousingAgentState(TypedDict, total=False):
     ambiguous_candidates: list[dict[str, Any]]
     context_grounded: bool
     market_context: Optional[MarketContext]
+    dropped_summary: list[str]
     last_search_args: Optional[dict[str, Any]]
 
     # tư vấn + kiểm chứng

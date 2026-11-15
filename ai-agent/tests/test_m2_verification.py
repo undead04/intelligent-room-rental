@@ -177,32 +177,35 @@ def test_price_fit_verification_cheap_room_vs_expensive_bargain():
     - Căn A: Giá 2.0tr (tiết kiệm 50% ngân sách), ml_score = 0.55 (điểm ML trung bình).
     - Căn B: Giá 3.8tr (tiết kiệm 5% ngân sách), ml_score = 0.95 (deal rất hời theo ML).
 
-    Khi ở chế độ ưu tiên giá rẻ (weights['price'] = 0.40 hoặc prefer_cheapest=True):
-    - Xác minh điểm _price_fit của Căn A (rẻ thực tế) phải cao hơn rõ rệt so với Căn B (đắt tiền có deal hời).
-    - Độ chênh lệch điểm số phải >= 0.15.
+    1. Khi bật tường minh prefer_cheapest=True:
+       - Xác minh điểm _price_fit của Căn A (rẻ thực tế) cao hơn rõ rệt so với Căn B (>= 0.15).
+    2. Khi nói chung chung (không bật prefer_cheapest), kể cả khi weights['price'] = 0.40 do L1:
+       - Căn B (deal hời ML 0.95) phải thắng Căn A (0.55), không bị bẫy tự bật prefer_cheap.
     """
     from app.services.reranker import _price_fit
 
     room_a = {"price_vnd": 2_000_000, "price_score": 0.55}
     room_b = {"price_vnd": 3_800_000, "price_score": 0.95}
 
-    user_pref = {"max_price": 4_000_000}
+    pref_cheapest = {"max_price": 4_000_000, "prefer_cheapest": True}
     priority_weights = {"price": 0.40}
 
-    # Tính điểm price_fit khi ưu tiên giá rẻ
-    score_a = _price_fit(room_a, user_pref=user_pref, weights=priority_weights)
-    score_b = _price_fit(room_b, user_pref=user_pref, weights=priority_weights)
+    # Tính điểm price_fit khi ưu tiên giá rẻ tường minh
+    score_a = _price_fit(room_a, user_pref=pref_cheapest, weights=priority_weights)
+    score_b = _price_fit(room_b, user_pref=pref_cheapest, weights=priority_weights)
 
-    # Căn A (2.0tr) rẻ thực tế phải có điểm cao hơn rõ rệt so với Căn B (3.8tr)
     assert score_a > score_b, f"Căn A ({score_a}) phải có price_fit cao hơn Căn B ({score_b})"
     assert score_a - score_b >= 0.15, (
         f"Chênh lệch điểm ({score_a - score_b}) phải >= 0.15 để đảm bảo căn rẻ chiến thắng"
     )
 
-    # Kiểm tra ở chế độ cân bằng (weights['price'] = 0.25): Căn B deal hời ML vẫn duy trì điểm cạnh tranh
-    balanced_weights = {"price": 0.25}
-    score_b_balanced = _price_fit(room_b, user_pref=user_pref, weights=balanced_weights)
-    assert score_b_balanced >= 0.45
+    # Khi nói chung chung (prefer_cheapest không bật), kể cả weights['price']=0.40,
+    # Căn B (deal hời ML 0.95) vẫn phải vượt Căn A (0.55)
+    pref_normal = {"max_price": 4_000_000}
+    score_a_normal = _price_fit(room_a, user_pref=pref_normal, weights=priority_weights)
+    score_b_normal = _price_fit(room_b, user_pref=pref_normal, weights=priority_weights)
+    assert score_b_normal > score_a_normal
+    assert score_b_normal >= 0.80
 
 
 # ============================================================================

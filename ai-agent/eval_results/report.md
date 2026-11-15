@@ -57,3 +57,35 @@ Phát hiện theo loại lỗi:
 | price_wrong/tr | 100.0% (60/60; CI 94–100%) |
 | price_wrong/triệu | 100.0% (60/60; CI 94–100%) |
 | unsupported_deposit | 100.0% (60/60; CI 94–100%) |
+
+### Ablation end-to-end
+
+| Chỉ số | B_+NLU | C_+constrained | D_+verify_no_retry | E_full |
+|---|---|---|---|---|
+| Tỉ lệ kiểm tra đạt | 100.0% (39/39; CI 91–100%) | 100.0% (39/39; CI 91–100%) | 100.0% (39/39; CI 91–100%) | 100.0% (39/39; CI 91–100%) |
+| Lượt có phòng bị cờ lỗi ở lần viết đầu | 8.3% (1/12; CI 1–35%) | 0.0% (0/12; CI 0–24%) | 16.7% (2/12; CI 5–45%) | 8.3% (1/12; CI 1–35%) |
+| Lỗi tới tay người dùng | 8.3% (1/12; CI 1–35%) | 0.0% (0/12; CI 0–24%) | 0.0% (0/12; CI 0–24%) | 0.0% (0/12; CI 0–24%) |
+| Phải dùng câu trả lời mẫu | 0.0% (0/12; CI 0–24%) | 0.0% (0/12; CI 0–24%) | 16.7% (2/12; CI 5–45%) | 0.0% (0/12; CI 0–24%) |
+| Số lời gọi LLM / lượt (TB) | 1.12 | 1.59 | 1.59 | 1.71 |
+| Token ước lượng / lượt (TB) | 2435 | 3420 | 3422 | 3483 |
+| Độ trễ p50 / p95 (s) | 5.80 / 6.68 | 5.64 / 6.94 | 5.79 / 6.51 | 5.80 / 8.68 |
+| Lượt lỗi hệ thống | 0 | 0 | 0 | 0 |
+
+### Đánh giá ổn định (pass^k) & Trajectory
+
+- **Khai báo trước khi chạy:** `k=3`, ngưỡng đạt `85.0%`
+- **Eval set:** `2026.11.v1` (digest `4e8ffa874ad7b95f0a24768a85ba82bf2254fdc6a67ff639a5f7a02ac7a481db`, 15 cases)
+- **Phiên bản trace:** `model=default, prompt=homigo-prompt-v2.0, skill=housing-skills-v1.0`
+
+| Chỉ số | Kết quả |
+|---|---|
+| Tỉ lệ đạt toàn bộ k lần (pass^k) | 100.0% (15/15; CI 80–100%) |
+| Tỉ lệ đạt trung bình trên từng lượt | 100.0% (45/45; CI 92–100%) |
+| Tỉ lệ đạt Trajectory | 100.0% (45/45; CI 92–100%) |
+| Đủ bước bắt buộc (Trajectory Q1) | 100.0% (45/45; CI 92–100%) |
+| Không bước cấm/thừa (Trajectory Q2) | 100.0% (45/45; CI 92–100%) |
+| Tỉ lệ đạt DoD Verifier | 100.0% (33/33; CI 90–100%) |
+| Số case không ổn định | 0 |
+| Đạt ngưỡng công bố | ĐẠT |
+
+Không có case không ổn định.

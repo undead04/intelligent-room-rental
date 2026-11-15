@@ -35,27 +35,35 @@ class NhaTotSpider(BaseSpider):
         super().__init__(name="nhatot")
 
     def crawl(self, pages: int = 5, mode: str = "resume", region: str = "all") -> int:
-        processed_ids = self.get_processed_ids()
-        self.log(f"Đã có {len(processed_ids)} tin đăng trong kho dữ liệu thô.")
+        if region == "all":
+            return self._run_coro_sync(self.async_crawl_regions(pages=pages, mode=mode))
 
-        region_code = None
-        if region in settings.REGIONS:
-            region_code = settings.REGIONS[region]
-            self.log(f"Đã chọn vùng: {region.upper()} (Code: {region_code})")
-        elif region == "all":
-            self.log("Đã chọn vùng: TOÀN QUỐC (Tất cả tỉnh thành)")
-        else:
-            self.log(f"Cảnh báo: Vùng '{region}' không có trong cấu hình, mặc định cào TOÀN QUỐC.")
+        if region not in settings.REGIONS:
+            supported = ", ".join(settings.REGIONS.keys())
+            raise ValueError(
+                f"Vùng '{region}' không có trong cấu hình settings.REGIONS ({supported})."
+            )
+
+        region_tag = region.upper()
+
+        def rlog(msg: str) -> None:
+            self.log(f"[{region_tag}] {msg}")
+
+        processed_ids = self.get_processed_ids()
+        rlog(f"Đã có {len(processed_ids)} tin đăng trong kho dữ liệu thô.")
+
+        region_code = settings.REGIONS[region]
+        rlog(f"Đã chọn vùng: {region_tag} (Code: {region_code})")
 
         if mode == "update":
             offset = 0
-            self.log(">>> CHẠY CHẾ ĐỘ UPDATE: Bắt đầu quét từ Trang 1 (Tìm tin mới).")
+            rlog(">>> CHẠY CHẾ ĐỘ UPDATE: Bắt đầu quét từ Trang 1 (Tìm tin mới).")
         else:
             offset = self.load_checkpoint(region)
             if offset > 0:
-                self.log(f">>> CHẠY CHẾ ĐỘ RESUME ({region.upper()}): Tiếp tục cào từ offset {offset}.")
+                rlog(f">>> CHẠY CHẾ ĐỘ RESUME ({region_tag}): Tiếp tục cào từ offset {offset}.")
             else:
-                self.log(f">>> CHẠY CHẾ ĐỘ RESUME ({region.upper()}): Bắt đầu từ offset 0.")
+                rlog(f">>> CHẠY CHẾ ĐỘ RESUME ({region_tag}): Bắt đầu từ offset 0.")
 
         total_crawled = 0
         page = offset // settings.LIMIT_PER_PAGE
@@ -63,23 +71,22 @@ class NhaTotSpider(BaseSpider):
 
         try:
             while page < target_page:
-                self.log(f"\n--- Crawling page {page + 1}, offset {offset} ---")
+                rlog(f"--- Crawling page {page + 1}, offset {offset} ---")
                 params = {
                     "limit": settings.LIMIT_PER_PAGE,
                     "o": offset,
                     "cg": settings.CATEGORY_PHONGTRO,
+                    "region_v2": region_code,
                 }
-                if region_code:
-                    params["region_v2"] = region_code
 
                 data = fetch_with_retry(settings.CHOTOT_API_URL, params=params)
                 if not data or "ads" not in data:
-                    self.log("Không lấy được dữ liệu hoặc hết dữ liệu. Dừng lại.")
+                    rlog("Không lấy được dữ liệu hoặc hết dữ liệu. Dừng lại.")
                     break
 
                 ads = data["ads"]
                 if not ads:
-                    self.log("Không còn tin đăng nào.")
+                    rlog("Không còn tin đăng nào.")
                     break
 
                 new_in_page = 0
@@ -100,10 +107,10 @@ class NhaTotSpider(BaseSpider):
                     new_in_page += 1
                     total_crawled += 1
 
-                self.log(f"Trang {page + 1}: Lấy thành công {new_in_page} tin MỚI (tổng: {len(ads)} tin).")
+                rlog(f"Trang {page + 1}: Lấy thành công {new_in_page} tin MỚI (tổng: {len(ads)} tin).")
 
                 if mode == "update" and new_in_page == 0:
-                    self.log(">>> Đã gặp một trang toàn bộ là tin cũ. TỰ ĐỘNG DỪNG CẬP NHẬT để tiết kiệm tài nguyên!")
+                    rlog(">>> Đã gặp một trang toàn bộ là tin cũ. TỰ ĐỘNG DỪNG CẬP NHẬT để tiết kiệm tài nguyên!")
                     break
 
                 offset += settings.LIMIT_PER_PAGE
@@ -113,15 +120,15 @@ class NhaTotSpider(BaseSpider):
                     self.save_checkpoint(offset, region)
 
                 delay = random.uniform(settings.DELAY_MIN, settings.DELAY_MAX)
-                self.log(f"Nghỉ {delay:.2f}s...")
+                rlog(f"Nghỉ {delay:.2f}s...")
                 time.sleep(delay)
 
         except KeyboardInterrupt:
-            self.log("\n[Ngắt] Bạn vừa nhấn dừng chương trình (Ctrl+C).")
+            rlog("[Ngắt] Bạn vừa nhấn dừng chương trình (Ctrl+C).")
             if mode == "resume":
                 self.save_checkpoint(offset, region)
         except Exception as e:
-            self.log(f"\n[Lỗi nghiêm trọng] Đã xảy ra lỗi: {e}")
+            rlog(f"[Lỗi nghiêm trọng] Đã xảy ra lỗi: {e}")
             traceback.print_exc()
             if mode == "resume":
                 self.save_checkpoint(offset, region)
@@ -345,8 +352,8 @@ if __name__ == "__main__":
         "--region",
         type=str,
         default="all",
-        choices=["all", "hcm", "hanoi", "danang", "binhduong", "dongnai", "cantho"],
-        help="Vùng/Thành phố muốn cào: 'all' (Toàn quốc), 'hcm', 'hanoi', 'danang', 'binhduong', 'dongnai', 'cantho'.",
+        choices=["all", *settings.REGIONS.keys()],
+        help=f"Vùng/Thành phố muốn cào: 'all' (tất cả vùng trong settings.REGIONS) hoặc {', '.join(settings.REGIONS.keys())}.",
     )
     parser.add_argument(
         "--no-clean",

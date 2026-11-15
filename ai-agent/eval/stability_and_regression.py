@@ -33,6 +33,8 @@ from graph.tracing import TraceStore
 from intelligence.advice import Advice, ZeroResultAdvice
 from intelligence.nlu import PreferencePatch, Priorities, TurnAnalysis
 from langchain_core.messages import AIMessage, ToolMessage
+from tools.location_service import admin_key
+from utils.text import norm_key
 
 
 # ---------------------------------------------------------------------------
@@ -62,9 +64,6 @@ class _EvalAdminDB:
     """AdminLookup chuẩn phục vụ chạy Eval Set (trả cấu trúc thành phố/quận/phường Việt Nam)."""
 
     def __call__(self, level: str, name: str, city_id: Optional[int] = None, district_id: Optional[int] = None):
-        from tools.location_service import admin_key
-        from utils.text import norm_key
-
         rows = {"city": _EVAL_CITIES, "district": _EVAL_DISTRICTS, "ward": _EVAL_WARDS}[level]
         out = [r for r in rows if norm_key(name) in norm_key(r["name"]) or admin_key(name) in norm_key(r["name"])]
         if city_id is not None and level == "district":

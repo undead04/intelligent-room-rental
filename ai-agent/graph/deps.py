@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import os
 from typing import Any, Callable, Optional
 
 from core import MODEL_CALL_LIMIT, TOOL_CALL_LIMIT
@@ -31,6 +32,7 @@ class Deps:
     skills: Callable[[], dict[str, Any]]                                # slug -> SkillMetadata
     advice_system_prompt: str = ""
     market_fetcher: Optional[MarketFetcher] = None
+    full_price_stats: Optional[Callable[..., Optional[dict[str, Any]]]] = None
     decision_agent: Optional[Callable[[], Any]] = None                  # factory -> agent.invoke({"messages": [...]}, config=...)
     guard: Callable[[str], GuardrailResult] = check_guardrails
     enable_critic: bool = False
@@ -68,7 +70,7 @@ def default_deps(*, enable_critic: bool = False, sessions: Any = None) -> Deps:
     from prompts import BASE_PROMPT, build_advice_prompt, build_decision_prompt
     from safety.grounding import backend_market_fetcher
     from skills.skills_discovery import discover_housing_skills
-    from tools.housing_tools import admin_lookup, consult_skill, geocode_point, search_rooms_api
+    from tools.housing_tools import admin_lookup, consult_skill, fetch_full_price_stats, geocode_point, search_rooms_api
 
     decision_prompt = build_decision_prompt()
     advice_prompt = build_advice_prompt()
@@ -86,6 +88,8 @@ def default_deps(*, enable_critic: bool = False, sessions: Any = None) -> Deps:
             middleware=[ModelCallLimitMiddleware(run_limit=MODEL_CALL_LIMIT), ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT)],
         )
 
+    constrained_val = os.getenv("HOMIGO_CONSTRAINED_GENERATION", "false").strip().lower() in ("1", "true", "yes")
+
     return Deps(
         sessions=sessions if sessions is not None else SessionStore(),
         get_llm=get_llm,
@@ -98,6 +102,8 @@ def default_deps(*, enable_critic: bool = False, sessions: Any = None) -> Deps:
         consult_skill=consult_skill,
         skills=discover_housing_skills,
         market_fetcher=backend_market_fetcher,
+        full_price_stats=fetch_full_price_stats,
         decision_agent=_agent,
         enable_critic=enable_critic,
+        constrained_generation=constrained_val,
     )

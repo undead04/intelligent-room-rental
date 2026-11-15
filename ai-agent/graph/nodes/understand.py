@@ -49,10 +49,17 @@ def make_understand_node(deps: Deps):
             session.multipliers = dict(plan.multipliers)
             if hasattr(session, "pending_ambiguous_location"):
                 session.pending_ambiguous_location = None
+            if hasattr(session, "pending_ambiguous_candidates"):
+                session.pending_ambiguous_candidates = []
             if hasattr(session, "record_preference_snapshot"):
                 session.record_preference_snapshot(plan.preferences)
         if plan.focus_rank is not None:
             session.focused_room_rank = plan.focus_rank
+        all_tasks = ([plan.current_task] if plan.current_task else []) + list(plan.pending_tasks)
+        need_prior_rooms = plan.is_followup or (
+            "followup" in all_tasks
+            and ("search" not in all_tasks or all_tasks.index("followup") < all_tasks.index("search"))
+        )
         out: dict[str, Any] = {
             "intent": plan.intent,
             "preferences": plan.preferences,
@@ -62,11 +69,15 @@ def make_understand_node(deps: Deps):
             "semantic_query": plan.semantic_query,
             "needs_clarification": plan.needs_clarification,
             "matched_skill": plan.matched_skill,
+            "skill_context": plan.skill_context,
+            "current_task": plan.current_task,
+            "pending_tasks": list(plan.pending_tasks),
+            "partial_replies": [],
             "is_followup": plan.is_followup,
             "direct_reply": plan.direct_reply,
             "focus_rank": plan.focus_rank,
             "vague_location_info": plan.vague_location_info,
-            "retrieved_rooms": list(session.last_rooms) if plan.is_followup else [],
+            "retrieved_rooms": list(session.last_rooms) if need_prior_rooms else [],
             "searched": False,
         }
         if plan.final_text:

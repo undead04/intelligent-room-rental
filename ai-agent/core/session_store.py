@@ -82,6 +82,7 @@ class SessionData:
         self.turn_snapshots: list[UserPreferenceState] = []
         self.focused_room_rank: Optional[int] = None
         self.pending_ambiguous_location: Optional[str] = None
+        self.pending_ambiguous_candidates: list[dict[str, Any]] = []
 
     def clear_latest_location_snapshot(self) -> None:
         """Xoá location lỗi/chưa phân giải khỏi snapshot mới nhất (giữ nguyên giá/diện tích/loại phòng/tiện ích)."""
@@ -230,6 +231,7 @@ def _dump(s: SessionData) -> str:
         "turn_snapshots": [p.model_dump(mode="json") for p in s.turn_snapshots], "initial_preference": s.initial_preference.model_dump(mode="json") if s.initial_preference else None,
         "focused_room_rank": s.focused_room_rank,
         "pending_ambiguous_location": s.pending_ambiguous_location,
+        "pending_ambiguous_candidates": s.pending_ambiguous_candidates,
     }, ensure_ascii=False)
 
 
@@ -255,6 +257,7 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s.initial_preference = UserPreferenceState.model_validate(d["initial_preference"]) if d.get("initial_preference") else None
     s.focused_room_rank = d.get("focused_room_rank")
     s.pending_ambiguous_location = d.get("pending_ambiguous_location")
+    s.pending_ambiguous_candidates = list(d.get("pending_ambiguous_candidates") or [])
     s.version, s.last_active = version, last_active
     return s
 

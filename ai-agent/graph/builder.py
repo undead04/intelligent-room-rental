@@ -14,7 +14,12 @@ from graph.nodes.guardrail import make_guardrail_node
 from graph.nodes.retrieval import make_retrieval_node
 from graph.nodes.understand import make_understand_node
 from graph.nodes.verify import make_verify_node
-from graph.routing import route_after_guardrail, route_after_understand, route_after_verify
+from graph.routing import (
+    route_after_advisory,
+    route_after_guardrail,
+    route_after_understand,
+    route_after_verify,
+)
 from graph.state import HousingAgentState
 from graph.tracing import (
     TraceStore,
@@ -45,8 +50,20 @@ def build_housing_graph(deps: Deps, checkpointer: Any = None):
         "clarification_node": "clarification_node", "retrieval_node": "retrieval_node"})
     g.add_edge("retrieval_node", "decision_node")
     g.add_edge("decision_node", "verify_node")
-    g.add_conditional_edges("verify_node", route_after_verify, {"decision_node": "decision_node", "formatter_node": "formatter_node"})
-    g.add_edge("advisory_node", "formatter_node")
+    g.add_conditional_edges("verify_node", route_after_verify, {
+        "decision_node": "decision_node",
+        "retrieval_node": "retrieval_node",
+        "advisory_node": "advisory_node",
+        "clarification_node": "clarification_node",
+        "formatter_node": "formatter_node",
+    })
+    g.add_conditional_edges("advisory_node", route_after_advisory, {
+        "decision_node": "decision_node",
+        "retrieval_node": "retrieval_node",
+        "advisory_node": "advisory_node",
+        "clarification_node": "clarification_node",
+        "formatter_node": "formatter_node",
+    })
     g.add_edge("clarification_node", "formatter_node")
     g.add_edge("formatter_node", END)
     return g.compile(checkpointer=checkpointer)
@@ -67,9 +84,12 @@ def run_turn(
         state["session_id"] = session_id
     run_config = config or {}
     eff_case = case_id if case_id is not None else get_active_case_id()
+    import os
+    should_persist = os.getenv("PYTEST_CURRENT_TEST") is None
     effective_store = trace_store if trace_store is not None else TraceStore(
         session_id=session_id,
         case_id=eff_case,
+        persist=should_persist,
     )
     case_tok = bind_case_id(eff_case) if eff_case is not None else None
     store_tok = bind_trace_store(effective_store)

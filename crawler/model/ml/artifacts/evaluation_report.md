@@ -1,6 +1,6 @@
 # 📊 Báo Cáo Phân Tích Dữ Liệu (EDA), Lựa Chọn Đặc Trưng & Đánh Giá Mô Hình ML (Homigo)
 
-> **Thời gian tạo:** 2026-11-14 11:29:44  
+> **Thời gian tạo:** 2026-11-15 09:23:39  
 > **Tập dữ liệu gốc:** `10,430` tin đăng $\rightarrow$ **9,693` tin sạch** (tỷ lệ giữ lại **92.93%**)  
 > **Bộ đặc trưng Production:** `PRUNED_19_FEATURES` (19 gốc + 3 phái sinh + 7 `SpatialTE` = **29 cột đầu vào cây**)  
 

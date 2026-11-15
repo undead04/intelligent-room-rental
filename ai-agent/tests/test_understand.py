@@ -116,7 +116,7 @@ def test_llm_failure_or_none_model_routes_to_clarification():
     assert plan2.needs_clarification and not plan2.commit
 
 
-def test_multi_intent_saves_patch_and_returns_natural_chat_without_buttons():
+def test_multi_intent_plans_sequential_tasks_and_saves_patch():
     a = TurnAnalysis(
         intent="new_search",
         skill_slug="rental-contract-advisor",
@@ -128,7 +128,82 @@ def test_multi_intent_saves_patch_and_returns_natural_chat_without_buttons():
     assert plan.preferences.location_text == "UIT" and plan.preferences.max_price == 3_500_000
     assert plan.preferences.amenities == [Amenity.AIRCON]
     assert plan.multipliers["price"] == 2.0
-    assert plan.direct_reply is True and plan.needs_clarification is True
-    assert "ghi nhận sẵn các tiêu chí tìm phòng" in plan.final_text
-    assert "tư vấn về tư vấn hợp đồng thuê trọ, tiền cọc trước" in plan.final_text
-    assert route_after_understand({"direct_reply": plan.direct_reply, "needs_clarification": plan.needs_clarification}) == "formatter_node"
+    assert plan.direct_reply is False and plan.needs_clarification is False
+    assert plan.current_task == "search"
+    assert plan.pending_tasks == ["advisory"]
+    assert plan.matched_skill == "rental-contract-advisor"
+    assert route_after_understand({"current_task": plan.current_task, "matched_skill": plan.matched_skill}) == "retrieval_node"
+
+
+def test_concrete_poi_rescued_when_nlu_marks_location_is_vague():
+    """Nếu NLU đánh nhầm địa danh cụ thể trong POI dict (vd KCN Amata Biên Hòa) là location_is_vague -> giải cứu sang retrieval."""
+    a = TurnAnalysis(
+        intent="new_search",
+        patch=PreferencePatch(
+            location_text="KCN Amata Biên Hòa",
+            location_kind="place",
+            location_is_vague=True,
+            vague_category="khu công nghiệp",
+            location_region="Đồng Nai",
+        ),
+    )
+    plan, _ = run(a)
+    assert plan.needs_clarification is False
+    assert plan.preferences.location_text == "KCN Amata Biên Hòa"
+    assert route_after_understand({"needs_clarification": plan.needs_clarification}) == "retrieval_node"
+
+
+def test_concrete_poi_rescued_from_user_text_when_nlu_omits_location_text():
+    """Khi LLM đặt location_text=None + location_is_vague=True dù user nêu tên riêng KCN Amata Biên Hòa -> vẫn giải cứu; câu mơ hồ thực sự giữ nguyên clarify."""
+    a_concrete = TurnAnalysis(
+        intent="new_search",
+        patch=PreferencePatch(
+            location_text=None,
+            location_is_vague=True,
+            vague_category="khu công nghiệp",
+            location_region="Đồng Nai",
+        ),
+    )
+    plan_ok, _ = run(a_concrete, text="Tìm trọ gần KCN Amata Biên Hòa")
+    assert plan_ok.needs_clarification is False
+    assert plan_ok.preferences.location_text == "KCN Amata Biên Hòa"
+    assert route_after_understand({"needs_clarification": plan_ok.needs_clarification}) == "retrieval_node"
+
+    # Trường hợp mơ hồ thật sự ("gần khu công nghiệp ở Bình Dương") -> PHẢI tiếp tục clarify
+    a_vague = TurnAnalysis(
+        intent="new_search",
+        patch=PreferencePatch(
+            location_text=None,
+            location_is_vague=True,
+            vague_category="khu công nghiệp",
+            location_region="Bình Dương",
+        ),
+    )
+    plan_vague, _ = run(a_vague, text="Tìm trọ gần khu công nghiệp ở Bình Dương")
+    assert plan_vague.needs_clarification is True
+    assert plan_vague.preferences.location_text is None
+
+
+def test_pending_ambiguous_candidate_selection_resolves_directly_without_loop():
+    """Chọn ứng viên theo STT hoặc tên chip từ pending_ambiguous_candidates -> gán thẳng tọa độ, không hỏi vòng lặp."""
+    cands = [
+        {"name": "ĐH Bách Khoa - Cơ sở 1 (Quận 10)", "lat": 10.7726, "lng": 106.6578, "address": "Quận 10, TP.HCM"},
+        {"name": "ĐH Bách Khoa - Cơ sở 2 (Dĩ An)", "lat": 10.8805, "lng": 106.8063, "address": "Dĩ An, Bình Dương"},
+    ]
+    a_pick = TurnAnalysis(intent="refine_search", patch=PreferencePatch())
+
+    s_num = make_session()
+    s_num.pending_ambiguous_location = "ĐH Bách Khoa"
+    s_num.pending_ambiguous_candidates = list(cands)
+    plan_num, _ = run(a_pick, session=s_num, text="2")
+    assert plan_num.needs_clarification is False
+    assert plan_num.preferences.lat == 10.8805
+    assert plan_num.preferences.lng == 106.8063
+
+    s_chip = make_session()
+    s_chip.pending_ambiguous_location = "ĐH Bách Khoa"
+    s_chip.pending_ambiguous_candidates = list(cands)
+    plan_chip, _ = run(a_pick, session=s_chip, text="ĐH Bách Khoa - Cơ sở 1 (Quận 10)")
+    assert plan_chip.needs_clarification is False
+    assert plan_chip.preferences.lat == 10.7726
+    assert plan_chip.preferences.lng == 106.6578

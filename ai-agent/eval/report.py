@@ -188,6 +188,8 @@ def build_report(results: dict[str, Any]) -> str:
         parts.append(grounding_md(results["grounding"]))
     if "nlu" in results:
         parts.append(nlu_md(results["nlu"]))
+    if "e2e" in results:
+        parts.append(ablation_md({"e2e": results["e2e"]}))
     if "ablation" in results:
         parts.append(ablation_md(results["ablation"]))
     if "agent_eval" in results:
