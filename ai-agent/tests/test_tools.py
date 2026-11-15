@@ -259,3 +259,69 @@ def test_search_rooms_api_min_bedrooms_and_compact_detail(be):
         "bathrooms": 2,
     })
     assert compact["bedrooms"] == 2 and compact["bathrooms"] == 2
+
+
+def test_geocode_point_lazy_llm_skips_llm_on_step1_hit_and_never_drops_hint(be, monkeypatch):
+    ht.clear_geocode_point_cache()
+    llm_calls: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(ht, "expand_location_with_llm", lambda q, h=None: llm_calls.append((q, h)) or "UIT")
+
+    # Bước 1 hit ngay (0 LLM)
+    res_hit = ht.geocode_point("UIT", hint="TP.HCM")
+    assert res_hit == {"lat": 10.87, "lng": 106.8}
+    assert llm_calls == []
+    assert be.calls[-1][2] == {"q": "UIT", "hint": "TP.HCM"}
+
+    # Bước 1 miss (404) -> gọi LLM đúng 1 lần và giữ nguyên hint ở mọi request
+    be.calls.clear()
+    res_exp = ht.geocode_point("khu it thu duc test", hint="TP.HCM")
+    assert res_exp == {"lat": 10.87, "lng": 106.8}
+    assert llm_calls == [("khu it thu duc test", "TP.HCM")]
+    assert len(be.calls) == 2
+    assert all(c[2].get("hint") == "TP.HCM" for c in be.calls)
+
+    # Lần 2 dùng cache key gốc -> không gọi lại LLM hay backend
+    be.calls.clear()
+    llm_calls.clear()
+    res_cached = ht.geocode_point("Khu IT Thu Duc Test", hint="tp.hcm")
+    assert res_cached == {"lat": 10.87, "lng": 106.8}
+    assert llm_calls == [] and be.calls == []
+    ht.clear_geocode_point_cache()
+
+
+def test_geocode_point_forwards_ambiguous_and_skips_llm_on_5xx(monkeypatch):
+    ht.clear_geocode_point_cache()
+    llm_called = []
+    monkeypatch.setattr(ht, "expand_location_with_llm", lambda q, h=None: llm_called.append(q) or "UIT")
+
+    def _ambig_handler(req: httpx.Request) -> httpx.Response:
+        if req.url.params.get("q") == "Bách Khoa":
+            return httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "data": {
+                        "ambiguous": True,
+                        "candidates": [
+                            {"name": "Bách Khoa Q10", "lat": 10.7726, "lon": 106.6578, "formatted_address": "Quận 10, TP.HCM", "provider": "Nominatim OSM"},
+                            {"name": "Bách Khoa Thủ Đức", "lat": 10.8805, "lon": 106.8063, "formatted_address": "Thủ Đức, TP.HCM", "provider": "Nominatim OSM"},
+                        ],
+                    },
+                },
+            )
+        return httpx.Response(503, json={"message": "down"})
+
+    http.set_client(httpx.Client(transport=httpx.MockTransport(_ambig_handler), base_url="http://test/api/v1"))
+    try:
+        ambig = ht.geocode_point("Bách Khoa", hint="TP.HCM")
+        assert ambig and ambig["ambiguous"] is True
+        assert len(ambig["candidates"]) == 2
+        assert ambig["candidates"][0]["lng"] == pytest.approx(106.6578)
+        assert llm_called == []
+
+        # Lỗi 503 từ backend không được tốn LLM mở rộng
+        assert ht.geocode_point("địa điểm 503", hint="TP.HCM") is None
+        assert llm_called == []
+    finally:
+        http.set_client(None)
+        ht.clear_geocode_point_cache()

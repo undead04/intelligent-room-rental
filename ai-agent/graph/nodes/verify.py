@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 from graph.deps import Deps
+from graph.nodes.decision import followup_fallback_reply
 from graph.replies import reply_when_no_rooms
 from graph.tracing import emit_verifier_span, resolve_trace_target, traced_call
 from intelligence.insights import template_reply
@@ -134,6 +135,7 @@ def make_verify_node(deps: Deps):
             "tool_evidence": evidence,
             "market_context": state.get("market_context"),
             "admin_not_found": state.get("admin_not_found"),
+            "location_not_found": state.get("location_not_found"),
             "ambiguous_candidates": state.get("ambiguous_candidates"),
             "search_error": state.get("search_error"),
             "lat": getattr(pref, "lat", None) if pref else None,
@@ -188,7 +190,7 @@ def make_verify_node(deps: Deps):
                 answer_grounded = True
             elif not has_retryable_text_issue or state_level_only or non_retryable_trace_fail:
                 # Lỗi ở tầng hệ thống/ràng buộc phòng hoặc trace: Decision retry không sửa được -> dừng & báo lỗi rõ ràng
-                next_decision = "ask_user" if state.get("admin_not_found") or state.get("ambiguous_candidates") else "stop_and_report"
+                next_decision = "ask_user" if state.get("admin_not_found") or state.get("location_not_found") or state.get("ambiguous_candidates") else "stop_and_report"
                 retry_notes.append(f"Verifier {next_decision}: {all_issues}")
                 if not rooms:
                     session = None
@@ -233,8 +235,6 @@ def make_verify_node(deps: Deps):
                             else "Rất tiếc, hiện chưa có dữ liệu phòng phù hợp được xác thực. Vui lòng thử lại với khu vực hoặc ngân sách khác."
                         )
                     elif state.get("is_followup"):
-                        from graph.nodes.decision import followup_fallback_reply
-
                         next_decision = "fallback_template"
                         session = deps.sessions.get_or_create_session(state["session_id"]) if (deps.sessions and state.get("session_id")) else None
                         focus_rank = state.get("focus_rank") or getattr(session, "focused_room_rank", None) or 1

@@ -55,3 +55,14 @@ Sắp xếp lại tập ứng viên ban đầu theo 5 trụ cột:
 - **Kích hoạt có điều kiện:** `location` (khi có tọa độ), `amenity` (khi có tiện ích mềm yêu cầu).
 - **Chuẩn hoá L1:** Tổng trọng số các tiêu chí đang bật luôn được chuẩn hóa để $\sum w_i = 1.0$.
 
+---
+
+## 4. Dịch Vụ Định Vị Tọa Độ Backend (`GET /api/v1/geocode/`)
+
+Phân hệ Geocoding (`backend/app/services/geocoder.py`, `schemas/geocode.py`, `controllers/geocoding_controller.py`) phân giải tên địa điểm đầu vào kèm `hint` khu vực thành tọa độ chính xác hoặc danh sách ứng viên đa nghĩa:
+
+- **Region Bounding-Box Guard (`REGION_BBOXES`):** Khai báo khung tọa độ cho 6 vùng hỗ trợ (`TP.HCM`, `Hà Nội`, `Đà Nẵng`, `Bình Dương`, `Đồng Nai`, `Cần Thơ`, giữ vùng giao thoa quanh Làng ĐH Thủ Đức – Dĩ An). Khi `hint` xác định được vùng, mọi ứng viên nằm ngoài vùng bị loại bỏ thay vì trả nhầm tỉnh khác.
+- **Top-5 & Gom Cụm Đa Cơ Sở (`AMBIGUOUS_CLUSTER_KM = 0.5`):** Lấy tối đa 5 kết quả từ nhà cung cấp (Goong Maps tùy chọn qua `GOONG_API_KEY` $\rightarrow$ OpenStreetMap Nominatim $\rightarrow$ Photon Komoot). Các điểm cách nhau $\le 500\text{ m}$ được gộp thành một cụm; nếu còn $\ge 2$ cụm phân tán ($> 500\text{ m}$), hệ thống trả `ambiguous = True` kèm `candidates` (`GeocodeCandidate`) để Agent hỏi làm rõ với người dùng.
+- **Persistent SQLite Cache (`GeocodeCache`):** Lưu bền vững kết quả thành công trên đĩa (`backend/data/geocode_cache.sqlite`, chế độ SQLite WAL) theo khóa chuẩn hóa `(query_norm, hint_norm)` với TTL cấu hình được (`GEOCODE_CACHE_TTL_SECONDS`, mặc định 30 ngày), thay thế cho `@lru_cache` trên RAM.
+
+

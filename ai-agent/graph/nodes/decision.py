@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
 from domain.enums import amenity_label
 from domain.schemas import UserPreferenceState
 from graph.deps import Deps
@@ -20,6 +22,7 @@ from intelligence.payload_builder import (
     build_decision_query_message,
 )
 from prompts.decision_prompt import build_zero_result_user_prompt
+from tools.housing_tools import compact_listing_detail, dump, fetch_listing_detail
 from utils.text import extract_message_text
 
 logger = logging.getLogger(__name__)
@@ -49,9 +52,6 @@ def followup_fallback_reply(room: Optional[Any], details: Optional[dict[str, Any
 
 def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: list, pref: UserPreferenceState, trace: Any) -> tuple[str, list[str]]:
     """Hỏi tiếp về phòng đã đề xuất: agent có công cụ get_listing_detail; trả (văn bản, bằng chứng từ công cụ)."""
-    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-    from tools.housing_tools import compact_listing_detail, dump, fetch_listing_detail
-
     agent = deps.decision_agent() if deps.decision_agent else None
     if agent is None:
         return "", []
@@ -151,7 +151,7 @@ def make_decision_node(deps: Deps):
         if not rooms:
             text = ""
             model = deps.get_llm("main")
-            if model is not None and not state.get("search_error") and not state.get("admin_not_found") and not state.get("ambiguous_candidates"):
+            if model is not None and not state.get("search_error") and not state.get("admin_not_found") and not state.get("location_not_found") and not state.get("ambiguous_candidates"):
                 try:
                     market = state.get("market_context")
                     pref = state.get("preferences") or UserPreferenceState()

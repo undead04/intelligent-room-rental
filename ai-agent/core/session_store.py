@@ -81,6 +81,22 @@ class SessionData:
         self.initial_preference: Optional[UserPreferenceState] = None
         self.turn_snapshots: list[UserPreferenceState] = []
         self.focused_room_rank: Optional[int] = None
+        self.pending_ambiguous_location: Optional[str] = None
+
+    def clear_latest_location_snapshot(self) -> None:
+        """Xoá location lỗi/chưa phân giải khỏi snapshot mới nhất (giữ nguyên giá/diện tích/loại phòng/tiện ích)."""
+        if self.turn_snapshots:
+            latest = self.turn_snapshots[-1].model_copy(deep=True)
+            latest.clear_location()
+            self.turn_snapshots[-1] = latest
+            if len(self.turn_snapshots) == 1 and self.initial_preference is not None:
+                init_copy = self.initial_preference.model_copy(deep=True)
+                init_copy.clear_location()
+                self.initial_preference = init_copy
+        if self.preference_history:
+            hist_latest = self.preference_history[-1].model_copy(deep=True)
+            hist_latest.clear_location()
+            self.preference_history[-1] = hist_latest
 
     def record_preference_snapshot(self, pref: UserPreferenceState) -> None:
         """Lưu snapshot vào preference_history (tối đa 5 snapshots khác nhau gần nhất)."""
@@ -213,6 +229,7 @@ def _dump(s: SessionData) -> str:
         "preference_history": [p.model_dump(mode="json") for p in s.preference_history],
         "turn_snapshots": [p.model_dump(mode="json") for p in s.turn_snapshots], "initial_preference": s.initial_preference.model_dump(mode="json") if s.initial_preference else None,
         "focused_room_rank": s.focused_room_rank,
+        "pending_ambiguous_location": s.pending_ambiguous_location,
     }, ensure_ascii=False)
 
 
@@ -237,6 +254,7 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s.turn_snapshots = [UserPreferenceState.model_validate(p) for p in d.get("turn_snapshots") or []]
     s.initial_preference = UserPreferenceState.model_validate(d["initial_preference"]) if d.get("initial_preference") else None
     s.focused_room_rank = d.get("focused_room_rank")
+    s.pending_ambiguous_location = d.get("pending_ambiguous_location")
     s.version, s.last_active = version, last_active
     return s
 

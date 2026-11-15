@@ -17,6 +17,8 @@ def _format_nearby_bullets(pref: UserPreferenceState, search_args: dict[str, Any
     district_id = pref.district_id or search_args.get("district_id")
     ward_id = pref.ward_id or search_args.get("ward_id")
     city_id = pref.city_id or search_args.get("city_id")
+    if lat is None and lng is None and district_id is None and ward_id is None and city_id is None:
+        return ""
     min_price = pref.min_price or search_args.get("min_price")
     max_price = pref.max_price or search_args.get("max_price")
     raw_rt = (
@@ -81,16 +83,25 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
     pref = state.get("preferences") or UserPreferenceState()
     search_args = state.get("last_search_args") or {}
 
-    # 1. Các trường hợp lỗi kỹ thuật / địa giới hành chính không tồn tại
+    # 1. Các trường hợp lỗi kỹ thuật / địa giới hành chính hoặc địa điểm chưa định vị được
     if state.get("search_error"):
         return "Xin lỗi bạn, Homigo đang gặp sự cố khi truy vấn dữ liệu phòng trọ. Bạn thử gửi lại sau ít phút nhé!"
     if state.get("admin_not_found"):
         loc = pref.location_text or "khu vực này"
-        neighbor_str = _format_nearby_bullets(pref, search_args)
         return (
             f"Hiện tại Homigo chưa có dữ liệu phòng trọ tại khu vực **{loc}**.\n\n"
-            f"💡 **Gợi ý các khu vực lân cận giáp ranh có nhiều phòng trống:**\n{neighbor_str}\n\n"
-            "👉 Bạn có muốn Homigo tìm phòng ở một trong các khu vực trên không? Hãy nhắn cho mình biết nhé!"
+            "📌 **Homigo hiện hỗ trợ tìm phòng tại 6 tỉnh/thành trọng điểm:** "
+            "**TP.HCM, Hà Nội, Đà Nẵng, Bình Dương, Đồng Nai và Cần Thơ**.\n\n"
+            "👉 Bạn muốn chuyển sang tìm phòng ở khu vực nào trong 6 tỉnh/thành trên không? Nhắn lại để mình tìm ngay nhé!"
+        )
+    if state.get("location_not_found"):
+        loc = pref.location_text or "vị trí bạn vừa nhập"
+        return (
+            f"Hiện tại Homigo **chưa định vị được chính xác tọa độ của `{loc}`** nên chưa thể tìm phòng quanh điểm này.\n\n"
+            "📍 **Để mình tìm đúng khu vực bạn muốn, bạn bổ sung giúp mình:**\n"
+            "- Ghi rõ **tên đường, phường/xã kèm Quận/Huyện hoặc Tỉnh/Thành phố** (ví dụ: *\"gần ngã tư Thủ Đức, TP.HCM\"* hoặc *\"gần KCN Amata, Biên Hòa\"*).\n"
+            "- Hoặc chọn **trường đại học, KCN, bến xe, bệnh viện, ga metro lớn** thuộc **TP.HCM, Hà Nội, Đà Nẵng, Bình Dương, Đồng Nai hoặc Cần Thơ**.\n\n"
+            "👉 Bạn cho mình xin lại địa điểm cụ thể hơn nhé!"
         )
     cands = state.get("ambiguous_candidates") or []
     if cands:

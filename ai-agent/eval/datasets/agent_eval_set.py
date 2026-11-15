@@ -89,6 +89,12 @@ EVAL_SET_CHANGELOG: tuple[Mapping[str, Any], ...] = (
         "case_ids": ("legacy_strict_room_type_flag",),
         "reason": "Loại bỏ case kiểm cờ strict_room_type vì hệ thống hiện hành đã hợp nhất hoàn toàn sang allowed_room_types / excluded_room_types.",
     }),
+    MappingProxyType({
+        "version": "2026.11.v2",
+        "action": "modified_from_legacy",
+        "case_ids": ("err_geocode_failure_fallback",),
+        "reason": "Chuyển chính sách xử lý unresolved_point sang Fail-Fast (không gọi search_rooms tìm mò khi chưa định vị được tọa độ; trả clarification trung thực và giữ DoD passed).",
+    }),
 )
 
 
@@ -608,22 +614,23 @@ AGENT_EVAL_CASES: tuple[EvalCase, ...] = (
         case_id="err_geocode_failure_fallback",
         category="tool_error",
         target_requirements=("req_tool_fault_resilience", "req_location_resolution"),
-        description="Giả lập geocode lỗi / timeout với địa danh không có trong POI từ điển; vẫn fallback search ngữ nghĩa an toàn.",
+        description="Giả lập geocode lỗi / không định vị được địa danh ngoài POI từ điển; Fail-Fast không tìm mò, giữ rooms=[] và hỏi lại vị trí rõ ràng.",
         turns=("tìm phòng gần Khu chế xuất Linh Trung 3 dưới 3 triệu",),
         initial_state=InitialSystemState(rooms=_THREE_ROOMS, geocode_place_ok=False),
         fault_injection=FaultInjection(geocode_error="Nominatim 503 Service Unavailable"),
         expected=ExpectedOutcome(
             expected_intent="new_search",
-            min_rooms=1,
-            max_rooms=3,
-            expect_clarification=False,
+            min_rooms=0,
+            max_rooms=0,
+            expect_clarification=True,
             expect_verifier_passed=True,
             trajectory=TrajectorySpec(
-                required_tools=("resolve_location", "search_rooms"),
-                max_calls_per_tool={"resolve_location": 1, "search_rooms": 1},
+                required_tools=("resolve_location",),
+                forbidden_tools=("search_rooms",),
+                max_calls_per_tool={"resolve_location": 1},
             ),
         ),
-        verdict_criteria="geocode lỗi không làm sập graph; fallback query chữ vẫn chạy search_rooms và trả lời grounded.",
+        verdict_criteria="geocode lỗi không làm sập graph; áp dụng Fail-Fast (không search mò), báo chưa định vị được và yêu cầu bổ sung Quận/Tỉnh.",
         scripted_nlu=(
             {"intent": "new_search", "patch": {"location_text": "Khu chế xuất Linh Trung 3", "location_kind": "place", "max_price": 3_000_000}},
         ),

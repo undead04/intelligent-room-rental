@@ -11,7 +11,7 @@ from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import sanitize_user_text
 from safety.grounding import verify_context_grounding
 from safety.guardrails import scan_untrusted_text
-from tools.location_service import infer_region_from_preference, resolve_location
+from tools.location_service import infer_region_from_location_text, infer_region_from_preference, resolve_location
 from utils.text import norm_key
 
 logger = logging.getLogger(__name__)
@@ -19,13 +19,20 @@ logger = logging.getLogger(__name__)
 RESULT_LIMIT = 5
 OVERFETCH_LIMIT = 10        # có tiêu chí loại trừ -> lấy dư rồi lọc/cắt lại
 
-_MAJOR_CITY_KEYS = ("ho chi minh", "tp hcm", "tphcm", "sai gon", "ha noi", "binh duong", "da nang")
+_MAJOR_CITY_KEYS = (
+    "ho chi minh", "tp hcm", "tphcm", "sai gon",
+    "ha noi", "binh duong", "da nang",
+    "dong nai", "bien hoa", "can tho",
+    "nha trang", "vung tau", "da lat", "hai phong", "hue",
+)
 
 
 def _infer_session_region_hint(
     pref: UserPreferenceState,
     session: Any,
     vague: dict[str, Any],
+    *,
+    intent: Optional[str] = None,
 ) -> Optional[str]:
     """Suy ra gợi ý tỉnh/thành (region_hint) cho địa điểm cụ thể từ ngữ cảnh lượt hiện tại hoặc lịch sử phiên."""
     explicit_region = vague.get("region")
@@ -33,8 +40,14 @@ def _infer_session_region_hint(
         return str(explicit_region)
     if pref.location_kind != "place":
         return None
+    self_region = infer_region_from_location_text(pref.location_text)
+    if self_region:
+        return self_region
     cur_loc = norm_key(pref.location_text or "")
     if any(c in cur_loc for c in _MAJOR_CITY_KEYS):
+        return None
+    # Khi user bắt đầu lượt tìm mới (new_search) với địa danh mới, không ép region_hint của lượt cũ
+    if intent == "new_search":
         return None
 
     snapshots = list(getattr(session, "turn_snapshots", []) or [])
@@ -108,7 +121,7 @@ def make_retrieval_node(deps: Deps):
 
         # 1) định vị (ghi state_before/state_after vì tool tác động tọa độ/ID hành chính vào preferences)
         if pref.location_text and not pref.has_point and not pref.has_admin:
-            region_hint = _infer_session_region_hint(pref, session, vague)
+            region_hint = _infer_session_region_hint(pref, session, vague, intent=state.get("intent"))
             args = {"query": pref.location_text, "kind": pref.location_kind, "region_hint": region_hint}
 
             def _loc_state() -> dict[str, Any]:
@@ -146,7 +159,8 @@ def make_retrieval_node(deps: Deps):
                 status = "admin_not_found"
             elif res.kind == "ambiguous":
                 status, candidates = "ambiguous", res.candidates
-            # unresolved_point: vẫn tìm theo văn bản, không có toạ độ
+            elif res.kind == "unresolved_point":
+                status = "location_not_found"   # Fail-Fast: không tìm mò khi chưa định vị được điểm
 
         # 2) chuẩn bị tham số tìm phòng
         rooms: list[RoomItem] = []
@@ -251,16 +265,39 @@ def make_retrieval_node(deps: Deps):
                         search_args = candidate_args
                         rooms, search_error, ctx = new_rooms, new_err, new_ctx
 
-        session.preferences = pref
+        state_pref = pref.model_copy(deep=True)
+        if status in ("admin_not_found", "location_not_found"):
+            # Không giữ location_text lỗi đọng sang lượt sau nhưng giữ nguyên giá/diện tích/loại phòng/tiện ích
+            clean_pref = pref.model_copy(deep=True)
+            clean_pref.clear_location()
+            session.preferences = clean_pref
+            if hasattr(session, "clear_latest_location_snapshot"):
+                session.clear_latest_location_snapshot()
+            if hasattr(session, "pending_ambiguous_location"):
+                session.pending_ambiguous_location = None
+        elif status == "ambiguous":
+            if hasattr(session, "pending_ambiguous_location"):
+                session.pending_ambiguous_location = state_pref.location_text
+            clean_pref = pref.model_copy(deep=True)
+            clean_pref.clear_location()
+            session.preferences = clean_pref
+            if hasattr(session, "clear_latest_location_snapshot"):
+                session.clear_latest_location_snapshot()
+        else:
+            session.preferences = pref
+            if hasattr(session, "pending_ambiguous_location"):
+                session.pending_ambiguous_location = None
+
         if search_error:
             return {
                 "retrieved_rooms": [],
-                "preferences": pref,
+                "preferences": state_pref,
                 "computed_weights": weights,
                 "search_error": search_error,
                 "context_grounded": False,
                 "searched": False,
                 "admin_not_found": False,
+                "location_not_found": False,
                 "ambiguous_candidates": [],
                 "last_search_args": search_args,
             }
@@ -278,11 +315,12 @@ def make_retrieval_node(deps: Deps):
 
         return {
             "retrieved_rooms": rooms,
-            "preferences": pref,
+            "preferences": state_pref,
             "computed_weights": weights,
             "search_error": None,
             "searched": True,
             "admin_not_found": status == "admin_not_found",
+            "location_not_found": status == "location_not_found",
             "ambiguous_candidates": candidates,
             "last_search_args": search_args,
             **extra,

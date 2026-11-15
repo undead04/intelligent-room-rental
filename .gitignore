@@ -56,3 +56,6 @@ ai-agent/traces/
 !.gemini/mcp_config.json.example
 .agents/mcp_config.json
 !.agents/mcp_config.json.example
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
