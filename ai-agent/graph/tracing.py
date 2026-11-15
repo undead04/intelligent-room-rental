@@ -25,6 +25,7 @@ from typing import Any, Callable, Mapping, Optional, Union
 from langchain_core.callbacks import BaseCallbackHandler
 
 from core import paths
+from utils.freeze import deep_freeze
 
 PROMPT_VERSION = "homigo-prompt-v2.0"
 SKILL_VERSION = "housing-skills-v1.0"
@@ -65,15 +66,6 @@ _ID_CARD_RE = re.compile(
     r"((?:cccd|cmnd|căn cước|can cuoc|số giấy tờ|so giay to)\s*[:#]?\s*)\d{9,12}\b",
     re.IGNORECASE,
 )
-
-
-def deep_freeze(obj: Any) -> Any:
-    """Đóng băng đệ quy cấu trúc dict/list/set thành MappingProxyType/tuple bất biến cho Verifier."""
-    if isinstance(obj, Mapping):
-        return MappingProxyType({k: deep_freeze(v) for k, v in obj.items()})
-    if isinstance(obj, (list, tuple, set, frozenset)):
-        return tuple(deep_freeze(item) for item in obj)
-    return obj
 
 
 def _redact_string(text: str) -> str:
@@ -352,7 +344,11 @@ def bind_trace_store(store: Optional[TraceStore]) -> contextvars.Token[Optional[
 
 
 def reset_trace_store(token: contextvars.Token[Optional[TraceStore]]) -> None:
-    _ACTIVE_TRACE_STORE.reset(token)
+    try:
+        _ACTIVE_TRACE_STORE.reset(token)
+    except ValueError:
+        # Starlette StreamingResponse chạy sync generator qua threadpool có thể khác ContextVar Context giữa các lần next()
+        _ACTIVE_TRACE_STORE.set(None)
 
 
 def get_active_case_id() -> Optional[str]:
@@ -364,7 +360,10 @@ def bind_case_id(case_id: Optional[str]) -> contextvars.Token[Optional[str]]:
 
 
 def reset_case_id(token: contextvars.Token[Optional[str]]) -> None:
-    _ACTIVE_CASE_ID.reset(token)
+    try:
+        _ACTIVE_CASE_ID.reset(token)
+    except ValueError:
+        _ACTIVE_CASE_ID.set(None)
 
 
 def resolve_trace_target(deps: Any = None) -> TraceStore:
