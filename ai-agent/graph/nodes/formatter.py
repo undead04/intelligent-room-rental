@@ -34,11 +34,15 @@ def make_formatter_node(deps: Deps):
             report = {"is_grounded": True, "context_grounded": False}
         elif state.get("admin_not_found"):
             follow_up, rooms, insights = ["🔍 Thử tìm khu vực khác", "✏️ Tùy chỉnh tiêu chí"], [], None
-            report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False}
+            report = {**dict(report or {}), "is_grounded": True, "groundedness_score": 1.0, "context_grounded": False}
+        elif state.get("location_not_found"):
+            follow_up, rooms, insights = ["📍 Nhập kèm Quận/Thành phố", "🔍 Thử tìm khu vực khác"], [], None
+            need_clarify = True
+            report = {**dict(report or {}), "is_grounded": True, "groundedness_score": 1.0, "context_grounded": False}
         elif cands:
             follow_up, rooms, insights = [str(c.get("name")) for c in cands[:4] if c.get("name")], [], None
             need_clarify = True
-            report = {"is_grounded": True, "groundedness_score": 1.0, "context_grounded": False}
+            report = {**dict(report or {}), "is_grounded": True, "groundedness_score": 1.0, "context_grounded": False}
         elif need_clarify:
             follow_up = list(state.get("follow_up_questions") or [])
         elif rooms:

@@ -34,6 +34,7 @@ class HousingAgentState(TypedDict, total=False):
     searched: bool                           # lượt này có chạy tìm kiếm không (quyết định ghi đè last_rooms)
     search_error: Optional[str]
     admin_not_found: bool
+    location_not_found: bool
     ambiguous_candidates: list[dict[str, Any]]
     context_grounded: bool
     market_context: Optional[MarketContext]

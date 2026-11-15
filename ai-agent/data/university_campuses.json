@@ -205,5 +205,635 @@
     "lng": 106.6663,
     "region": "Bình Dương",
     "address": "Đường Nam Kỳ Khởi Nghĩa, P. Hòa Phú, TP. Thủ Dầu Một, Bình Dương"
+  },
+  {
+    "name": "Trường Đại học Kinh tế TP.HCM (Cơ sở A - Quận 3)",
+    "short_name": "UEH-CSA",
+    "aliases": ["ueh cs a", "ueh cơ sở a", "đh kinh tế 59c nguyễn đình chiểu"],
+    "lat": 10.7854,
+    "lng": 106.6949,
+    "region": "TP.HCM",
+    "address": "59C Nguyễn Đình Chiểu, Võ Thị Sáu, Quận 3, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Kinh tế TP.HCM (Cơ sở B - Quận 10)",
+    "short_name": "UEH-CSB",
+    "aliases": ["ueh cs b", "ueh cơ sở b", "ueh nguyễn tri phương"],
+    "lat": 10.7611,
+    "lng": 106.6684,
+    "region": "TP.HCM",
+    "address": "279 Nguyễn Tri Phương, Phường 5, Quận 10, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Công nghiệp TP.HCM",
+    "short_name": "IUH",
+    "aliases": ["iuh", "đh công nghiệp tp.hcm", "đại học công nghiệp tp.hcm", "cong nghiep go vap", "iuh gò vấp"],
+    "lat": 10.8222,
+    "lng": 106.6875,
+    "region": "TP.HCM",
+    "address": "12 Nguyễn Văn Bảo, Phường 4, Gò Vấp, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Công nghệ TP.HCM (HUTECH - Điện Biên Phủ)",
+    "short_name": "HUTECH",
+    "aliases": ["hutech", "hutech điện biên phủ", "hutech bình thạnh", "đh công nghệ tp.hcm"],
+    "lat": 10.8019,
+    "lng": 106.7145,
+    "region": "TP.HCM",
+    "address": "475A Điện Biên Phủ, Phường 25, Bình Thạnh, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Ngoại ngữ - Tin học TP.HCM",
+    "short_name": "HUFLIT",
+    "aliases": ["huflit", "huflit sư vạn hạnh", "đh ngoại ngữ tin học"],
+    "lat": 10.7763,
+    "lng": 106.6673,
+    "region": "TP.HCM",
+    "address": "828 Sư Vạn Hạnh, Phường 13, Quận 10, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Văn Lang (Cơ sở 3 - Gò Vấp)",
+    "short_name": "VLU-CS3",
+    "aliases": ["vlu", "đh văn lang", "văn lang cơ sở 3", "van lang go vap"],
+    "lat": 10.8276,
+    "lng": 106.6997,
+    "region": "TP.HCM",
+    "address": "69/68 Đặng Thùy Trâm, Phường 13, Bình Thạnh, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Y Dược TP.HCM",
+    "short_name": "UMP",
+    "aliases": ["ump", "đh y dược tp.hcm", "y dược tp.hcm", "dai hoc y duoc tphcm"],
+    "lat": 10.7556,
+    "lng": 106.6644,
+    "region": "TP.HCM",
+    "address": "217 Hồng Bàng, Phường 11, Quận 5, TP.HCM"
+  },
+  {
+    "name": "Khu Công nghệ cao TP.HCM",
+    "short_name": "SHTP",
+    "aliases": ["kcnc", "khu công nghệ cao", "khu công nghệ cao tp.hcm", "khu công nghệ cao quận 9", "khu công nghệ cao thủ đức", "shtp"],
+    "lat": 10.8548,
+    "lng": 106.7867,
+    "region": "TP.HCM",
+    "address": "Xa lộ Hà Nội, P. Tăng Nhơn Phú A / Long Thạnh Mỹ, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Khu chế xuất Linh Trung 1",
+    "short_name": "KCX-LT1",
+    "aliases": ["kcx linh trung 1", "khu chế xuất linh trung 1", "kcx linh trung"],
+    "lat": 10.8696,
+    "lng": 106.7745,
+    "region": "TP.HCM",
+    "address": "Quốc lộ 1A, P. Linh Trung, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Khu chế xuất Linh Trung 2",
+    "short_name": "KCX-LT2",
+    "aliases": ["kcx linh trung 2", "khu chế xuất linh trung 2"],
+    "lat": 10.8768,
+    "lng": 106.7316,
+    "region": "TP.HCM",
+    "address": "Tỉnh lộ 43, P. Bình Chiểu, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Khu chế xuất Tân Thuận",
+    "short_name": "KCX-TT",
+    "aliases": ["kcx tân thuận", "khu chế xuất tân thuận", "tan thuan epz"],
+    "lat": 10.7514,
+    "lng": 106.7313,
+    "region": "TP.HCM",
+    "address": "P. Tân Thuận Đông, Quận 7, TP.HCM"
+  },
+  {
+    "name": "KCN Tân Bình",
+    "short_name": "KCN-TB",
+    "aliases": ["kcn tân bình", "khu công nghiệp tân bình"],
+    "lat": 10.8165,
+    "lng": 106.6186,
+    "region": "TP.HCM",
+    "address": "Tây Thạnh, Tân Phú, TP.HCM"
+  },
+  {
+    "name": "KCN Tân Tạo",
+    "short_name": "KCN-TT",
+    "aliases": ["kcn tân tạo", "khu công nghiệp tân tạo"],
+    "lat": 10.7423,
+    "lng": 106.5914,
+    "region": "TP.HCM",
+    "address": "P. Tân Tạo A, Bình Tân, TP.HCM"
+  },
+  {
+    "name": "Bến xe Miền Đông cũ (Bình Thạnh)",
+    "short_name": "BX-MD-CU",
+    "aliases": ["bến xe miền đông", "bx miền đông", "bến xe miền đông cũ", "bx miền đông cũ", "ben xe mien dong binh thanh"],
+    "lat": 10.8147,
+    "lng": 106.7113,
+    "region": "TP.HCM",
+    "address": "292 Đinh Bộ Lĩnh, Phường 26, Bình Thạnh, TP.HCM"
+  },
+  {
+    "name": "Bến xe Miền Đông mới (Thủ Đức)",
+    "short_name": "BX-MD-MOI",
+    "aliases": ["bến xe miền đông", "bx miền đông", "bến xe miền đông mới", "bx miền đông mới", "ben xe mien dong moi thu duc"],
+    "lat": 10.8794,
+    "lng": 106.8146,
+    "region": "TP.HCM",
+    "address": "501 Hoàng Hữu Nam, P. Long Bình, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Bến xe Miền Tây",
+    "short_name": "BX-MT",
+    "aliases": ["bến xe miền tây", "bx miền tây", "ben xe mien tay"],
+    "lat": 10.7413,
+    "lng": 106.6197,
+    "region": "TP.HCM",
+    "address": "395 Kinh Dương Vương, An Lạc, Bình Tân, TP.HCM"
+  },
+  {
+    "name": "Bến xe An Sương",
+    "short_name": "BX-AS",
+    "aliases": ["bến xe an sương", "bx an sương", "ngã tư an sương"],
+    "lat": 10.8442,
+    "lng": 106.6134,
+    "region": "TP.HCM",
+    "address": "Quốc lộ 22, Bà Điểm, Hóc Môn, TP.HCM"
+  },
+  {
+    "name": "Ga Metro Bến Thành (Chợ Bến Thành)",
+    "short_name": "METRO-BT",
+    "aliases": ["ga bến thành", "ga metro bến thành", "chợ bến thành", "ben thanh metro"],
+    "lat": 10.7721,
+    "lng": 106.6983,
+    "region": "TP.HCM",
+    "address": "Bến Thành, Quận 1, TP.HCM"
+  },
+  {
+    "name": "Ga Metro Suối Tiên (ĐHQG)",
+    "short_name": "METRO-ST",
+    "aliases": ["ga suối tiên", "ga metro suối tiên", "ga đại học quốc gia", "suối tiên"],
+    "lat": 10.8669,
+    "lng": 106.8035,
+    "region": "TP.HCM",
+    "address": "Xa lộ Hà Nội, P. Linh Trung, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Ga Metro Thảo Điền",
+    "short_name": "METRO-TD",
+    "aliases": ["ga thảo điền", "ga metro thảo điền", "thảo điền"],
+    "lat": 10.8004,
+    "lng": 106.7336,
+    "region": "TP.HCM",
+    "address": "Xa lộ Hà Nội, Thảo Điền, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Sân bay Tân Sơn Nhất",
+    "short_name": "SGN",
+    "aliases": ["tân sơn nhất", "sân bay tân sơn nhất", "san bay tsn"],
+    "lat": 10.8185,
+    "lng": 106.6588,
+    "region": "TP.HCM",
+    "address": "Trường Sơn, Phường 2, Tân Bình, TP.HCM"
+  },
+  {
+    "name": "Bệnh viện Chợ Rẫy",
+    "short_name": "BV-CR",
+    "aliases": ["bv chợ rẫy", "bệnh viện chợ rẫy", "chợ rẫy"],
+    "lat": 10.7579,
+    "lng": 106.6596,
+    "region": "TP.HCM",
+    "address": "201B Nguyễn Chí Thanh, Phường 12, Quận 5, TP.HCM"
+  },
+  {
+    "name": "Bệnh viện Nhân dân 115",
+    "short_name": "BV-115",
+    "aliases": ["bv 115", "bệnh viện 115", "bệnh viện nhân dân 115"],
+    "lat": 10.7736,
+    "lng": 106.6650,
+    "region": "TP.HCM",
+    "address": "527 Sư Vạn Hạnh, Phường 12, Quận 10, TP.HCM"
+  },
+  {
+    "name": "Bệnh viện TP. Thủ Đức",
+    "short_name": "BV-TD",
+    "aliases": ["bv thủ đức", "bệnh viện thủ đức", "bệnh viện tp thủ đức"],
+    "lat": 10.8693,
+    "lng": 106.7429,
+    "region": "TP.HCM",
+    "address": "29 Phú Châu, Tam Phú, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Ngã tư Thủ Đức",
+    "short_name": "NT-TD",
+    "aliases": ["ngã tư thủ đức", "nga tu thu duc"],
+    "lat": 10.8484,
+    "lng": 106.7746,
+    "region": "TP.HCM",
+    "address": "Xa lộ Hà Nội - Lê Văn Việt, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Ngã tư Hàng Xanh",
+    "short_name": "HANG-XANH",
+    "aliases": ["hàng xanh", "ngã tư hàng xanh", "nga tu hang xanh"],
+    "lat": 10.8012,
+    "lng": 106.7115,
+    "region": "TP.HCM",
+    "address": "Điện Biên Phủ - Xô Viết Nghệ Tĩnh, Bình Thạnh, TP.HCM"
+  },
+  {
+    "name": "Gigamall Thủ Đức",
+    "short_name": "GIGAMALL",
+    "aliases": ["gigamall", "gigamall thủ đức", "tttm gigamall"],
+    "lat": 10.8277,
+    "lng": 106.7213,
+    "region": "TP.HCM",
+    "address": "240-242 Phạm Văn Đồng, Hiệp Bình Chánh, TP. Thủ Đức, TP.HCM"
+  },
+  {
+    "name": "Landmark 81 (Vinhomes Central Park)",
+    "short_name": "LM81",
+    "aliases": ["landmark 81", "vinhomes central park", "tân cảng"],
+    "lat": 10.7950,
+    "lng": 106.7218,
+    "region": "TP.HCM",
+    "address": "720A Điện Biên Phủ, Phường 22, Bình Thạnh, TP.HCM"
+  },
+  {
+    "name": "Crescent Mall (Phú Mỹ Hưng)",
+    "short_name": "PMH",
+    "aliases": ["crescent mall", "phú mỹ hưng", "hồ bán nguyệt"],
+    "lat": 10.7289,
+    "lng": 106.7192,
+    "region": "TP.HCM",
+    "address": "101 Tôn Dật Tiên, Tân Phú, Quận 7, TP.HCM"
+  },
+  {
+    "name": "Aeon Mall Tân Phú",
+    "short_name": "AEON-TP",
+    "aliases": ["aeon tân phú", "aeon mall tân phú", "aeon celadon"],
+    "lat": 10.8015,
+    "lng": 106.6177,
+    "region": "TP.HCM",
+    "address": "30 Tân Thắng, Sơn Kỳ, Tân Phú, TP.HCM"
+  },
+  {
+    "name": "Aeon Mall Bình Tân",
+    "short_name": "AEON-BT",
+    "aliases": ["aeon bình tân", "aeon mall bình tân"],
+    "lat": 10.7426,
+    "lng": 106.6119,
+    "region": "TP.HCM",
+    "address": "1 Đường số 17A, Bình Trị Đông B, Bình Tân, TP.HCM"
+  },
+  {
+    "name": "Trường Đại học Ngoại thương Hà Nội",
+    "short_name": "FTU-HN",
+    "aliases": ["ftu hà nội", "ngoại thương hà nội", "đh ngoại thương hà nội"],
+    "lat": 21.0230,
+    "lng": 105.8053,
+    "region": "Hà Nội",
+    "address": "91 Chùa Láng, Láng Thượng, Đống Đa, Hà Nội"
+  },
+  {
+    "name": "Học viện Công nghệ Bưu chính Viễn thông (Hà Nội)",
+    "short_name": "PTIT-HN",
+    "aliases": ["ptit hà nội", "ptit hà đông", "bưu chính viễn thông hà nội"],
+    "lat": 20.9809,
+    "lng": 105.7872,
+    "region": "Hà Nội",
+    "address": "Km10 Nguyễn Trãi, Hà Đông, Hà Nội"
+  },
+  {
+    "name": "Trường Đại học Công nghiệp Hà Nội",
+    "short_name": "HAUI",
+    "aliases": ["haui", "đh công nghiệp hà nội", "cong nghiep ha noi"],
+    "lat": 21.0537,
+    "lng": 105.7351,
+    "region": "Hà Nội",
+    "address": "298 Cầu Diễn, Minh Khai, Bắc Từ Liêm, Hà Nội"
+  },
+  {
+    "name": "Bến xe Mỹ Đình",
+    "short_name": "BX-MD-HN",
+    "aliases": ["bến xe mỹ đình", "bx mỹ đình", "mỹ đình"],
+    "lat": 21.0286,
+    "lng": 105.7781,
+    "region": "Hà Nội",
+    "address": "20 Phạm Hùng, Mỹ Đình 2, Nam Từ Liêm, Hà Nội"
+  },
+  {
+    "name": "Bến xe Giáp Bát",
+    "short_name": "BX-GB",
+    "aliases": ["bến xe giáp bát", "bx giáp bát"],
+    "lat": 20.9815,
+    "lng": 105.8414,
+    "region": "Hà Nội",
+    "address": "Km6 Giải Phóng, Giáp Bát, Hoàng Mai, Hà Nội"
+  },
+  {
+    "name": "Ga Cát Linh (Metro Hà Nội)",
+    "short_name": "GA-CAT-LINH",
+    "aliases": ["ga cát linh", "cát linh"],
+    "lat": 21.0283,
+    "lng": 105.8266,
+    "region": "Hà Nội",
+    "address": "Cát Linh, Đống Đa, Hà Nội"
+  },
+  {
+    "name": "Bệnh viện Bạch Mai",
+    "short_name": "BV-BM",
+    "aliases": ["bv bạch mai", "bệnh viện bạch mai", "bạch mai"],
+    "lat": 21.0019,
+    "lng": 105.8411,
+    "region": "Hà Nội",
+    "address": "78 Giải Phóng, Phương Mai, Đống Đa, Hà Nội"
+  },
+  {
+    "name": "KCN Bắc Thăng Long",
+    "short_name": "KCN-BTL",
+    "aliases": ["kcn bắc thăng long", "khu công nghiệp bắc thăng long"],
+    "lat": 21.1190,
+    "lng": 105.7810,
+    "region": "Hà Nội",
+    "address": "Kim Chung, Đông Anh, Hà Nội"
+  },
+  {
+    "name": "Khu Công nghệ cao Hòa Lạc",
+    "short_name": "KCNC-HL",
+    "aliases": ["kcnc hòa lạc", "khu công nghệ cao hòa lạc", "hòa lạc", "fpt hòa lạc"],
+    "lat": 21.0124,
+    "lng": 105.5253,
+    "region": "Hà Nội",
+    "address": "Km29 Đại lộ Thăng Long, Thạch Thất, Hà Nội"
+  },
+  {
+    "name": "Ngã Tư Sở",
+    "short_name": "NGA-TU-SO",
+    "aliases": ["ngã tư sở", "royal city"],
+    "lat": 21.0031,
+    "lng": 105.8186,
+    "region": "Hà Nội",
+    "address": "Nguyễn Trãi - Trường Chinh, Thanh Xuân, Hà Nội"
+  },
+  {
+    "name": "Times City",
+    "short_name": "TIMES-CITY",
+    "aliases": ["times city", "vinhomes times city"],
+    "lat": 20.9950,
+    "lng": 105.8685,
+    "region": "Hà Nội",
+    "address": "458 Minh Khai, Vĩnh Tuy, Hai Bà Trưng, Hà Nội"
+  },
+  {
+    "name": "Trường Đại học Duy Tân (Cơ sở Quang Trung)",
+    "short_name": "DTU",
+    "aliases": ["dtu", "đh duy tân", "duy tân đà nẵng"],
+    "lat": 16.0749,
+    "lng": 108.2156,
+    "region": "Đà Nẵng",
+    "address": "03 Quang Trung, Hải Châu, Đà Nẵng"
+  },
+  {
+    "name": "Trường Đại học CNTT & TT Việt - Hàn",
+    "short_name": "VKU",
+    "aliases": ["vku", "đh việt hàn", "việt hàn đà nẵng"],
+    "lat": 15.9752,
+    "lng": 108.2532,
+    "region": "Đà Nẵng",
+    "address": "470 Trần Đại Nghĩa, Hòa Quý, Ngũ Hành Sơn, Đà Nẵng"
+  },
+  {
+    "name": "KCN Hòa Khánh",
+    "short_name": "KCN-HK",
+    "aliases": ["kcn hòa khánh", "khu công nghiệp hòa khánh", "hòa khánh"],
+    "lat": 16.0686,
+    "lng": 108.1319,
+    "region": "Đà Nẵng",
+    "address": "Hòa Khánh Bắc, Liên Chiểu, Đà Nẵng"
+  },
+  {
+    "name": "Bến xe Trung tâm Đà Nẵng",
+    "short_name": "BX-DN",
+    "aliases": ["bến xe đà nẵng", "bx đà nẵng", "bến xe trung tâm đà nẵng"],
+    "lat": 16.0544,
+    "lng": 108.1695,
+    "region": "Đà Nẵng",
+    "address": "185 Tôn Đức Thắng, Hòa An, Cẩm Lệ, Đà Nẵng"
+  },
+  {
+    "name": "Bệnh viện Đà Nẵng",
+    "short_name": "BV-DN",
+    "aliases": ["bv đà nẵng", "bệnh viện đà nẵng"],
+    "lat": 16.0725,
+    "lng": 108.2151,
+    "region": "Đà Nẵng",
+    "address": "124 Hải Phòng, Thạch Thang, Hải Châu, Đà Nẵng"
+  },
+  {
+    "name": "Cầu Rồng Đà Nẵng",
+    "short_name": "CAU-RONG",
+    "aliases": ["cầu rồng", "cau rong da nang"],
+    "lat": 16.0610,
+    "lng": 108.2278,
+    "region": "Đà Nẵng",
+    "address": "Cầu Rồng, Hải Châu / Sơn Trà, Đà Nẵng"
+  },
+  {
+    "name": "KCN VSIP 1 Bình Dương",
+    "short_name": "VSIP-1",
+    "aliases": ["vsip 1", "kcn vsip 1", "khu công nghiệp vsip 1"],
+    "lat": 10.9316,
+    "lng": 106.7164,
+    "region": "Bình Dương",
+    "address": "Đại lộ Hữu Nghị, Thuận Giao, Thuận An, Bình Dương"
+  },
+  {
+    "name": "KCN VSIP 2 Bình Dương",
+    "short_name": "VSIP-2",
+    "aliases": ["vsip 2", "kcn vsip 2", "khu công nghiệp vsip 2"],
+    "lat": 11.0734,
+    "lng": 106.6879,
+    "region": "Bình Dương",
+    "address": "Hòa Phú, Thủ Dầu Một / Tân Uyên, Bình Dương"
+  },
+  {
+    "name": "KCN Sóng Thần",
+    "short_name": "SONG-THAN",
+    "aliases": ["kcn sóng thần", "sóng thần 1", "sóng thần 2", "khu công nghiệp sóng thần"],
+    "lat": 10.8926,
+    "lng": 106.7463,
+    "region": "Bình Dương",
+    "address": "Dĩ An, Bình Dương"
+  },
+  {
+    "name": "KCN Mỹ Phước 3",
+    "short_name": "MP3",
+    "aliases": ["kcn mỹ phước 3", "mỹ phước 3"],
+    "lat": 11.1197,
+    "lng": 106.6137,
+    "region": "Bình Dương",
+    "address": "Thới Hòa, Bến Cát, Bình Dương"
+  },
+  {
+    "name": "Aeon Mall Bình Dương Canary",
+    "short_name": "AEON-BD",
+    "aliases": ["aeon bình dương", "aeon mall bình dương", "aeon canary"],
+    "lat": 10.9327,
+    "lng": 106.7116,
+    "region": "Bình Dương",
+    "address": "01 Đại lộ Bình Dương, Thuận Giao, Thuận An, Bình Dương"
+  },
+  {
+    "name": "Ngã tư 550 Dĩ An",
+    "short_name": "NT-550",
+    "aliases": ["ngã tư 550", "nga tu 550"],
+    "lat": 10.9163,
+    "lng": 106.7568,
+    "region": "Bình Dương",
+    "address": "ĐT743, Dĩ An, Bình Dương"
+  },
+  {
+    "name": "Trường Đại học Lạc Hồng",
+    "short_name": "LHU",
+    "aliases": ["lhu", "đh lạc hồng", "đại học lạc hồng"],
+    "lat": 10.9539,
+    "lng": 106.8017,
+    "region": "Đồng Nai",
+    "address": "10 Huỳnh Văn Nghệ, Bửu Long, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "Trường Đại học Công nghệ Đồng Nai",
+    "short_name": "DNTU",
+    "aliases": ["dntu", "đh công nghệ đồng nai", "đại học công nghệ đồng nai"],
+    "lat": 10.9737,
+    "lng": 106.8673,
+    "region": "Đồng Nai",
+    "address": "Nguyễn Khuyến, Trảng Dài, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "Trường Đại học Đồng Nai",
+    "short_name": "DNU",
+    "aliases": ["dnu", "đh đồng nai", "đại học đồng nai"],
+    "lat": 10.9574,
+    "lng": 106.8669,
+    "region": "Đồng Nai",
+    "address": "04 Lê Quý Đôn, Tân Hiệp, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "KCN Amata Biên Hòa",
+    "short_name": "AMATA",
+    "aliases": ["kcn amata", "khu công nghiệp amata", "amata biên hòa", "amata"],
+    "lat": 10.9465,
+    "lng": 106.8852,
+    "region": "Đồng Nai",
+    "address": "Long Bình, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "KCN Biên Hòa 2",
+    "short_name": "BH2",
+    "aliases": ["kcn biên hòa 2", "biên hòa 2", "khu công nghiệp biên hòa 2"],
+    "lat": 10.9178,
+    "lng": 106.8666,
+    "region": "Đồng Nai",
+    "address": "An Bình / Long Bình Tân, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "Ngã tư Vũng Tàu",
+    "short_name": "NT-VT",
+    "aliases": ["ngã tư vũng tàu", "nga tu vung tau"],
+    "lat": 10.9035,
+    "lng": 106.8473,
+    "region": "Đồng Nai",
+    "address": "Quốc lộ 1A - Quốc lộ 51, Long Bình Tân, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "Bến xe Biên Hòa",
+    "short_name": "BX-BH",
+    "aliases": ["bến xe biên hòa", "bx biên hòa"],
+    "lat": 10.9479,
+    "lng": 106.8141,
+    "region": "Đồng Nai",
+    "address": "Quốc lộ 1K, Quang Vinh, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "Bệnh viện Đa khoa Đồng Nai",
+    "short_name": "BV-DNA",
+    "aliases": ["bv đa khoa đồng nai", "bệnh viện đa khoa đồng nai", "bệnh viện đồng nai"],
+    "lat": 10.9525,
+    "lng": 106.8628,
+    "region": "Đồng Nai",
+    "address": "02 Đồng Khởi, Tam Hòa, Biên Hòa, Đồng Nai"
+  },
+  {
+    "name": "Trường Đại học Cần Thơ (Khu 2)",
+    "short_name": "CTU",
+    "aliases": ["ctu", "đh cần thơ", "đại học cần thơ", "dai hoc can tho", "khu 2 đh cần thơ"],
+    "lat": 10.0299,
+    "lng": 105.7706,
+    "region": "Cần Thơ",
+    "address": "Khu 2, Đường 3/2, Xuân Khánh, Ninh Kiều, Cần Thơ"
+  },
+  {
+    "name": "Trường Đại học Y Dược Cần Thơ",
+    "short_name": "CTUMP",
+    "aliases": ["ctump", "đh y dược cần thơ", "y dược cần thơ"],
+    "lat": 10.0339,
+    "lng": 105.7541,
+    "region": "Cần Thơ",
+    "address": "179 Nguyễn Văn Cừ, An Khánh, Ninh Kiều, Cần Thơ"
+  },
+  {
+    "name": "Trường Đại học Nam Cần Thơ",
+    "short_name": "NCTU",
+    "aliases": ["nctu", "nam cần thơ", "đh nam cần thơ"],
+    "lat": 10.0085,
+    "lng": 105.7229,
+    "region": "Cần Thơ",
+    "address": "168 Nguyễn Văn Cừ nối dài, An Bình, Ninh Kiều, Cần Thơ"
+  },
+  {
+    "name": "Trường Đại học FPT Cần Thơ",
+    "short_name": "FPT-CT",
+    "aliases": ["fpt cần thơ", "đh fpt cần thơ"],
+    "lat": 10.0124,
+    "lng": 105.7324,
+    "region": "Cần Thơ",
+    "address": "600 Nguyễn Văn Cừ nối dài, An Bình, Ninh Kiều, Cần Thơ"
+  },
+  {
+    "name": "KCN Trà Nóc",
+    "short_name": "KCN-TN",
+    "aliases": ["kcn trà nóc", "trà nóc", "khu công nghiệp trà nóc"],
+    "lat": 10.1056,
+    "lng": 105.7024,
+    "region": "Cần Thơ",
+    "address": "Trà Nóc, Bình Thủy, Cần Thơ"
+  },
+  {
+    "name": "Bến xe Trung tâm Cần Thơ",
+    "short_name": "BX-CT",
+    "aliases": ["bến xe cần thơ", "bx cần thơ", "bến xe trung tâm cần thơ"],
+    "lat": 9.9922,
+    "lng": 105.7726,
+    "region": "Cần Thơ",
+    "address": "Quốc lộ 1A, Hưng Thạnh, Cái Răng, Cần Thơ"
+  },
+  {
+    "name": "Bến Ninh Kiều",
+    "short_name": "NINH-KIEU",
+    "aliases": ["bến ninh kiều", "ben ninh kieu"],
+    "lat": 10.0363,
+    "lng": 105.7882,
+    "region": "Cần Thơ",
+    "address": "Hai Bà Trưng, Tân An, Ninh Kiều, Cần Thơ"
+  },
+  {
+    "name": "Bệnh viện Đa khoa Trung ương Cần Thơ",
+    "short_name": "BV-CT",
+    "aliases": ["bv đa khoa trung ương cần thơ", "bệnh viện đa khoa trung ương cần thơ", "bv trung ương cần thơ"],
+    "lat": 10.0323,
+    "lng": 105.7565,
+    "region": "Cần Thơ",
+    "address": "315 Nguyễn Văn Linh, An Khánh, Ninh Kiều, Cần Thơ"
   }
 ]

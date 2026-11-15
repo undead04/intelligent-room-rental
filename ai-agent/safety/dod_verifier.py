@@ -19,12 +19,12 @@ from typing import Any, Literal, Mapping, Optional, Sequence
 
 from domain.enums import Amenity, RoomType
 from domain.schemas import RoomItem, UserPreferenceState, format_vnd_million
-from graph.tracing import deep_freeze
 from safety.grounding import (
     PRICE_FILTER_TOLERANCE,
     AnswerGroundingResult,
     verify_answer_grounding,
 )
+from utils.freeze import deep_freeze
 from utils.geo import haversine_km
 from utils.text import TOPIC_KEYWORDS, strip_accents
 
@@ -465,6 +465,7 @@ def verify_dod(
             if val:
                 extra_amounts.append(float(val))
     admin_not_found = bool(frozen_state.get("admin_not_found"))
+    location_not_found = bool(frozen_state.get("location_not_found"))
     ambiguous_cands = bool(frozen_state.get("ambiguous_candidates"))
     search_error = frozen_state.get("search_error")
 
@@ -495,12 +496,12 @@ def verify_dod(
         cid = cond.condition_id
 
         if cid == "cond_search_trace":
-            if admin_not_found or ambiguous_cands:
+            if admin_not_found or location_not_found or ambiguous_cands:
                 updated = replace(
                     cond,
                     actual_value="skipped_pre_search_location_issue",
                     passed=None,
-                    unverifiable_reason="Không chạy search_rooms vì bước phân giải địa điểm trả về admin_not_found/ambiguous",
+                    unverifiable_reason="Không chạy search_rooms vì bước phân giải địa điểm trả về admin_not_found/location_not_found/ambiguous",
                 )
                 evaluated.append(updated)
                 continue
@@ -760,6 +761,15 @@ def verify_dod(
             if relevance_score is not None:
                 r_score = float(relevance_score)
                 reason = None if r_score >= float(cond.threshold) else f"Điểm relevance {r_score} < {cond.threshold}"
+            elif (admin_not_found or location_not_found or ambiguous_cands) and not rooms:
+                ans_norm = " ".join(strip_accents((candidate_answer or "").lower()).split())
+                off_topic_markers = ("bat dong san mua ban", "chung khoan", "gia vang", "mua ban nha dat")
+                if not ans_norm:
+                    r_score, reason = 0.0, "Câu trả lời rỗng"
+                elif any(m in ans_norm for m in off_topic_markers):
+                    r_score, reason = 0.1, "Câu trả lời lạc đề khỏi lĩnh vực thuê trọ"
+                else:
+                    r_score, reason = 1.0, None
             else:
                 r_score, reason = _evaluate_rubric_relevance(spec.user_message, candidate_answer, rooms, critic_result)
             ok = r_score >= float(cond.threshold)

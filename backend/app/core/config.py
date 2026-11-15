@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     DB_POOL_RECYCLE: int = 1800
     DB_POOL_PRE_PING: bool = True
 
+    # Geocoding & Persistent Cache Settings
+    GOONG_API_KEY: Optional[str] = None
+    GEOCODE_CACHE_TTL_SECONDS: int = 2592000  # 30 ngày
+
     @property
     def sync_database_url(self) -> str:
         if self.DATABASE_URL:

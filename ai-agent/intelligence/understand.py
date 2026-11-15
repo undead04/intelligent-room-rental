@@ -23,7 +23,8 @@ from intelligence.nlu import (
     apply_priorities,
     sanitize_user_text,
 )
-from utils.text import strip_accents
+from utils.text import norm_key, strip_accents
+from tools.location_service import _PLACE_HINTS, infer_region_from_location_text
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,31 @@ def interpret_turn(
     else:
         pref = apply_patch(base_pref, analysis.patch)
         mult = apply_priorities(mult0, analysis.priorities, reset=analysis.reset_priorities)
+
+        # Kết hợp lại với địa danh đang hỏi dở (ambiguous) nếu lượt này user chỉ trả lời ngắn quận/tỉnh/cơ sở
+        pending_loc = getattr(session, "pending_ambiguous_location", None)
+        is_pivot = bool(
+            re.search(r"\b(?:thoi|doi\s+sang|khong\s+tim|tim\s+cho\s+khac|khu\s+khac|chuyen\s+sang|bo\s+qua)\b", clean_user_text)
+        )
+        if pending_loc and not is_pivot:
+            new_loc = (analysis.patch.location_text or "").strip()
+            loc_region = (analysis.patch.location_region or "").strip()
+            if new_loc and norm_key(pending_loc) not in norm_key(new_loc):
+                looks_modifier = (
+                    analysis.patch.location_kind == "admin"
+                    or bool(infer_region_from_location_text(new_loc))
+                    or bool(re.match(r"^(?:cơ\s*sở|cs|khu\s*vực|phía|bên|quận|q\.?\s*\d|huyện|phường|p\.?\s*\d|tp\.?|tỉnh)\b", new_loc, re.I))
+                )
+                if looks_modifier and not _PLACE_HINTS.search(new_loc):
+                    if re.match(r"^(?:cơ\s*sở|cs)\b", new_loc, re.I):
+                        combined = f"{pending_loc} {new_loc}"
+                    else:
+                        combined = f"{pending_loc}, {new_loc}"
+                    pref.set_location(combined, kind="place")
+                    explanations.append(f"ghép địa điểm đang làm rõ '{pending_loc}' với '{new_loc}'")
+            elif not new_loc and loc_region:
+                pref.set_location(f"{pending_loc}, {loc_region}", kind="place")
+                explanations.append(f"ghép địa điểm đang làm rõ '{pending_loc}' với '{loc_region}'")
     explanations.extend([r for r in analysis.priority_reasons if r][:3])
 
     # Xử lý ưu tiên giá rẻ ("rẻ hơn", "hạ giá") khi người dùng không nêu con số cụ thể

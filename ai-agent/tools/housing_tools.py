@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -14,6 +15,7 @@ from domain.enums import normalize_amenities
 from domain.schemas import format_vnd_million
 from skills.skills_discovery import discover_housing_skills, get_skill
 from tools.http import request
+from utils.text import norm_key
 
 logger = logging.getLogger(__name__)
 
@@ -71,40 +73,97 @@ def expand_location_with_llm(query: str, hint: Optional[str] = None) -> str:
     return query
 
 
-def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, float]]:
-    """Hàm lõi: tên địa điểm cụ thể -> {"lat","lng"} hoặc None.
-    Sử dụng Pre-Expansion Geocoding thông minh để ưu tiên chuẩn hóa tên viết tắt/cơ sở trước khi tra OpenStreetMap.
+_EXPANDED_GEOCODE_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
+_EXPANDED_GEOCODE_CACHE_MAX = 512
+
+
+def clear_geocode_point_cache() -> None:
+    """Xoá cache nội bộ của kết quả mở rộng địa danh LLM."""
+    _EXPANDED_GEOCODE_CACHE.clear()
+
+
+def _parse_geocode_payload(data: Any) -> Optional[dict[str, Any]]:
+    """Chuẩn hoá response.data từ Backend /geocode (1 điểm hoặc danh sách ambiguous)."""
+    if not isinstance(data, dict):
+        return None
+    if data.get("ambiguous") and isinstance(data.get("candidates"), list):
+        cands: list[dict[str, Any]] = []
+        for item in data["candidates"]:
+            if not isinstance(item, dict):
+                continue
+            lat = item.get("lat")
+            lng = item.get("lon", item.get("lng"))
+            if lat is None or lng is None:
+                continue
+            cands.append(
+                {
+                    "name": str(item.get("name") or item.get("formatted_address") or ""),
+                    "lat": float(lat),
+                    "lng": float(lng),
+                    "address": str(item.get("formatted_address") or ""),
+                    "provider": str(item.get("provider") or ""),
+                }
+            )
+        if cands:
+            return {"ambiguous": True, "candidates": cands}
+        return None
+    if data.get("lat") is not None:
+        lng = data.get("lon", data.get("lng"))
+        if lng is not None:
+            return {"lat": float(data["lat"]), "lng": float(lng)}
+    return None
+
+
+def geocode_point(query: str, hint: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Hàm lõi: tên địa điểm cụ thể -> {"lat","lng"} hoặc {"ambiguous": True, "candidates": ...} hoặc None.
+
+    Chiến lược Lazy AI Expansion:
+    1. Thử gọi Backend `/geocode(q_gốc, hint)` trước (0 LLM, tận dụng cache + Nominatim/Photon/Region BBox).
+    2. CHỈ gọi `expand_location_with_llm(q, hint)` khi bước 1 miss (404 / không tìm thấy).
+    3. Tuyệt đối KHÔNG tự bỏ `hint` sang None để tránh nhảy nhầm sang tỉnh/thành khác.
     """
     q = (query or "").strip()
     if not q:
         return None
+    h = (hint or "").strip() or None
+    cache_key = (norm_key(q), norm_key(h or ""))
+    cached = _EXPANDED_GEOCODE_CACHE.get(cache_key)
+    if cached is not None:
+        return copy.deepcopy(cached) if "candidates" in cached else dict(cached)
 
-    attempts: list[tuple[str, Optional[str]]] = []
+    # 1. Thử truy vấn gốc kèm hint (0 LLM)
+    params: dict[str, str] = {"q": q}
+    if h:
+        params["hint"] = h
+    res = request("GET", "/geocode", params=params)
+    if res.get("ok"):
+        parsed = _parse_geocode_payload(res.get("data"))
+        if parsed is not None:
+            return parsed
 
-    # 1. Pre-expansion bằng LLM (chuẩn hóa tên viết tắt / cơ sở chính trước khi gọi OpenStreetMap)
-    expanded = expand_location_with_llm(q, hint)
-    if expanded and expanded != q:
-        attempts.append((expanded, hint))
-        if hint:
-            attempts.append((expanded, None))
+    # Nếu lỗi mạng / lỗi server 5xx thay vì không tìm thấy (404), dừng lại để tránh gọi LLM vô ích
+    status = res.get("status")
+    err_msg = str(res.get("error") or "")
+    if "Không thể kết nối" in err_msg or (isinstance(status, int) and status >= 500):
+        return None
 
-    # 2. Dự phòng: Thử truy vấn gốc
-    attempts.append((q, hint))
-    if hint:
-        attempts.append((q, None))
+    # 2. Lazy AI Expansion: chỉ gọi LLM mở rộng viết tắt/tên thông tục khi bước 1 miss
+    expanded = expand_location_with_llm(q, h)
+    if not expanded or norm_key(expanded) == norm_key(q):
+        return None
 
-    tried: set[tuple[str, Optional[str]]] = set()
-    while attempts:
-        text, h = attempts.pop(0)
-        if (text, h) in tried:
-            continue
-        tried.add((text, h))
-        res = request("GET", "/geocode", params={"q": text, **({"hint": h} if h else {})})
-        data = res.get("data")
-        if res.get("ok") and isinstance(data, dict) and data.get("lat") is not None:
-            lng = data.get("lon", data.get("lng"))
-            if lng is not None:
-                return {"lat": float(data["lat"]), "lng": float(lng)}
+    exp_params: dict[str, str] = {"q": expanded}
+    if h:
+        exp_params["hint"] = h
+    res_exp = request("GET", "/geocode", params=exp_params)
+    if res_exp.get("ok"):
+        parsed_exp = _parse_geocode_payload(res_exp.get("data"))
+        if parsed_exp is not None:
+            if len(_EXPANDED_GEOCODE_CACHE) >= _EXPANDED_GEOCODE_CACHE_MAX:
+                _EXPANDED_GEOCODE_CACHE.clear()
+            _EXPANDED_GEOCODE_CACHE[cache_key] = copy.deepcopy(parsed_exp) if "candidates" in parsed_exp else dict(parsed_exp)
+            return parsed_exp
+
     return None
 
 

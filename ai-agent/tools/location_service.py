@@ -34,7 +34,7 @@ _PREFIXES: list[tuple[str, str]] = [   # (tiền tố đã bỏ dấu, cấp g�
 _QN = re.compile(r"^q\.?\s*(\d+)$")
 _PN = re.compile(r"^p\.?\s*(\d+)$")
 _PLACE_HINTS = re.compile(
-    r"\b(?:đh|trường|đại\s*học|học\s*viện|ký\s*túc\s*xá|ktx|bệnh\s*viện|chợ|bến\s*xe|kcn|khu\s*công\s*nghiệp|chung\s*cư|tòa\s*nhà|toà\s*nhà|công\s*viên)\b",
+    r"\b(?:đh|trường|đại\s*học|học\s*viện|ký\s*túc\s*xá|ktx|bệnh\s*viện|bv|chợ|bến\s*xe|bx|kcn|khu\s*công\s*nghiệp|kcx|khu\s*chế\s*xuất|kcnc|khu\s*công\s*nghệ\s*cao|ga\s*metro|ga\s+[^\s]+|sân\s*bay|ngã\s*tư|ngã\s*sáu|ngã\s*6|vòng\s*xoay|tttm|trung\s*tâm\s*thương\s*mại|siêu\s*thị|mall|chung\s*cư|tòa\s*nhà|toà\s*nhà|công\s*viên)\b",
     re.IGNORECASE,
 )
 
@@ -51,20 +51,26 @@ CITY_ID_TO_REGION: dict[int, str] = {
     1: "Hà Nội",
     48: "Đà Nẵng",
     74: "Bình Dương",
+    75: "Đồng Nai",
+    92: "Cần Thơ",
 }
 
 REGION_KEYWORDS: dict[str, tuple[str, ...]] = {
     "Hồ Chí Minh": (
         "thu duc", "binh thanh", "go vap", "tan binh", "phu nhuan", "tan phu", "binh tan",
-        "ho chi minh", "tp hcm", "tphcm", "sai gon", "saigon", "uit", "nha be", "hoc mon", "cu chi", "binh chanh",
+        "ho chi minh", "tp hcm", "tphcm", "sai gon", "saigon", "uit", "nha be", "hoc mon", "cu chi", "binh chanh", "can gio",
         "quan 1", "quan 2", "quan 3", "quan 4", "quan 5", "quan 6", "quan 7", "quan 8", "quan 9", "quan 10", "quan 11", "quan 12",
+        "thao dien", "thu thiem", "phu my hung",
     ),
     "Hà Nội": (
-        "ha noi", "cau giay", "hai ba trung", "dong da", "ba dinh", "hoan kiem",
+        "ha noi", "hanoi", "cau giay", "hai ba trung", "dong da", "ba dinh", "hoan kiem",
         "thanh xuan", "ha dong", "tay ho", "nam tu liem", "bac tu liem", "long bien", "hoang mai",
+        "gia lam", "dong anh", "hoa lac", "my dinh", "ho guom",
     ),
-    "Bình Dương": ("binh duong", "di an", "thuan an", "thu dau mot", "ben cat", "tan uyen"),
-    "Đà Nẵng": ("da nang", "hai chau", "lien chieu", "son tra", "ngu hanh son", "cam le", "thanh khe"),
+    "Bình Dương": ("binh duong", "di an", "thuan an", "thu dau mot", "ben cat", "tan uyen", "vsip", "my phuoc"),
+    "Đà Nẵng": ("da nang", "danang", "hai chau", "lien chieu", "son tra", "ngu hanh son", "cam le", "thanh khe", "hoa khanh", "my khe"),
+    "Đồng Nai": ("dong nai", "bien hoa", "long thanh", "nhon trach", "trang bom", "long khanh", "amata", "ngã tu vung tau", "nga tu vung tau"),
+    "Cần Thơ": ("can tho", "ninh kieu", "binh thuy", "cai rang", "o mon", "thot not", "tra noc"),
 }
 
 
@@ -94,7 +100,7 @@ _PAREN_RE = re.compile(r"\s*\([^)]*\)")
 _POI_CACHE: Optional[list[dict[str, Any]]] = None
 
 
-def _load_university_pois() -> list[dict[str, Any]]:
+def _load_local_pois() -> list[dict[str, Any]]:
     global _POI_CACHE
     if _POI_CACHE is not None:
         return _POI_CACHE
@@ -110,40 +116,76 @@ def _load_university_pois() -> list[dict[str, Any]]:
     return _POI_CACHE
 
 
-def lookup_university_poi(text: str, region_hint: Optional[str] = None) -> Optional[dict[str, Any]]:
-    """Tra cứu nhanh POI trường đại học từ từ điển cục bộ (0 ms)."""
+def _load_university_pois() -> list[dict[str, Any]]:
+    """Tương thích ngược cho _load_local_pois()."""
+    return _load_local_pois()
+
+
+def _haversine_km_local(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def lookup_local_poi_candidates(text: str, region_hint: Optional[str] = None) -> list[dict[str, Any]]:
+    """Tra cứu các POI cục bộ khớp tên/alias (0 ms), có lọc theo region_hint nếu cung cấp."""
     if not text:
-        return None
-    pois = _load_university_pois()
+        return []
+    pois = _load_local_pois()
     if not pois:
-        return None
+        return []
 
-    clean = re.sub(r"^(?:gần|quanh|khu\s+vực|ở|tìm\s+phòng\s+(?:gần|quanh))\s+", "", text, flags=re.IGNORECASE).strip()
+    clean = re.sub(
+        r"^(?:gần|quanh|khu\s+vực|ở|cạnh|đối\s+diện|tìm\s+phòng\s+(?:gần|quanh))\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    effective_hint = region_hint
+    base_clean = clean
+    if "," in clean:
+        head_part, tail_part = [p.strip() for p in clean.rsplit(",", 1)]
+        inferred_tail = infer_region_from_location_text(tail_part)
+        if inferred_tail and head_part:
+            base_clean = head_part
+            effective_hint = effective_hint or inferred_tail
+
     clean_k = norm_key(clean)
-    clean_k_sub = re.sub(r"^(?:truong|dh|dai hoc)\s+", "", clean_k).strip()
-    norm_hint = norm_key(region_hint) if region_hint else ""
+    base_k = norm_key(base_clean)
+    clean_k_sub = re.sub(r"^(?:truong|dh|dai hoc|hoc vien|ky tuc xa|ktx)\s+", "", base_k).strip()
+    norm_hint = norm_key(effective_hint) if effective_hint else ""
 
-    candidates = []
+    candidates: list[dict[str, Any]] = []
     for poi in pois:
         names = [poi.get("name", ""), poi.get("short_name", "")] + list(poi.get("aliases", []))
         norm_names = {norm_key(n) for n in names if n}
-
-        if clean_k in norm_names or (clean_k_sub and clean_k_sub in norm_names):
+        if clean_k in norm_names or base_k in norm_names or (clean_k_sub and clean_k_sub in norm_names):
             candidates.append(poi)
 
     if not candidates:
-        return None
+        return []
 
-    if len(candidates) == 1:
-        return candidates[0]
-
-    if norm_hint:
+    if len(candidates) > 1 and norm_hint:
+        hinted = []
         for c in candidates:
             c_reg = norm_key(c.get("region", ""))
             if c_reg and (c_reg in norm_hint or norm_hint in c_reg):
-                return c
+                hinted.append(c)
+        if hinted:
+            return hinted
 
-    return candidates[0]
+    return candidates
+
+
+def lookup_university_poi(text: str, region_hint: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Tra cứu nhanh POI cục bộ từ từ điển (0 ms), trả 1 POI phù hợp nhất (giữ tương thích ngược)."""
+    candidates = lookup_local_poi_candidates(text, region_hint)
+    return candidates[0] if candidates else None
 
 
 def _dedot(name: Optional[str]) -> str:
@@ -339,13 +381,35 @@ def resolve_location(
         res = resolve_admin(text, admin_lookup, region_hint)
         if res.kind in ("admin", "ambiguous"):
             return res
-        if kind == "admin":
-            return res                       # NLU chắc chắn là hành chính mà DB không có -> "chưa có dữ liệu"
 
-    # Tra cứu nhanh POI đại học cục bộ (0 ms) trước khi geocode bên ngoài
-    poi = lookup_university_poi(text, region_hint)
-    if poi and poi.get("lat") is not None and poi.get("lng") is not None:
-        return LocationResolution("point", lat=float(poi["lat"]), lng=float(poi["lng"]))
+    # Tra cứu nhanh POI cục bộ (0 ms, 0 LLM) trước khi kiểm tra admin_not_found / gọi Backend geocode
+    poi_matches = lookup_local_poi_candidates(text, region_hint)
+    valid_pois = [p for p in poi_matches if p.get("lat") is not None and p.get("lng") is not None]
+    if valid_pois:
+        clusters: list[dict[str, Any]] = []
+        for p in valid_pois:
+            p_lat, p_lng = float(p["lat"]), float(p["lng"])
+            if not any(_haversine_km_local(p_lat, p_lng, float(c["lat"]), float(c["lng"])) <= 0.5 for c in clusters):
+                clusters.append(p)
+        if len(clusters) == 1:
+            return LocationResolution("point", lat=float(clusters[0]["lat"]), lng=float(clusters[0]["lng"]))
+        return LocationResolution(
+            "ambiguous",
+            level="place",
+            candidates=[
+                {
+                    "name": str(c.get("name") or ""),
+                    "lat": float(c["lat"]),
+                    "lng": float(c["lng"]),
+                    "address": str(c.get("address") or ""),
+                    "region": str(c.get("region") or ""),
+                }
+                for c in clusters[:5]
+            ],
+        )
+
+    if kind == "admin":
+        return LocationResolution("admin_not_found")   # NLU chắc chắn là hành chính mà DB không có -> "chưa có dữ liệu"
 
     # 'ĐH Bách Khoa, Hà Nội' -> geocode('ĐH Bách Khoa, Hà Nội', hint='Hà Nội') nếu chưa có hint
     hint = region_hint
@@ -353,6 +417,10 @@ def resolve_location(
         tail = text.rsplit(",", 1)[1].strip()
         if _lookup_exact("city", tail, admin_lookup) or _lookup_exact("district", tail, admin_lookup):
             hint = tail
+        else:
+            inferred = infer_region_from_location_text(tail)
+            if inferred:
+                hint = inferred
     try:
         geo = geocode(text, hint)
     except Exception:

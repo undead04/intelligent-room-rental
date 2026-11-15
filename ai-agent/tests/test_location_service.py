@@ -198,3 +198,39 @@ def test_university_poi_lookup_0ms():
     r = resolve_location("UIT", "place", FakeDB(), lambda q, h: called.append(q))
     assert r.kind == "point" and r.lat == 10.87 and r.lng == 106.8
     assert called == []
+
+
+def test_expanded_poi_six_regions_and_ambiguous_poi_0ms():
+    from tools.location_service import infer_region_from_preference
+
+    # Kiểm tra 6 vùng & city_id Đồng Nai (75), Cần Thơ (92)
+    class MockPref:
+        def __init__(self, city_id=None, location_text=None):
+            self.city_id = city_id
+            self.location_text = location_text
+
+    assert infer_region_from_preference(MockPref(city_id=75)) == "Đồng Nai"
+    assert infer_region_from_preference(MockPref(city_id=92)) == "Cần Thơ"
+    assert infer_region_from_location_text("Biên Hòa") == "Đồng Nai"
+    assert infer_region_from_location_text("Ninh Kiều") == "Cần Thơ"
+
+    # POI mới cho các vùng hỗ trợ (KCN, Metro, Bệnh viện, Bến xe) đều phải 0 ms / 0 geocode
+    called = []
+    for query in ("KCN Amata", "ĐH Cần Thơ", "VSIP 1", "Ga Metro Suối Tiên", "Bến xe Mỹ Đình", "KCN Hòa Khánh"):
+        res = resolve_location(query, None, FakeDB(), lambda q, h: called.append(q))
+        assert res.kind == "point" and res.lat is not None and res.lng is not None, f"POI miss cho {query}"
+    assert called == []
+
+    # Địa điểm có nhiều cụm >500m (Bến xe Miền Đông cũ vs mới) -> ambiguous
+    res_ambig = resolve_location("gần bến xe miền đông", "place", FakeDB(), lambda q, h: called.append(q))
+    assert res_ambig.kind == "ambiguous" and res_ambig.level == "place"
+    assert len(res_ambig.candidates) >= 2
+    assert called == []
+
+    # Chỉ định rõ 'cũ' / 'mới' -> resolved 1 điểm duy nhất
+    res_exact = resolve_location("bến xe miền đông mới", "place", FakeDB(), lambda q, h: called.append(q))
+    assert res_exact.kind == "point"
+
+    # Địa giới hành chính chưa có trong DB vẫn giữ nguyên contract admin_not_found
+    res_missing = resolve_location("Quảng Ngãi", "admin", FakeDB(), lambda q, h: called.append(q))
+    assert res_missing.kind == "admin_not_found" and called == []

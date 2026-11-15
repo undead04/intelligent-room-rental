@@ -37,20 +37,23 @@ flowchart TD
 * `formatter_node` / `response_node`: Không có quyền gọi tools, triệt tiêu ảo giác tool calls.
 
 ### Trạng Thái Graph (`HousingAgentState`) & Quy Tắc Lệch Giá Thị Trường:
-* `HousingAgentState` (`ai-agent/graph/state.py`) truyền trực tiếp `market_context: Optional[MarketContext]` (`area_name`, `user_budget`, `user_budget_str`, `market_min_price`, `market_min_price_str`, `market_avg_price`, `market_avg_price_str`, `is_market_gap`, `message`) từ `retrieval_node` sang `decision_node`, `verify_node` và `replies.py` (`reply_when_no_rooms`). Các field dư thừa (`proposed_budget`, `proposed_budget_str`, `is_contract_query`, `retry_count`) đã được loại bỏ hoàn toàn.
-* Khi `retrieval_node` tìm được 0 phòng hợp lệ và khu vực có thống kê thị trường đáng tin cậy (`total_listings >= 20` hoặc không rõ cỡ mẫu), `propose_budget()` kích hoạt **`is_market_gap = True` ngay khi `user_max < market.min_price`** và truyền thẳng giá sàn thực tế (`market_min_price`, `market_min_price_str`) qua `market_context` để tư vấn người dùng.
+* `HousingAgentState` (`ai-agent/graph/state.py`) truyền trực tiếp `location_not_found: bool`, `admin_not_found: bool`, `ambiguous_candidates`, và `market_context: Optional[MarketContext]` (`area_name`, `user_budget`, `user_budget_str`, `market_min_price`, `market_min_price_str`, `market_avg_price`, `market_avg_price_str`, `is_market_gap`, `message`) từ `retrieval_node` sang `decision_node`, `verify_node`, `formatter_node` và `replies.py` (`reply_when_no_rooms`).
+* **Chính sách Fail-Fast cho vị trí chưa phân giải được (`admin_not_found` / `location_not_found`):** Khi `resolve_location` trả `unresolved_point` hoặc `admin_not_found`, `retrieval_node` dừng trước bước gọi `search_rooms` (`rooms = []`), dọn sạch `location_text` lỗi khỏi `session.preferences` và snapshot mới nhất (nhưng giữ nguyên ngân sách, diện tích, loại phòng, tiện ích) để tránh tái lỗi ở lượt sau, đồng thời bật `need_clarification = True` trong `formatter_node` và gắn `skipped_pre_search_location_issue` trong `DoD Verifier`.
+* Khi `retrieval_node` tìm được 0 phòng hợp lệ ở trạng thái `ok` và khu vực có thống kê thị trường đáng tin cậy (`total_listings >= 20` hoặc không rõ cỡ mẫu), `propose_budget()` kích hoạt **`is_market_gap = True` ngay khi `user_max < market.min_price`** và truyền thẳng giá sàn thực tế (`market_min_price`, `market_min_price_str`) qua `market_context` để tư vấn người dùng.
 
 ---
 
 ## 2. Các Cơ Chế Tối Ưu Hóa Trải Nghiệm (UX & Resilience)
 
-1. **Proactive Search & Disambiguation Gate:**
-   - Tự động bỏ qua hỏi lại khi truy vấn đã chứa trường ĐH hoặc quận cụ thể (ví dụ: *"Bách Khoa CS1 Q10"*).
-   - Chỉ hỏi lại khi địa danh thực sự đa nghĩa (ví dụ: *"ĐH Bách Khoa"* không rõ Hà Nội hay TP.HCM).
+1. **Proactive Search, Disambiguation Gate & Multi-Turn Ambiguous:**
+   - Tự động bỏ qua hỏi lại khi truy vấn đã chứa trường ĐH/địa danh hoặc quận cụ thể (ví dụ: *"Bách Khoa CS1 Q10"*, *"Bến xe Miền Đông mới"*).
+   - Khi địa danh trả `ambiguous` (nhiều cơ sở/cụm > 500m), `retrieval_node` lưu `pending_ambiguous_location` vào `SessionData`; ở lượt kế tiếp, nếu người dùng chỉ trả lời ngắn quận/tỉnh/cơ sở (ví dụ *"ở Quận 10"*), `understand.py` tự động ghép lại với `pending_ambiguous_location` thành truy vấn đầy đủ.
+   - `_infer_session_region_hint` kiểm soát chặt khi `intent == "new_search"` có địa điểm mới để không ép nhầm `region_hint` của lượt cũ sang tỉnh/thành mới.
 2. **Adaptive Radius Retrieval (Bán kính thích ứng 2 pha):**
    - Khởi đầu với $R = 2.5$ km. Nếu số phòng hợp lệ < 3 và người dùng không cố định bán kính, tự động nới lỏng sang $3.5$ km $\rightarrow$ $5.0$ km.
-3. **Từ Điển POI Trường Đại Học 0 ms (Local Campus Dictionary):**
-   - Duy trì toạ độ chuẩn của các trường ĐH lớn tại TP.HCM/Hà Nội trong `university_campuses.json`, giải mã tức thì không tốn quota Geocoding.
+3. **Từ Điển POI Cục Bộ 0 ms & Lazy AI Expansion (`university_campuses.json`, `location_service.py`, `housing_tools.py`):**
+   - Duy trì toạ độ chuẩn + alias không dấu/viết tắt cho **6 vùng hỗ trợ** (`TP.HCM`, `Hà Nội`, `Đà Nẵng`, `Bình Dương`, `Đồng Nai`, `Cần Thơ`), bao gồm Trường Đại học, KCN/KCX/KCNC, Bến xe, Ga Metro, Bệnh viện lớn và Ngã tư/TTTM trọng điểm — giải mã tức thì `0 ms`, `0 LLM`.
+   - Khi miss từ điển POI, `geocode_point()` áp dụng **Lazy AI Expansion**: thử gọi Backend `/geocode(q_gốc, hint)` trước (`0 LLM`); **chỉ gọi `expand_location_with_llm(q, hint)` khi bước 1 trả 404/miss** và tuyệt đối **không tự bỏ `hint`** để tránh nhảy nhầm tỉnh khác.
 4. **Dual-Mode LLM Compatibility:**
    - Tương thích song song cả LM Studio cục bộ (bảo toàn payload `thinking`) và Google Gemini / OpenAI Cloud (xóa `thinking` tránh lỗi 400).
 5. **Rate Limit Resilience:**

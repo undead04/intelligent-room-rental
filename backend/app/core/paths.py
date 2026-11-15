@@ -25,6 +25,10 @@ PROJECT_ROOT = BACKEND_DIR.parent
 # Thư mục cache mô hình máy học (sentence-transformers / huggingface) nằm ở root dự án
 MODELS_CACHE_DIR = PROJECT_ROOT / "models_cache"
 
+# Thư mục dữ liệu cục bộ của backend (chứa SQLite persistent geocode cache, ...)
+BACKEND_DATA_DIR = BACKEND_DIR / "data"
+GEOCODE_CACHE_DB_PATH = BACKEND_DATA_DIR / "geocode_cache.sqlite"
+
 # ==============================================================================
 # 3. TẬP TIN CẤU HÌNH (CONFIG FILES)
 # ==============================================================================

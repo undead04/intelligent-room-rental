@@ -108,11 +108,17 @@ def test_ambiguous_admin_asks_which_one():
     assert h.search_calls == [] and "nhiều nơi trùng tên" in r.text_reply and len(r.follow_up_questions) == 2
 
 
-def test_unresolved_point_still_searches_by_text():
+def test_unresolved_point_fails_fast_without_searching():
+    """Fail-Fast: địa điểm không định vị được toạ độ -> dừng search_rooms, giữ rooms=[], bật clarify."""
     h = Harness(search_llm(location_text="quán cà phê Cây Điệp"), THREE, geocode_ok=False)
     r = h.turn("tìm phòng gần quán cà phê Cây Điệp")
-    assert h.search_calls[0]["lat"] is None and len(r.rooms) == 3
-    assert "location" not in h.search_calls[0]["weights"]
+    assert h.search_calls == []
+    assert r.rooms == []
+    assert r.need_clarification is True
+    assert "chưa định vị được" in r.text_reply
+    assert r.grounding_report.is_grounded
+    assert r.grounding_report.verifier_output and r.grounding_report.verifier_output["passed"] is True
+    assert r.follow_up_questions[0].startswith("📍")
 
 
 def test_excluded_room_types_overfetch_filter_and_renumber():
@@ -331,3 +337,98 @@ def test_fixed_user_max_distance_does_not_expand():
     assert h.search_calls[0]["max_distance_km"] == 2.0
     assert len(r.rooms) == 1
     assert not any(e.get("type") == "adaptive_radius_expansion" for e in r.trace_events)
+
+
+def test_unresolved_point_and_admin_not_found_do_not_leak_bad_location_to_next_turn():
+    """Flow Bug #1 & #3: admin_not_found / unresolved_point dọn location_text lỗi khỏi session nhưng giữ ngân sách & tiện ích."""
+    llm = (
+        FakeLLM()
+        .on(
+            "TurnAnalysis",
+            nlu("new_search", location_text="quán cà phê Cây Điệp", location_kind="place", max_price=3_000_000, amenities_add=["ml"]),
+            nlu("refine_search", max_price=4_000_000),
+        )
+        .on("Advice", GOOD_ADVICE)
+    )
+    h = Harness(llm, THREE, geocode_ok=False)
+    r1 = h.turn("tìm phòng gần quán cà phê Cây Điệp dưới 3 triệu có máy lạnh")
+    assert h.search_calls == [] and r1.rooms == []
+    assert r1.need_clarification is True
+    # Session đã xoá địa điểm lỗi nhưng bảo toàn max_price và amenities
+    assert h.session.preferences.location_text is None
+    assert h.session.preferences.max_price == 3_000_000
+    assert h.session.preferences.amenities
+
+    # Lượt 2: User chỉ tăng giá -> KHÔNG gọi lại geocode cho địa danh lỗi của lượt 1
+    h.geo_calls.clear()
+    r2 = h.turn("tăng giá lên 4 triệu đi")
+    assert h.geo_calls == []
+    assert len(h.search_calls) == 1
+    assert h.search_calls[0]["max_price"] == 4_000_000
+    assert len(r2.rooms) == 3
+
+    # Kiểm tra thêm admin_not_found không render header gợi ý lân cận rỗng và cũng dọn location lỗi
+    llm_admin = FakeLLM().on("TurnAnalysis", nlu("new_search", location_text="Quảng Ngãi", location_kind="admin", max_price=2_500_000))
+    h2 = Harness(llm_admin, THREE)
+    r_adm = h2.turn("tìm phòng ở Quảng Ngãi dưới 2.5 triệu")
+    assert "Gợi ý các khu vực lân cận giáp ranh" not in r_adm.text_reply
+    assert "Cần Thơ" in r_adm.text_reply
+    assert h2.session.preferences.location_text is None
+    assert h2.session.preferences.max_price == 2_500_000
+
+
+def test_ambiguous_place_multi_turn_resolves_short_region_followup():
+    """Multi-turn ambiguous: Lượt 1 ambiguous -> Lượt 2 trả lời ngắn quận/tỉnh tự ghép thành 'ĐH Bách Khoa, Quận 10'."""
+    llm = (
+        FakeLLM()
+        .on(
+            "TurnAnalysis",
+            nlu("new_search", location_text="ĐH Bách Khoa", location_kind="place", max_price=4_000_000),
+            nlu("refine_search", location_text="Quận 10", location_kind="admin"),
+        )
+        .on("Advice", GOOD_ADVICE)
+    )
+    h = Harness(llm, THREE)
+
+    def _ambig_then_resolve(q: str, hint: str | None):
+        h.geo_calls.append((q, hint))
+        if "quận 10" in q.lower() or "quan 10" in q.lower() or (hint and "quận 10" in hint.lower()):
+            return {"lat": 10.7726, "lng": 106.6578}
+        return {
+            "ambiguous": True,
+            "candidates": [
+                {"name": "ĐH Bách Khoa CS1 (Quận 10, TP.HCM)", "lat": 10.7726, "lng": 106.6578},
+                {"name": "ĐH Bách Khoa CS2 (Thủ Đức / Dĩ An)", "lat": 10.8805, "lng": 106.8063},
+            ],
+        }
+
+    h.deps.geocode = _ambig_then_resolve
+
+    r1 = h.turn("tìm phòng gần ĐH Bách Khoa dưới 4 triệu")
+    assert h.search_calls == []
+    assert r1.need_clarification is True
+    assert h.session.pending_ambiguous_location == "ĐH Bách Khoa"
+
+    r2 = h.turn("ở Quận 10")
+    assert len(h.search_calls) == 1
+    assert h.search_calls[0]["lat"] == 10.7726
+    assert h.search_calls[0]["max_price"] == 4_000_000
+    assert h.session.pending_ambiguous_location is None
+    assert "ĐH Bách Khoa" in (r2.current_preferences.location_text or "")
+
+
+def test_new_search_does_not_leak_old_session_region_hint():
+    """Flow Bug #4: new_search với địa danh mới không bị ép nhầm region_hint của lượt trước."""
+    llm = (
+        FakeLLM()
+        .on(
+            "TurnAnalysis",
+            nlu("new_search", location_text="Quận 7", location_kind="admin"),
+            nlu("new_search", location_text="Chợ Đầm", location_kind="place"),
+        )
+        .on("Advice", GOOD_ADVICE)
+    )
+    h = Harness(llm, THREE)
+    h.turn("tìm phòng ở Quận 7")
+    h.turn("đổi khu khác, tìm phòng gần Chợ Đầm")
+    assert h.geo_calls[-1] == ("Chợ Đầm", None)

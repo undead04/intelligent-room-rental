@@ -47,6 +47,8 @@ def make_understand_node(deps: Deps):
         if plan.commit:                       # NƠI DUY NHẤT ghi tiêu chí/ưu tiên từ lượt chat vào session
             session.preferences = plan.preferences
             session.multipliers = dict(plan.multipliers)
+            if hasattr(session, "pending_ambiguous_location"):
+                session.pending_ambiguous_location = None
             if hasattr(session, "record_preference_snapshot"):
                 session.record_preference_snapshot(plan.preferences)
         if plan.focus_rank is not None:

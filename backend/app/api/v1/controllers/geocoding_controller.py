@@ -14,7 +14,15 @@ def _geocode_one(query: str, hint: Optional[str]) -> Optional[GeocodeResponse]:
     result = resolve_location(query, hint)
     if not result:
         return None
-    logger.info("Geocoded '%s' to (%f, %f) via %s", query, result.lat, result.lon, result.provider)
+    if result.ambiguous:
+        logger.info(
+            "Geocoded '%s' as ambiguous (%d candidates) via %s",
+            query,
+            len(result.candidates),
+            result.provider,
+        )
+    else:
+        logger.info("Geocoded '%s' to (%f, %f) via %s", query, result.lat, result.lon, result.provider)
     return result
 
 def _is_in_vietnam(lat: float, lon: float) -> bool:
@@ -38,8 +46,18 @@ def geocode(
             status_code=404,
             detail=f"Không tìm thấy toạ độ cho '{q}'. Thử thêm hint (tỉnh/thành) hoặc nhập cụ thể hơn.",
         )
-    
-    if not _is_in_vietnam(result.lat, result.lon):
+
+    if result.ambiguous:
+        valid_cands = [c for c in result.candidates if _is_in_vietnam(c.lat, c.lon)]
+        if not valid_cands:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Tọa độ tìm được ngoài Việt Nam cho '{q}'. Nhập lại query.",
+            )
+        result.candidates = valid_cands
+        return ResponseDTO[GeocodeResponse](data=result)
+
+    if result.lat is None or result.lon is None or not _is_in_vietnam(result.lat, result.lon):
         raise HTTPException(
             status_code=422,
             detail=f"Tọa độ tìm được ngoài Việt Nam: ({result.lat}, {result.lon}). Nhập lại query.",
