@@ -103,12 +103,19 @@ def stream_graph_events(
         from graph import build_housing_graph, default_deps
         graph = build_housing_graph(default_deps())
 
-    store_tok = bind_trace_store(effective_trace_store)
     try:
-        for chunk in graph.stream(
-            state,
-            stream_mode="updates",
-        ):
+        stream_iter = iter(graph.stream(state, stream_mode="updates"))
+        while True:
+            # Gắn & giải phóng ContextVar bọc quanh từng bước next() (trước yield)
+            # để tránh Starlette iterate_in_threadpool đổi Context giữa các lần resume generator.
+            store_tok = bind_trace_store(effective_trace_store)
+            try:
+                chunk = next(stream_iter)
+            except StopIteration:
+                break
+            finally:
+                reset_trace_store(store_tok)
+
             if not isinstance(chunk, dict):
                 continue
             for _node_name, node_update in chunk.items():
@@ -160,5 +167,3 @@ def stream_graph_events(
             error_message = f"Lỗi xử lý luồng AI: {err_raw}"
         err_event = {"type": "error", "error": error_message}
         yield f"event: error\ndata: {json.dumps(err_event, ensure_ascii=False)}\n\n"
-    finally:
-        reset_trace_store(store_tok)

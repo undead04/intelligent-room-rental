@@ -432,3 +432,27 @@ def test_new_search_does_not_leak_old_session_region_hint():
     h.turn("tìm phòng ở Quận 7")
     h.turn("đổi khu khác, tìm phòng gần Chợ Đầm")
     assert h.geo_calls[-1] == ("Chợ Đầm", None)
+
+
+def test_sse_streaming_response_handles_contextvar_across_threadpool():
+    """Đảm bảo StreamingResponse + stream_graph_events không ném ValueError ContextVar khi chạy qua ASGI."""
+    from fastapi import FastAPI
+    from fastapi.responses import StreamingResponse
+    from fastapi.testclient import TestClient
+    from api.sse import stream_graph_events
+
+    h = Harness(search_llm(), THREE)
+    app = FastAPI()
+
+    @app.get("/sse-test")
+    def _sse_endpoint():
+        return StreamingResponse(
+            stream_graph_events("tìm phòng gần UIT", "s_sse", graph=h.graph),
+            media_type="text/event-stream",
+        )
+
+    client = TestClient(app)
+    resp = client.get("/sse-test")
+    assert resp.status_code == 200
+    assert "event: complete" in resp.text
+    assert "event: error" not in resp.text
