@@ -19,19 +19,17 @@ flowchart TD
     understand_node -->|Hỏi đáp phòng đã tìm| decision_node["6. decision_node<br/>Tổng hợp giải pháp & chọn top phòng"]
     
     retrieval_node --> decision_node
+    retrieval_node -->|"ambiguous / not_found / search_error (bỏ qua decision)"| verify_node
     
     decision_node --> verify_node["7. verify_node (Validation + DoD Verifier)<br/>Validation 3 tầng & kiểm định DoD độc lập"]
+    advisory_node --> verify_node
     verify_node -->|"Retry câu trả lời (retry <= 2) hoặc next == followup"| decision_node
+    verify_node -->|"Retry câu trả lời advisory (retry <= 2) hoặc next == advisory"| advisory_node
     verify_node -->|"Còn pending_tasks: next == search"| retrieval_node
     verify_node -->|"Còn pending_tasks: next == search & needs_clarification"| clarification_node
-    verify_node -->|"Còn pending_tasks: next == advisory"| advisory_node
     verify_node -->|"Pass / fallback / ask_user / stop_and_report (hết pending_tasks)"| formatter_node["8. formatter_node<br/>Gộp partial_replies, định dạng Markdown / UI & đọc TraceStore"]
     
     clarification_node --> formatter_node
-    advisory_node -->|"Hết pending_tasks"| formatter_node
-    advisory_node -->|"Còn pending_tasks: next == search"| retrieval_node
-    advisory_node -->|"Còn pending_tasks: next == search & needs_clarification"| clarification_node
-    advisory_node -->|"Còn pending_tasks: next == followup"| decision_node
     
     formatter_node --> END
 ```
@@ -40,13 +38,13 @@ flowchart TD
 * Khi `understand_node` phát hiện nhiều tác vụ độc lập (`followup`, `search`, `advisory`) trong cùng một câu, `TurnPlan` lập hàng đợi thông qua `current_task`, `pending_tasks` và `partial_replies` trong `HousingAgentState`, sắp xếp **theo đúng thứ tự xuất hiện của từng mệnh đề trong câu người dùng** (hỗ trợ mọi hoán vị kể cả `advisory -> search`, `advisory -> followup`, `search -> advisory -> followup`, v.v.):
   * Nếu `followup` đứng trước `search` (hoặc không có `search`), `understand_node` nạp sẵn `session.last_rooms` để `decision_node` đọc đúng phòng của lượt trước.
   * Nếu `search` đứng trước `followup`, `retrieval_node` tìm phòng mới trước và `verify_node` (hoặc `advisory_node` nằm giữa) giữ nguyên `retrieved_rooms` vừa truy xuất để `decision_node` kiểm tra đúng phòng Top $k$ mới (tự động bỏ qua `followup` nếu tìm được 0 phòng).
-* Cả `verify_node` và `advisory_node` đều rẽ nhánh qua `_route_pending_task` trong `routing.py`: lưu kết quả bước hiện tại vào `partial_replies` và chuyển tiếp sang bước kế tiếp trong `pending_tasks`, giữ nguyên Tool Partitioning nghiêm ngặt.
+* Cả `decision_node` và `advisory_node` đều đi qua `verify_node` trước khi rẽ nhánh qua `_route_pending_task` trong `routing.py`: lưu kết quả bước hiện tại vào `partial_replies` và chuyển tiếp sang bước kế tiếp trong `pending_tasks`, giữ nguyên Tool Partitioning nghiêm ngặt.
 * `formatter_node` ghép toàn bộ `partial_replies` + kết quả bước cuối thành một `AgentResponse` duy nhất trả về trong cùng lượt chat theo đúng thứ tự người dùng đã hỏi.
 
 ### Nguyên Tắc Phân Vùng Công Cụ (Tool Partitioning):
 * `retrieval_node`: Chỉ được cấp `RETRIEVAL_TOOLS` (`search_listings_hybrid`, `get_nearby_locations`).
 * `decision_node`: Chỉ được cấp `DETAIL_TOOLS` (`get_listing_detail`).
-* `advisory_node`: Chỉ được cấp `ADVISORY_TOOLS` (`list_housing_skills`, `consult_housing_skill`, `get_market_price_stats`); hỗ trợ cả cẩm nang hợp đồng (`rental-contract-advisor`) và tra cứu thống kê giá thị trường thực tế theo khu vực (`market-price-advisor`) qua `skill_context` cô lập (không ghi đè `session.preferences`).
+* `advisory_node`: Chỉ được cấp `ADVISORY_TOOLS` (`list_housing_skills`, `consult_housing_skill`, `get_market_price_stats`); hỗ trợ tham vấn đơn hoặc đa kỹ năng (`skill_slugs` / `matched_skills`, ví dụ gộp cả cẩm nang hợp đồng `rental-contract-advisor` và tra cứu thống kê giá thị trường thực tế `market-price-advisor`) qua `skill_context` cô lập (không ghi đè `session.preferences`), và có thể tự gọi tool `get_market_price_stats` qua `bind_tools` khi NLU chưa trích được `location_text`. Cơ chế `is_market_only_patch` trong `nlu.py` / `understand.py` chặn việc coi nhầm `patch.location_text` của `market-price-advisor` thành tác vụ `search`, và `DoD Verifier` kiểm định `cond_skill_trace`, `cond_market_stats_trace`, `cond_no_unrequested_search` cho lượt `skill_advice`.
 * `formatter_node` / `response_node`: Không có quyền gọi tools, triệt tiêu ảo giác tool calls.
 
 ### Trạng Thái Graph (`HousingAgentState`) & Quy Tắc Lệch Giá Thị Trường / Tự Chủ Phản Hồi:
@@ -55,7 +53,7 @@ flowchart TD
 * **Quyền tự chủ NLU hoàn toàn (0 Regex ngữ nghĩa) & sinh câu trả lời có hậu kiểm:**
   - `nlu.py` và `understand.py` giao 100% quyền phân tích ngữ nghĩa (`patch.clear`, loại trừ `SLEEPBOX`, `task_order` đa mệnh lệnh, `page_action`/`target_page`, `revert_mode`/`revert_turn`, `is_location_pivot`, `Priorities`) cho Cloud LLM qua structured output `TurnAnalysis`; code chỉ điều phối workflow và giữ bất biến cấu trúc/an toàn.
   - NLU gọi 1 Cloud model duy nhất với `temperature = 0.0` ở lần đầu và tự nâng `0.3` khi retry; các node sinh văn bản (`decision_node`, `advisory_node`, `clarification_node`) dùng mặc định `temperature = 0.3`.
-  - `default_deps()` mặc định `constrained_generation = False` (có thể bật lại qua `HOMIGO_CONSTRAINED_GENERATION=true`) để `decision_agent` tự do viết câu trả lời cho cả lượt tìm mới lẫn hỏi tiếp (chỉ prefetch `get_listing_detail` và gắn `<focus>` khi `is_followup=True`), sau đó vẫn đi qua `verify_node` hậu kiểm số liệu.
+  - `default_deps()` mặc định `constrained_generation = False` (có thể bật lại qua `HOMIGO_CONSTRAINED_GENERATION=true`) để `decision_agent` tự do viết câu trả lời cho cả lượt tìm mới lẫn hỏi tiếp (chỉ prefetch `get_listing_detail` và gắn `<focus>` khi `is_followup=True`, đồng thời tách phạm vi câu hỏi khi `search` còn `followup` chờ sau), sau đó đi qua `verify_node` hậu kiểm số liệu kèm `cond_no_premature_detail_on_search` và `cond_no_duplicate_detail_call`.
 * **Nhánh 0 phòng (tự phân tích & phản hồi tự do, không tự ý nới tìm kiếm):** Khi `retrieval_node` tìm được 0 phòng hợp lệ ở trạng thái `ok`, `propose_budget()` kích hoạt `is_market_gap = True` khi `user_max < market.min_price` (nếu cỡ mẫu đủ lớn). `decision_node` nhận đầy đủ `UserPreferenceState`, bán kính đã quét, `market_context`, `neighbor_bullets` và `dropped_summary` để LLM tự phân tích nguyên nhân gốc và viết câu trả lời tự nhiên (đưa các bằng chứng số liệu vào `tool_evidence` cho `verify_node`), đồng thời giữ `reply_when_no_rooms` làm fallback xác định khi LLM lỗi.
 
 ---

@@ -287,6 +287,7 @@ def test_multi_turn_skill_advisory_passes_compact_history_and_preserves_kv_cache
     h.turn("đặt cọc thuê trọ cần lưu ý gì?")
     h.turn("thế nếu chủ nhà ghi phạt 100% như câu trên thì mình sửa sao?")
 
+    assert len(h.skill_calls) == 1  # Đã gọi ở lượt 1 -> lượt 2 tái sử dụng từ session, không gọi lại tool
     text_calls = [m for n, m in llm.calls if n == "text"]
     assert len(text_calls) == 2
     first_msgs, second_msgs = text_calls[0], text_calls[1]
@@ -359,13 +360,15 @@ def test_unresolved_point_and_admin_not_found_do_not_leak_bad_location_to_next_t
     assert h.session.preferences.max_price == 3_000_000
     assert h.session.preferences.amenities
 
-    # Lượt 2: User chỉ tăng giá -> KHÔNG gọi lại geocode cho địa danh lỗi của lượt 1
+    # Lượt 2: User chỉ tăng giá (chưa nhập địa danh mới) -> KHÔNG gọi lại geocode cho địa danh lỗi của lượt 1,
+    # đồng thời giữ ngân sách mới (4 triệu) và hỏi làm rõ khu vực thay vì search không có vị trí
     h.geo_calls.clear()
     r2 = h.turn("tăng giá lên 4 triệu đi")
     assert h.geo_calls == []
-    assert len(h.search_calls) == 1
-    assert h.search_calls[0]["max_price"] == 4_000_000
-    assert len(r2.rooms) == 3
+    assert h.search_calls == []
+    assert r2.need_clarification is True
+    assert h.session.preferences.max_price == 4_000_000
+    assert h.session.preferences.amenities
 
     # Kiểm tra thêm admin_not_found không render header gợi ý lân cận rỗng và cũng dọn location lỗi
     llm_admin = FakeLLM().on("TurnAnalysis", nlu("new_search", location_text="Quảng Ngãi", location_kind="admin", max_price=2_500_000))

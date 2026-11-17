@@ -334,3 +334,30 @@ def test_persistent_sqlite_cache_survives_reinstantiation_and_respects_ttl(tmp_p
     # Quá TTL (now = 1100.0 >= 1000.0 + 100) -> trả None và tự dọn bản ghi
     after_expiry = reader_cache.get("bach khoa", "tp hcm", now=1100.0)
     assert after_expiry is None
+
+
+def test_resolve_location_normalizes_dh_prefix_and_strips_trailing_acronym(
+    isolated_cache: GeocodeCache, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Backend /geocode tự chuẩn hóa 'ĐH ...' -> 'Đại học ...' và bỏ acronym thừa ở cuối (không dùng từ điển cứng)."""
+    monkeypatch.setattr(geocoder.settings, "TRACKASIA_API_KEY", "")
+    seen_queries: list[str] = []
+
+    def fake_nominatim(q: str, target_region=None, limit: int = 5):
+        seen_queries.append(q)
+        if q.lower() == "đại học kinh tế luật":
+            return [
+                GeocodeCandidate(
+                    name="Trường Đại học Kinh tế - Luật",
+                    lat=10.8690,
+                    lon=106.7788,
+                    formatted_address="669 Quốc lộ 1K, Linh Xuân, Thủ Đức, TP.HCM",
+                    provider="Nominatim OSM",
+                )
+            ]
+        return []
+
+    with patch("app.services.geocoder.geocode_nominatim_candidates", side_effect=fake_nominatim):
+        r_uel = resolve_location("ĐH Kinh tế Luật UEL", None, cache=isolated_cache)
+        assert r_uel is not None and r_uel.lat == 10.8690
+        assert "Đại học Kinh tế Luật" in seen_queries

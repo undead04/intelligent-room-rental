@@ -50,14 +50,32 @@ def route_after_understand(state: dict[str, Any]) -> str:
     return "retrieval_node"
 
 
+def route_after_retrieval(state: dict[str, Any]) -> str:
+    """Rẽ nhánh sau retrieval_node: nếu lỗi định vị (ambiguous/not_found) hoặc lỗi tìm kiếm -> đi thẳng verify_node (bỏ qua decision_node)."""
+    if (
+        state.get("ambiguous_candidates")
+        or state.get("admin_not_found")
+        or state.get("location_not_found")
+        or state.get("search_error")
+    ):
+        return "verify_node"
+    return "decision_node"
+
+
 def route_after_verify(state: dict[str, Any]) -> str:
     """Rẽ nhánh sau verify:
-    - Còn lượt sửa sai -> decision_node
+    - Còn lượt sửa sai -> node sinh câu trả lời tương ứng (advisory_node hoặc decision_node)
     - Đã đạt và còn nhiệm vụ trong pending_tasks (Plan & Execute đa mệnh lệnh) -> node tiếp theo
     - Đã xong tất cả -> formatter_node
     """
     if not state.get("answer_grounded", True):      # verify_node chỉ đặt False khi CÒN lượt retry
-        return "decision_node"
+        cur_task = state.get("current_task")
+        is_advisory = (cur_task == "advisory") or (
+            not cur_task
+            and state.get("intent") == "skill_advice"
+            and bool(state.get("matched_skill") or state.get("matched_skills"))
+        )
+        return "advisory_node" if is_advisory else "decision_node"
     return _route_pending_task(state)
 
 
@@ -69,6 +87,7 @@ def route_after_advisory(state: dict[str, Any]) -> str:
 __all__ = [
     "route_after_advisory",
     "route_after_guardrail",
+    "route_after_retrieval",
     "route_after_understand",
     "route_after_verify",
 ]

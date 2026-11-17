@@ -16,6 +16,7 @@ from core.config import (
 from domain.enums import amenity_label
 from domain.schemas import RoomItem, UserPreferenceState
 from graph.deps import Deps
+from graph.replies import reply_when_no_rooms
 from graph.tracing import emit_trace, resolve_trace_target, tool_event
 from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import sanitize_user_text
@@ -373,6 +374,10 @@ def make_retrieval_node(deps: Deps):
                 session.pending_ambiguous_candidates = []
 
         if search_error:
+            err_text = reply_when_no_rooms(
+                {"search_error": search_error, "preferences": state_pref},
+                session,
+            )
             return {
                 "retrieved_rooms": [],
                 "paged_rooms": [],
@@ -387,6 +392,7 @@ def make_retrieval_node(deps: Deps):
                 "ambiguous_candidates": [],
                 "dropped_summary": [],
                 "last_search_args": search_args,
+                "final_text": err_text,
             }
 
         # 4) kết luận sau tìm kiếm và phân tích thị trường
@@ -404,7 +410,7 @@ def make_retrieval_node(deps: Deps):
         else:
             extra = {"context_grounded": True, "market_context": None}
 
-        return {
+        out: dict[str, Any] = {
             "retrieved_rooms": rooms,
             "paged_rooms": paged_rooms,
             "current_page": 1,
@@ -419,5 +425,8 @@ def make_retrieval_node(deps: Deps):
             "last_search_args": search_args,
             **extra,
         }
+        if status in ("admin_not_found", "location_not_found", "ambiguous"):
+            out["final_text"] = reply_when_no_rooms(out, session)
+        return out
 
     return retrieval_node

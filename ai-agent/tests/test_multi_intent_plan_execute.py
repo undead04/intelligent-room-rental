@@ -548,3 +548,92 @@ def test_multi_intent_advisory_then_vague_search_preserves_clarification():
     assert "kiểm tra kỹ tiền cọc" in resp.text_reply
     assert "trường đại học cụ thể nào" in resp.text_reply
     assert resp.follow_up_questions == ["ĐH Bách Khoa", "UIT"]
+
+
+def test_search_then_followup_with_unconstrained_agent_calls_detail_only_once(monkeypatch):
+    """Hồi quy run_ae681851333f: với constrained_generation=False, bước 1 (search) KHÔNG được prefetch get_listing_detail hay gắn <focus>; chỉ bước 2 (followup) gọi đúng 1 lần."""
+    import graph.nodes.decision as dec_mod
+
+    detail_calls: list[str] = []
+    monkeypatch.setattr(
+        dec_mod,
+        "fetch_listing_detail",
+        lambda lid: detail_calls.append(lid) or {"ok": True, "data": {"id": lid, "title": "Studio Thủ Đức", "description": "Có bảo vệ 24/7, có thang máy."}},
+    )
+
+    new_rooms = [raw_room(10, 4_200_000, room_type="STUDIO", title="Studio Thủ Đức")]
+    compound = TurnAnalysis(
+        intent="new_search",
+        referenced_room_rank=1,
+        is_multi_intent=True,
+        task_order=["search", "followup"],
+        patch=PreferencePatch(location_text="Thủ Đức", location_kind="admin", max_price=5_000_000, allowed_room_types=["STUDIO"]),
+        semantic_query="căn hộ studio gần Thủ Đức dưới 5 triệu",
+    )
+    llm = FakeLLM().on("TurnAnalysis", compound)
+    agent = FakeAgent(
+        agent_reply("Đã tìm thấy căn hộ Studio Thủ Đức giá 4.2 triệu/tháng phù hợp ngân sách."),
+        agent_reply("Phòng Top 1 (Studio Thủ Đức) có bảo vệ 24/7 và thang máy theo mô tả chi tiết."),
+    )
+    h = Harness(llm, new_rooms, agent=agent, constrained_generation=False)
+
+    resp = h.turn("Tìm căn hộ studio gần Thủ Đức dưới 5 triệu, rồi kiểm tra giúp phòng đầu tiên có bảo vệ 24/7 và thang máy không")
+
+    # get_listing_detail chỉ được gọi ĐÚNG 1 lần ở bước 2 (followup), không bị gọi 2 lần như run_ae681851333f
+    assert detail_calls == ["nhatot_10"]
+    assert len(agent.inputs) == 2
+    step1_ctx = agent.inputs[0]["messages"][0].content
+    step1_query = agent.inputs[0]["messages"][-1].content
+    assert "<prefetched_listing_detail>" not in step1_ctx
+    assert "<focus>" not in step1_query
+    step2_ctx = agent.inputs[1]["messages"][0].content
+    step2_query = agent.inputs[1]["messages"][-1].content
+    assert "<prefetched_listing_detail>" in step2_ctx
+    assert "<focus>" in step2_query
+    verifier_spans = [e for e in resp.trace_events if e.get("type") == "verifier_decision"]
+    assert len(verifier_spans) == 2
+    assert all(sp["passed"] is True for sp in verifier_spans)
+
+
+def test_dod_verifier_flags_premature_detail_on_search_and_duplicate_detail_calls():
+    """DoD Verifier phát hiện và chặn nếu bước search gọi sớm get_listing_detail hoặc bước followup gọi lặp cùng 1 phòng."""
+    from domain.schemas import UserPreferenceState
+    from safety.dod_verifier import derive_dod_spec, verify_dod
+
+    spec_search = derive_dod_spec(
+        "new_search",
+        UserPreferenceState(location_text="Thủ Đức"),
+        user_message="Tìm phòng Thủ Đức",
+        forbid_detail_on_search_step=True,
+    )
+    rep_search = verify_dod(
+        spec_search,
+        candidate_answer="Đã tìm được phòng Thủ Đức.",
+        direct_system_state={"rooms": []},
+        trace_spans=[
+            {"type": "tool_finished", "tool": "search_rooms", "status": "ok", "args": {"query": "Thủ Đức"}},
+            {"type": "tool_finished", "tool": "get_listing_detail", "status": "ok", "args": {"listing_id": "nhatot_10"}},
+        ],
+        enforce_trace=True,
+    )
+    assert rep_search.passed is False
+    assert any(f["condition_id"] == "cond_no_premature_detail_on_search" for f in rep_search.failures)
+
+    spec_dup = derive_dod_spec(
+        "room_followup",
+        UserPreferenceState(),
+        user_message="Phòng 1 có bảo vệ không?",
+        forbid_duplicate_detail_call=True,
+    )
+    rep_dup = verify_dod(
+        spec_dup,
+        candidate_answer="Phòng 1 có bảo vệ 24/7.",
+        direct_system_state={"rooms": []},
+        trace_spans=[
+            {"type": "tool_finished", "tool": "get_listing_detail", "status": "ok", "args": {"listing_id": "nhatot_10"}},
+            {"type": "tool_finished", "tool": "get_listing_detail", "status": "ok", "args": {"listing_id": "nhatot_10"}},
+        ],
+        enforce_trace=True,
+    )
+    assert rep_dup.passed is False
+    assert any(f["condition_id"] == "cond_no_duplicate_detail_call" for f in rep_dup.failures)

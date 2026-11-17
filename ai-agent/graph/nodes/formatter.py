@@ -28,15 +28,23 @@ def make_formatter_node(deps: Deps):
 
         guard = state.get("guardrail_result")
         blocked = guard is not None and not guard.allowed
-        advisory = bool(state.get("matched_skill")) and not state.get("is_followup")
+        advisory_slugs = [str(s).strip() for s in (state.get("matched_skills") or []) if str(s or "").strip()]
+        if not advisory_slugs and state.get("matched_skill"):
+            advisory_slugs = [str(state["matched_skill"]).strip()]
+        advisory = bool(advisory_slugs) and not state.get("is_followup")
         cands = state.get("ambiguous_candidates") or []
 
         if blocked:
             follow_up = []
         elif advisory and not state.get("searched") and not rooms and not need_clarify:
-            slug = state.get("matched_skill")
-            skill = deps.skills().get(slug) if slug else None
-            follow_up = list(getattr(skill, "follow_ups", [])) if skill else []
+            skills_map = deps.skills()
+            collected_followups: list[str] = []
+            for slug in advisory_slugs:
+                skill = skills_map.get(slug)
+                for q in (getattr(skill, "follow_ups", []) if skill else []):
+                    if q not in collected_followups:
+                        collected_followups.append(q)
+            follow_up = collected_followups
         elif state.get("search_error"):
             follow_up = ["🔄 Thử tìm lại", "✏️ Tùy chỉnh tiêu chí"]
             report = {"is_grounded": True, "context_grounded": False}

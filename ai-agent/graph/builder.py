@@ -15,8 +15,8 @@ from graph.nodes.retrieval import make_retrieval_node
 from graph.nodes.understand import make_understand_node
 from graph.nodes.verify import make_verify_node
 from graph.routing import (
-    route_after_advisory,
     route_after_guardrail,
+    route_after_retrieval,
     route_after_understand,
     route_after_verify,
 )
@@ -48,16 +48,13 @@ def build_housing_graph(deps: Deps, checkpointer: Any = None):
     g.add_conditional_edges("understand_node", route_after_understand, {
         "formatter_node": "formatter_node", "decision_node": "decision_node", "advisory_node": "advisory_node",
         "clarification_node": "clarification_node", "retrieval_node": "retrieval_node"})
-    g.add_edge("retrieval_node", "decision_node")
-    g.add_edge("decision_node", "verify_node")
-    g.add_conditional_edges("verify_node", route_after_verify, {
+    g.add_conditional_edges("retrieval_node", route_after_retrieval, {
         "decision_node": "decision_node",
-        "retrieval_node": "retrieval_node",
-        "advisory_node": "advisory_node",
-        "clarification_node": "clarification_node",
-        "formatter_node": "formatter_node",
+        "verify_node": "verify_node",
     })
-    g.add_conditional_edges("advisory_node", route_after_advisory, {
+    g.add_edge("decision_node", "verify_node")
+    g.add_edge("advisory_node", "verify_node")
+    g.add_conditional_edges("verify_node", route_after_verify, {
         "decision_node": "decision_node",
         "retrieval_node": "retrieval_node",
         "advisory_node": "advisory_node",

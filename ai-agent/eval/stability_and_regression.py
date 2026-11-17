@@ -280,7 +280,15 @@ def _check_preferences_subset(pref: Any, expected_subset: Mapping[str, Any]) -> 
             actual_val = actual_raw.value
         else:
             actual_val = actual_raw
-        if actual_val != expected_val:
+        if isinstance(actual_val, list) and isinstance(expected_val, list):
+            # Các trường tập hợp trong preference (vd: excluded_room_types) không phụ thuộc thứ tự phần tử
+            try:
+                matched = set(actual_val) == set(expected_val)
+            except TypeError:
+                matched = actual_val == expected_val
+        else:
+            matched = actual_val == expected_val
+        if not matched:
             errors.append(
                 f"preference.{field_name} mong đợi {expected_val!r} nhưng nhận {actual_val!r}"
             )

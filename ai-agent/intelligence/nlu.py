@@ -15,6 +15,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from core.llm import classify_llm_retry_delay, is_daily_quota_exhausted
 from domain.enums import (
     Amenity,
     RoomType,
@@ -198,7 +199,11 @@ RevertModeT = Literal["initial", "previous", "turn"]
 
 class TurnAnalysis(BaseModel):
     intent: IntentT
-    skill_slug: Optional[str] = Field(None, description="Điền mã kỹ năng khi người dùng hỏi kiến thức thuộc danh mục kỹ năng")
+    skill_slug: Optional[str] = Field(None, description="Điền mã kỹ năng đầu tiên khi người dùng hỏi kiến thức thuộc danh mục kỹ năng")
+    skill_slugs: list[str] = Field(
+        default_factory=list,
+        description="Danh sách các mã kỹ năng (1 hoặc nhiều) theo thứ tự xuất hiện khi người dùng hỏi nhiều chủ đề tư vấn trong cùng lượt",
+    )
     referenced_room_rank: Optional[int] = Field(None, description="Thứ hạng phòng được nhắc tới (1-50)")
     is_multi_intent: bool = Field(
         False,
@@ -393,6 +398,53 @@ def _build_context(
 # ---------------------------------------------------------------------------
 # Kiểm định bất biến cấu trúc đầu ra NLU (Schema & State Invariants — 0 Regex ngữ nghĩa)
 # ---------------------------------------------------------------------------
+def _normalize_valid_skills(a: TurnAnalysis, valid: set[str]) -> list[str]:
+    """Chuẩn hóa danh sách skill_slug/skill_slugs hợp lệ theo thứ tự xuất hiện."""
+    raw_list: list[str] = []
+    for item in (getattr(a, "skill_slugs", None) or []):
+        s = str(item or "").strip().lower()
+        if s and s in valid and s not in raw_list:
+            raw_list.append(s)
+    single = (a.skill_slug or "").strip().lower()
+    if single and single in valid and single not in raw_list:
+        raw_list.insert(0, single) if not raw_list else raw_list.append(single)
+    if not raw_list and a.intent == "skill_advice" and len(valid) == 1:
+        raw_list.append(next(iter(valid)))
+    return raw_list
+
+
+def is_market_only_patch(a: TurnAnalysis, valid_skills: list[str] | set[str] | tuple[str, ...]) -> bool:
+    """True khi patch chỉ đóng vai trò tham số khu vực/loại phòng cho market-price-advisor, KHÔNG phải yêu cầu tìm phòng."""
+    if "market-price-advisor" not in valid_skills:
+        return False
+    if a.intent in ("new_search", "refine_search"):
+        return False
+    if "search" in (getattr(a, "task_order", None) or []):
+        return False
+    p = a.patch
+    if p.location_is_vague or p.vague_category or p.clear:
+        return False
+    if getattr(a, "reset_priorities", False) or any(getattr(a.priorities, k, None) is not None for k in CRITERIA):
+        return False
+    if len(p.allowed_room_types) > 1:
+        return False
+    has_non_market_filter = bool(
+        p.max_price is not None
+        or p.min_price is not None
+        or p.min_area is not None
+        or p.max_area is not None
+        or p.min_bedrooms is not None
+        or p.max_distance_km is not None
+        or p.excluded_room_types
+        or p.amenities_add
+        or p.preferred_amenities_add
+        or p.amenities_remove
+        or p.special_requirements_add
+        or p.special_requirements_remove
+    )
+    return not has_non_market_filter
+
+
 def _postprocess(
     a: TurnAnalysis,
     *,
@@ -403,8 +455,8 @@ def _postprocess(
     """Kiểm định tính hợp lệ cấu trúc đầu ra LLM (tôn trọng hoàn toàn quyết định ngữ nghĩa của LLM):
     1. Chuẩn hoá nếu LLM đặt mã Amenity chuẩn vào `special_requirements_add` thì nâng lên `amenities_add`.
     2. Bất biến khoảng giá min >= max -> giữ trần max_price.
-    3. Kiểm định `skill_slug` thuộc danh mục kỹ năng hiện có và `referenced_room_rank` trong khoảng `1..max_valid_rank`.
-    4. Xác định đa mệnh lệnh (`is_multi_intent`) dựa trên dữ liệu cấu trúc & lọc `task_order` hợp lệ.
+    3. Kiểm định `skill_slug`/`skill_slugs` thuộc danh mục kỹ năng hiện có và `referenced_room_rank` trong khoảng `1..max_valid_rank`.
+    4. Xác định đa mệnh lệnh (`is_multi_intent`) dựa trên dữ liệu cấu trúc & lọc `task_order` hợp lệ; chặn việc coi nhầm tham số địa điểm của `market-price-advisor` là yêu cầu `search`.
     5. Xoá `semantic_query` đối với các intent phi tìm kiếm.
     """
     valid = valid_slugs or set()
@@ -426,32 +478,10 @@ def _postprocess(
                 remained_specials.append(req)
         a.patch.special_requirements_add = remained_specials
 
-    raw_slug = (a.skill_slug or "").strip().lower()
-    if raw_slug in valid:
-        valid_slug: Optional[str] = raw_slug
-    elif a.intent == "skill_advice" and len(valid) == 1:
-        valid_slug = next(iter(valid))
-    else:
-        valid_slug = None
+    valid_skills = _normalize_valid_skills(a, valid)
+    valid_slug: Optional[str] = valid_skills[0] if valid_skills else None
 
-    has_non_market_filter = bool(
-        a.patch.max_price is not None
-        or a.patch.min_price is not None
-        or a.patch.min_area is not None
-        or a.patch.max_area is not None
-        or a.patch.min_bedrooms is not None
-        or a.patch.max_distance_km is not None
-        or a.patch.excluded_room_types
-        or a.patch.amenities_add
-        or a.patch.preferred_amenities_add
-        or a.patch.special_requirements_add
-    )
-    is_pure_market_price_query = (
-        a.intent == "skill_advice"
-        and valid_slug == "market-price-advisor"
-        and not a.is_multi_intent
-        and not has_non_market_filter
-    )
+    is_market_only = is_market_only_patch(a, valid_skills)
 
     has_concrete_search_target = bool(
         (a.patch.location_text and not a.patch.location_is_vague)
@@ -463,10 +493,31 @@ def _postprocess(
         or a.is_multi_intent
         or ("search" in (a.task_order or []))
     )
-    if a.intent == "skill_advice" and not has_concrete_search_target and not is_pure_market_price_query and not has_vague_search:
+    is_pure_non_market_advice = (
+        a.intent == "skill_advice"
+        and not is_market_only
+        and "search" not in (a.task_order or [])
+        and not has_vague_search
+        and not (
+            a.patch.max_price is not None
+            or a.patch.min_price is not None
+            or a.patch.min_area is not None
+            or a.patch.max_area is not None
+            or a.patch.min_bedrooms is not None
+            or a.patch.max_distance_km is not None
+            or a.patch.excluded_room_types
+            or a.patch.amenities_add
+            or a.patch.preferred_amenities_add
+            or a.patch.special_requirements_add
+        )
+        and (not a.is_multi_intent or not has_concrete_search_target)
+    )
+    if a.intent == "skill_advice" and not has_concrete_search_target and not is_market_only and not has_vague_search:
+        a.patch = PreferencePatch()
+    elif is_pure_non_market_advice and not valid_skills:
         a.patch = PreferencePatch()
 
-    has_search_patch = False if is_pure_market_price_query else bool(
+    has_search_patch = False if is_market_only else bool(
         has_concrete_search_target
         or has_vague_search
         or a.patch.min_price is not None
@@ -483,7 +534,7 @@ def _postprocess(
         if (max_valid_rank > 0 and a.referenced_room_rank is not None and 1 <= a.referenced_room_rank <= max_valid_rank)
         else None
     )
-    has_skill = valid_slug is not None
+    has_skill = bool(valid_skills)
     has_followup = (valid_rank is not None) or (a.intent == "room_followup" and n_rooms > 0)
 
     is_compound = (
@@ -496,6 +547,7 @@ def _postprocess(
     if is_compound:
         a.is_multi_intent = True
         a.skill_slug = valid_slug
+        a.skill_slugs = valid_skills
         a.referenced_room_rank = valid_rank
         a.task_order = list(dict.fromkeys(a.task_order or []))
         return a
@@ -503,12 +555,14 @@ def _postprocess(
     a.is_multi_intent = False
     a.task_order = []
     if a.intent == "skill_advice":
-        if valid_slug:
+        if valid_skills:
             a.skill_slug = valid_slug
+            a.skill_slugs = valid_skills
         else:
-            a.intent, a.skill_slug = "smalltalk", None
+            a.intent, a.skill_slug, a.skill_slugs = "smalltalk", None, []
     else:
         a.skill_slug = None
+        a.skill_slugs = []
 
     if a.intent == "room_followup":
         a.referenced_room_rank = valid_rank
@@ -533,22 +587,6 @@ def _postprocess(
 class LLMQuotaExceededError(RuntimeError):
     """Ngoại lệ ném ra khi API Key chạm hạn mức gọi trong ngày (429 RESOURCE_EXHAUSTED / Daily Quota)."""
     pass
-
-
-def is_daily_quota_exhausted(err_msg: str) -> bool:
-    """Nhận diện lỗi cạn hạn mức ngày (Daily Quota) của Google Gemini / OpenAI."""
-    low = (err_msg or "").lower()
-    return any(
-        kw in low
-        for kw in (
-            "resource_exhausted",
-            "generaterequestsperday",
-            "requests per day limit exceeded",
-            "free_tier_requests",
-            "quota exceeded for metric",
-            "exceeded your current quota",
-        )
-    )
 
 
 def analyze_turn(
@@ -602,15 +640,17 @@ def analyze_turn(
                     "Vui lòng cập nhật OPENAI_API_KEY mới trong file ai-agent/.env để tiếp tục."
                 ) from exc
 
-            is_rate_limit = any(t in err_msg for t in ("429", "rate limit", "too many requests"))
-            if is_rate_limit and attempt < 2:
-                wait_sec = 2.0 * (attempt + 1)
-                logger.warning("analyze_turn chạm rate limit (429 RPM), chờ %.1fs rồi thử lại lần %d...", wait_sec, attempt + 1)
+            wait_sec = classify_llm_retry_delay(exc, attempt)
+            if wait_sec is None and "validation" in err_msg:
+                wait_sec = 0.5
+            if wait_sec is not None and attempt < 2:
+                logger.warning(
+                    "analyze_turn gặp lỗi tạm thời (%s), chờ %.1fs rồi thử lại lần %d...",
+                    type(exc).__name__,
+                    wait_sec,
+                    attempt + 1,
+                )
                 _time.sleep(wait_sec)
-                continue
-            is_transient = any(t in err_msg for t in ("connection", "timeout", "validation"))
-            if is_transient and attempt < 2:
-                _time.sleep(0.5)
                 continue
             logger.exception("analyze_turn gặp lỗi khi gọi LLM")
             return None
@@ -630,6 +670,7 @@ __all__ = [
     "TurnAnalysis",
     "LLMQuotaExceededError",
     "is_daily_quota_exhausted",
+    "is_market_only_patch",
     "apply_patch",
     "mult_to_level",
     "multipliers_to_levels",

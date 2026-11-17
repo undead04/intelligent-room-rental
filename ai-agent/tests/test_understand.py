@@ -53,12 +53,16 @@ def test_vague_location_needs_clarification_and_not_written():
 
 
 def test_needs_clarification_rules():
-    plan, _ = run(TurnAnalysis(intent="new_search"))                              # chưa có gì, chưa có lịch sử
+    plan, _ = run(TurnAnalysis(intent="new_search"))                              # chưa có location -> hỏi làm rõ
     assert plan.needs_clarification
     plan, _ = run(TurnAnalysis(intent="new_search"), make_session(messages=["đã chat"]))
-    assert not plan.needs_clarification                                           # có lịch sử -> không hỏi lại
+    assert plan.needs_clarification                                               # có lịch sử nhưng vẫn thiếu location -> hỏi làm rõ
+    plan, _ = run(TurnAnalysis(intent="new_search"), make_session(pref=UserPreferenceState(location_text="UIT"), messages=["đã chat"]))
+    assert not plan.needs_clarification                                           # đã có location trong session -> cho tìm
     plan, _ = run(TurnAnalysis(intent="new_search", patch=PreferencePatch(max_price=3e6)))
-    assert not plan.needs_clarification
+    assert plan.needs_clarification and plan.commit and plan.preferences.max_price == 3_000_000  # thiếu location -> lưu giá + hỏi khu vực
+    plan, _ = run(TurnAnalysis(intent="new_search", patch=PreferencePatch(location_text="UIT")))
+    assert not plan.needs_clarification                                           # có location (dù chưa có giá) -> cho tìm
 
 
 def test_room_type_exclusion_flows_into_preferences():

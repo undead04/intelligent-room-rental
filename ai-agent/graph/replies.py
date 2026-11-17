@@ -86,7 +86,10 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
 
     # 1. Các trường hợp lỗi kỹ thuật / địa giới hành chính hoặc địa điểm chưa định vị được
     if state.get("search_error"):
-        return "Xin lỗi bạn, Homigo đang gặp sự cố khi truy vấn dữ liệu phòng trọ. Bạn thử gửi lại sau ít phút nhé!"
+        return (
+            "⚠️ **Sự cố kết nối dữ liệu**\n\n"
+            "Xin lỗi bạn, Homigo đang gặp trục trặc khi truy vấn dữ liệu phòng trọ. Bạn vui lòng thử gửi lại sau ít phút nhé!"
+        )
     if state.get("admin_not_found"):
         loc = pref.location_text or "khu vực này"
         return (
@@ -106,8 +109,25 @@ def reply_when_no_rooms(state: dict[str, Any], session: Any = None) -> str:
         )
     cands = state.get("ambiguous_candidates") or []
     if cands:
-        names = ", ".join(str(c.get("name")) for c in cands[:5] if c.get("name"))
-        return f"**{pref.location_text}** có nhiều nơi trùng tên ({names}). Bạn cho Homigo biết cụ thể thuộc quận/thành phố nào nhé?"
+        lines: list[str] = []
+        for idx, c in enumerate(cands[:5], 1):
+            name = str(c.get("name") or "").strip()
+            addr = str(c.get("address") or "").strip()
+            if not name:
+                continue
+            if addr and name.lower() not in addr.lower():
+                lines.append(f"{idx}. **{name}** — {addr}")
+            elif addr and len(addr) > len(name):
+                lines.append(f"{idx}. **{name}** ({addr})")
+            else:
+                lines.append(f"{idx}. **{name}**")
+        loc_label = pref.location_text or "địa điểm bạn nhập"
+        items_block = "\n".join(lines)
+        return (
+            f"📍 **{loc_label}** có nhiều nơi trùng tên:\n\n"
+            f"{items_block}\n\n"
+            "👉 Bạn chọn số thứ tự hoặc cho Homigo biết cụ thể thuộc quận/thành phố nào nhé!"
+        )
 
     market = state.get("market_context")
     loc = (market.area_name if market and market.area_name else None) or pref.location_text or "khu vực bạn chọn"

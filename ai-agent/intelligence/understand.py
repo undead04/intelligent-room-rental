@@ -21,6 +21,7 @@ from intelligence.nlu import (
     analyze_turn,
     apply_patch,
     apply_priorities,
+    is_market_only_patch,
     sanitize_user_text,
 )
 from utils.text import norm_key
@@ -58,6 +59,7 @@ class TurnPlan:
     needs_clarification: bool = False
     needs_budget_clarification: bool = False
     matched_skill: Optional[str] = None
+    matched_skills: list[str] = field(default_factory=list)
     is_followup: bool = False
     direct_reply: bool = False          # có final_text sẵn, bỏ qua LLM trả lời -> đi thẳng formatter
     focus_rank: Optional[int] = None
@@ -132,9 +134,22 @@ def _format_page_switch_reply(page_rooms: list[Any], page: int, total_pages: int
     return "\n".join(lines)
 
 
-def _build_skill_context(analysis: TurnAnalysis, pref: UserPreferenceState) -> Optional[dict[str, Any]]:
+def _active_skills(analysis: TurnAnalysis) -> list[str]:
+    slugs = [str(s).strip() for s in (getattr(analysis, "skill_slugs", None) or []) if str(s or "").strip()]
+    single = str(getattr(analysis, "skill_slug", None) or "").strip()
+    if single and single not in slugs:
+        slugs.insert(0, single) if not slugs else slugs.append(single)
+    return list(dict.fromkeys(slugs))
+
+
+def _build_skill_context(
+    analysis: TurnAnalysis,
+    pref: UserPreferenceState,
+    active_skills: Optional[list[str]] = None,
+) -> Optional[dict[str, Any]]:
     """Tạo ngữ cảnh riêng cho skill cần tra cứu theo địa danh (không ghi đè session.preferences)."""
-    if analysis.skill_slug != "market-price-advisor":
+    skills_list = active_skills if active_skills is not None else _active_skills(analysis)
+    if "market-price-advisor" not in skills_list:
         return None
     loc_text = (analysis.patch.location_text or "").strip() or None
     loc_kind = analysis.patch.location_kind
@@ -418,15 +433,18 @@ def interpret_turn(
 
     # 1.5) Lập kế hoạch thực thi tuần tự cho Đa Mệnh Lệnh (Plan & Execute):
     # Sắp xếp tự do theo đúng thứ tự mệnh đề user yêu cầu (hỗ trợ mọi hoán vị followup / search / advisory).
+    active_skills = _active_skills(analysis)
     multi_tasks: list[str] = []
     multi_has_followup = False
     multi_has_search = False
     multi_has_advisory = False
     if getattr(analysis, "is_multi_intent", False):
         followup_requested = (analysis.referenced_room_rank is not None or intent == "room_followup")
-        multi_has_advisory = bool(analysis.skill_slug)
-        multi_has_search = (not analysis.patch.is_empty()) or (
-            intent in ("new_search", "refine_search") and not followup_requested and not multi_has_advisory
+        multi_has_advisory = bool(active_skills)
+        multi_has_search = (
+            (not analysis.patch.is_empty() and not is_market_only_patch(analysis, active_skills))
+            or ("search" in (getattr(analysis, "task_order", None) or []))
+            or (intent in ("new_search", "refine_search") and not followup_requested and not multi_has_advisory)
         )
         multi_tasks = _plan_multi_intent_order(
             analysis,
@@ -444,8 +462,9 @@ def interpret_turn(
                 else (getattr(session, "focused_room_rank", None) or 1)
             )
             return plan(
-                matched_skill=analysis.skill_slug if multi_has_advisory else None,
-                skill_context=_build_skill_context(analysis, pref0) if multi_has_advisory else None,
+                matched_skill=active_skills[0] if (multi_has_advisory and active_skills) else None,
+                matched_skills=active_skills if multi_has_advisory else [],
+                skill_context=_build_skill_context(analysis, pref0, active_skills=active_skills) if multi_has_advisory else None,
                 is_followup=(multi_tasks[0] == "followup"),
                 focus_rank=focus_rank if multi_has_followup else None,
                 current_task=multi_tasks[0],
@@ -467,7 +486,11 @@ def interpret_turn(
 
     # 3) Tư vấn kỹ năng
     if intent == "skill_advice" and not multi_tasks:
-        return plan(matched_skill=analysis.skill_slug, skill_context=_build_skill_context(analysis, pref0))
+        return plan(
+            matched_skill=active_skills[0] if active_skills else None,
+            matched_skills=active_skills,
+            skill_context=_build_skill_context(analysis, pref0, active_skills=active_skills),
+        )
 
     # 4) Chào hỏi / mơ hồ -> để clarification_node trả lời
     if intent == "smalltalk":
@@ -593,14 +616,11 @@ def interpret_turn(
         vague_info = {"category": None, "region": analysis.patch.location_region}
 
     has_loc = bool(pref.location_text or pref.has_point or pref.district_id or pref.city_id)
-    has_budget = bool(pref.max_price or pref.min_price)
     needs_budget_clarify = bool(getattr(analysis, "needs_budget_clarification", False))
-    if is_vague_loc or needs_budget_clarify:
+    if is_vague_loc or needs_budget_clarify or not has_loc:
         needs_clarify = True
-    elif has_history:
-        needs_clarify = False
     else:
-        needs_clarify = not has_loc and not has_budget and not pref.amenities
+        needs_clarify = False
 
     if multi_tasks:
         followup_after_search = (
@@ -624,8 +644,9 @@ def interpret_turn(
             needs_clarification=needs_clarify,
             needs_budget_clarification=needs_budget_clarify,
             vague_location_info=vague_info,
-            matched_skill=analysis.skill_slug if multi_has_advisory else None,
-            skill_context=_build_skill_context(analysis, pref) if multi_has_advisory else None,
+            matched_skill=active_skills[0] if (multi_has_advisory and active_skills) else None,
+            matched_skills=active_skills if multi_has_advisory else [],
+            skill_context=_build_skill_context(analysis, pref, active_skills=active_skills) if multi_has_advisory else None,
             is_followup=(multi_tasks[0] == "followup"),
             focus_rank=focus_rank,
             current_task=multi_tasks[0],

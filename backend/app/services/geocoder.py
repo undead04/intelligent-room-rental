@@ -545,6 +545,63 @@ class _NominatimCacheShim:
 _lookup_nominatim_cached = _NominatimCacheShim()
 
 
+_DH_ABBR_RE = re.compile(r"^(?:trường\s+)?đh\b\.?\s*", re.IGNORECASE)
+_TRAILING_ACRONYM_RE = re.compile(r"^(.{6,}?)\s+([A-Z]{2,7})$")
+
+
+def _build_query_variants(query: str, hint: Optional[str]) -> list[tuple[str, str]]:
+    """Sinh danh sách `(variant_query, relevance_probe)` thuần cấu trúc (không hardcode từ điển viết tắt)."""
+    hint_clean = (hint or "").strip()
+    norm_hint = _norm_text(hint_clean)
+
+    base_forms: list[tuple[str, str]] = []
+    seen_norm: set[str] = set()
+
+    def _add_base(q_str: str, probe: str) -> None:
+        q_clean = q_str.strip()
+        nq = _norm_text(q_clean)
+        if not q_clean or len(nq) < 2 or nq in seen_norm:
+            return
+        seen_norm.add(nq)
+        base_forms.append((q_clean, probe))
+
+    _add_base(query, query)
+
+    # Mở rộng 'ĐH ...' -> 'Đại học ...' (TrackAsia/OSM lập chỉ mục dạng đầy đủ)
+    if _DH_ABBR_RE.match(query):
+        full_dh = _DH_ABBR_RE.sub("Đại học ", query, count=1).strip()
+        _add_base(full_dh, full_dh)
+
+    # Bỏ từ viết tắt thừa ở cuối khi đã có tên đầy đủ phía trước (vd: 'ĐH Kinh tế Luật UEL' -> 'Đại học Kinh tế Luật')
+    for form_q, _ in list(base_forms):
+        m_trail = _TRAILING_ACRONYM_RE.match(form_q)
+        if m_trail:
+            head_part = m_trail.group(1).strip()
+            if len(head_part.split()) >= 2:
+                _add_base(head_part, head_part)
+
+    # Bỏ tiền tố loại hình (Trường ĐH / KTX / ...)
+    stripped = PREFIX_PATTERN.sub("", query).strip()
+    if stripped:
+        _add_base(stripped, stripped)
+
+    with_hint: list[tuple[str, str]] = []
+    no_hint: list[tuple[str, str]] = []
+    for form_q, probe in base_forms:
+        nf = _norm_text(form_q)
+        if hint_clean and norm_hint and norm_hint not in nf:
+            with_hint.append((f"{form_q}, {hint_clean}", probe))
+        no_hint.append((form_q, probe))
+
+    out: list[tuple[str, str]] = []
+    seen_var: set[str] = set()
+    for var_q, probe in with_hint + no_hint:
+        if var_q not in seen_var:
+            seen_var.add(var_q)
+            out.append((var_q, probe))
+    return out
+
+
 def resolve_location(
     user_input: str,
     hint: Optional[str] = None,
@@ -565,28 +622,7 @@ def resolve_location(
             cached.query = user_input
             return cached
 
-    with_hint: list[str] = []
-    no_hint: list[str] = []
-
-    hint_clean = (hint or "").strip()
-    norm_query = _norm_text(query)
-    norm_hint = _norm_text(hint_clean)
-
-    # 1. Truy vấn gốc
-    if hint_clean and norm_hint and norm_hint not in norm_query:
-        with_hint.append(f"{query}, {hint_clean}")
-    no_hint.append(query)
-
-    # 2. Truy vấn đã lược bỏ tiền tố (trường học, ktx, viện...)
-    stripped = PREFIX_PATTERN.sub("", query).strip()
-    norm_stripped = _norm_text(stripped)
-    if stripped and norm_stripped != norm_query and len(stripped) >= 2:
-        if hint_clean and norm_hint and norm_hint not in norm_stripped:
-            with_hint.append(f"{stripped}, {hint_clean}")
-        no_hint.append(stripped)
-
-    # Ưu tiên tất cả biến thể kèm hint trước, nhưng vẫn giữ lọc region bbox ở mọi bước
-    query_variants: list[str] = list(dict.fromkeys(with_hint + no_hint))
+    query_variants = _build_query_variants(query, hint)
 
     providers = []
     if (settings.TRACKASIA_API_KEY or "").strip():
@@ -594,12 +630,12 @@ def resolve_location(
     providers.append(lambda q_str: geocode_nominatim_candidates(q_str, target_region=target_region, limit=5))
 
     for fetch_candidates in providers:
-        for variant in query_variants:
+        for variant, probe in query_variants:
             raw_cands = fetch_candidates(variant)
             if not raw_cands:
                 continue
             # Lọc bỏ các ứng viên lạc đề không khớp từ khóa định danh riêng của địa điểm
-            cands = [c for c in raw_cands if _is_candidate_relevant(query, c, hint)]
+            cands = [c for c in raw_cands if _is_candidate_relevant(probe, c, hint)]
             if not cands:
                 continue
             resp = _candidates_to_response(user_input, cands)

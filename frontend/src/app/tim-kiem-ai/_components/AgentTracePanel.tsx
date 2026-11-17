@@ -568,6 +568,75 @@ function StepGroupCard({
                 </div>
               );
             }
+            if (item.kind === "location_retry") {
+              const isResolved = item.finalKind === "resolved";
+              const stageLabels: Record<string, string> = {
+                primary: "Lần đầu",
+                retry_1_variant: "Biến thể",
+                retry_1_llm_rewrite: "LLM viết lại",
+                retry_2_llm_rewrite: "LLM viết lại (2)",
+              };
+              return (
+                <div
+                  key={item.uid}
+                  className={
+                    isResolved
+                      ? "rounded-lg border border-sky-200 bg-sky-50/80 p-2 text-[10.5px] text-[#075985]"
+                      : "rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10.5px] text-[#92400E]"
+                  }
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <span className="material-symbols-outlined text-[14px] shrink-0">
+                        {isResolved ? "edit_location_alt" : "location_off"}
+                      </span>
+                      <span>Retry định vị ({item.attempts.length} bước)</span>
+                    </div>
+                    {item.finalKind && (
+                      <span
+                        className={
+                          isResolved
+                            ? "rounded px-1.5 py-0.5 text-[9.5px] font-semibold bg-emerald-100 text-emerald-800"
+                            : "rounded px-1.5 py-0.5 text-[9.5px] font-semibold bg-amber-100 text-amber-800"
+                        }
+                      >
+                        {item.finalKind}
+                      </span>
+                    )}
+                  </div>
+                  {item.attempts.length > 0 && (
+                    <div className="mt-1.5 space-y-1 border-t border-black/10 pt-1.5">
+                      {item.attempts.map((att, idx) => (
+                        <div
+                          key={`${item.uid}-att-${idx}`}
+                          className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]"
+                        >
+                          <span className="font-semibold opacity-80">
+                            {idx + 1}. {stageLabels[att.stage || ""] || att.stage || "attempt"}:
+                          </span>
+                          <span className="font-mono bg-white/70 px-1 rounded">
+                            {att.query || "—"}
+                          </span>
+                          {att.region_hint && (
+                            <span className="opacity-75">({att.region_hint})</span>
+                          )}
+                          <span className="opacity-60">→</span>
+                          <span
+                            className={
+                              att.result_kind === "resolved"
+                                ? "font-semibold text-emerald-700"
+                                : "font-medium opacity-85"
+                            }
+                          >
+                            {att.result_kind || "?"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
             if (item.kind === "suspicious_listing") {
               return (
                 <div
