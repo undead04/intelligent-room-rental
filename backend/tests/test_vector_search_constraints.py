@@ -1071,3 +1071,258 @@ def test_no_shared_landlord_self_managed_equivalence_isolated():
         local_session.commit()
         local_session.close()
 
+
+def test_unaccent_sparse_fts_and_rrf_ranking(db_session):
+    """Kiểm chứng Sparse FTS không dấu (f_unaccent + idx_listings_fts_unaccent) và RRF 70/30
+    trên PostgreSQL thật: truy vấn không dấu 'thu duc dhqg may lanh' phải khớp bài đăng có dấu
+    và xếp trên bài không khớp từ khóa dù cùng cosine vector.
+    """
+    local_session = SessionLocal()
+    test_ids = ["test_unaccent_hit", "test_unaccent_miss"]
+    dist = None
+    ward = None
+    try:
+        city = local_session.query(City).first()
+        assert city is not None
+        dist = District(city_id=city.id, name="__TEST_UNACCENT_DIST__")
+        local_session.add(dist)
+        local_session.flush()
+        ward = Ward(district_id=dist.id, name="__TEST_UNACCENT_WARD__")
+        local_session.add(ward)
+        local_session.flush()
+
+        unit_vec = [0.0] * 768
+        unit_vec[0] = 1.0
+
+        items = [
+            Listing(
+                id="test_unaccent_miss",
+                title="Phòng trọ Bình Thạnh có ban công",
+                address_raw="Bình Thạnh, TP.HCM",
+                description="Phòng thoáng mát sạch sẽ",
+                price_vnd=3_500_000.0,
+                area_m2=25.0,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                is_active=True,
+                status="active",
+            ),
+            Listing(
+                id="test_unaccent_hit",
+                title="Phòng trọ Thủ Đức gần ĐHQG có máy lạnh",
+                address_raw="Linh Trung, Thủ Đức, TP.HCM",
+                description="Gần ĐHQG, trang bị sẵn máy lạnh",
+                price_vnd=3_500_000.0,
+                area_m2=25.0,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                is_active=True,
+                status="active",
+            ),
+        ]
+        for obj in items:
+            local_session.add(obj)
+            local_session.add(
+                ListingEmbedding(
+                    listing_id=obj.id,
+                    vector=unit_vec,
+                    dimension=768,
+                    model_name="intfloat/multilingual-e5-base",
+                )
+            )
+        local_session.commit()
+
+        repo = ListingRepository(local_session)
+        # 1) Truy vấn không dấu hoàn toàn không trùng từ chung với bài miss
+        res_clean = repo.vector_search(
+            query_vector=unit_vec,
+            query_text="thu duc dhqg may lanh",
+            city_id=city.id,
+            district_id=dist.id,
+            ward_id=ward.id,
+            limit=10,
+        )
+        assert len(res_clean) == 2
+        assert res_clean[0]["listing"].id == "test_unaccent_hit"
+        assert res_clean[0]["similarity_score"] > res_clean[1]["similarity_score"]
+        assert res_clean[0]["rrf_score"] > res_clean[1]["rrf_score"]
+
+        # 2) Truy vấn có thêm từ chung ('phong tro') vẫn phải xếp hit lên #1 nhờ sparse_score cao hơn
+        res = repo.vector_search(
+            query_vector=unit_vec,
+            query_text="phong tro thu duc gan dhqg co may lanh",
+            city_id=city.id,
+            district_id=dist.id,
+            ward_id=ward.id,
+            limit=10,
+        )
+        assert len(res) == 2
+        assert res[0]["listing"].id == "test_unaccent_hit"
+        assert res[0]["similarity_score"] > res[1]["similarity_score"]
+        assert res[0]["rrf_score"] > res[1]["rrf_score"]
+    finally:
+        local_session.rollback()
+        local_session.query(ListingEmbedding).filter(ListingEmbedding.listing_id.in_(test_ids)).delete(synchronize_session=False)
+        local_session.query(Listing).filter(Listing.id.in_(test_ids)).delete(synchronize_session=False)
+        if ward is not None:
+            local_session.query(Ward).filter(Ward.id == ward.id).delete(synchronize_session=False)
+        if dist is not None:
+            local_session.query(District).filter(District.id == dist.id).delete(synchronize_session=False)
+        local_session.commit()
+        local_session.close()
+
+
+def test_multisource_pool_preserves_geo_and_price_gems_past_text_cutoff(db_session):
+    """Kiểm chứng Lệch pha #3: Khi có > 155 tin có điểm văn bản cao hơn (lấp đầy rrf_budget=150),
+    các tin sát điểm mốc (geo_top) và giá hời vượt trội (price_top) nhưng thấp điểm văn bản vẫn phải
+    vượt qua tầng lấy ứng viên để vào MCDM Reranker và lọt Top 5.
+    """
+    local_session = SessionLocal()
+    n_noise = 160
+    test_ids = [f"test_pool_noise_{i}" for i in range(n_noise)] + ["test_pool_geo_gem", "test_pool_price_gem"]
+    dist = None
+    ward = None
+    try:
+        city = local_session.query(City).first()
+        assert city is not None
+        dist = District(city_id=city.id, name="__TEST_POOL_DIST__")
+        local_session.add(dist)
+        local_session.flush()
+        ward = Ward(district_id=dist.id, name="__TEST_POOL_WARD__")
+        local_session.add(ward)
+        local_session.flush()
+
+        center_lat, center_lng = 10.8700, 106.8031
+        high_vec = [0.0] * 768
+        high_vec[0] = 1.0
+        low_vec = [0.0] * 768
+        low_vec[1] = 1.0  # orthogonal -> cosine_distance = 1.0
+
+        # 160 tin nhiễu: khớp embedding 100% + khớp từ khóa, nhưng xa ~4.2km và chất lượng/giá kém
+        far_lat = center_lat + (4.2 / 110.574)
+        for i in range(n_noise):
+            lid = f"test_pool_noise_{i}"
+            local_session.add(
+                Listing(
+                    id=lid,
+                    title=f"Phòng trọ mẫu số {i} gần khu công nghệ",
+                    description="Phòng trọ tiêu chuẩn",
+                    price_vnd=4_500_000.0,
+                    area_m2=20.0,
+                    lat=far_lat,
+                    lng=center_lng,
+                    price_score=0.25,
+                    safety_score=0.30,
+                    amenity_overall=0.25,
+                    region_id=city.id,
+                    district_id=dist.id,
+                    ward_id=ward.id,
+                    room_type_id=1,
+                    is_active=True,
+                    status="active",
+                )
+            )
+            local_session.add(
+                ListingEmbedding(
+                    listing_id=lid,
+                    vector=high_vec,
+                    dimension=768,
+                    model_name="intfloat/multilingual-e5-base",
+                )
+            )
+
+        # Tin Geo+Price Gem: vector trực giao (xếp cuối về dense, 0 sparse), nhưng cách 100m, giá hời + an ninh + tiện nghi cao
+        near_lat = center_lat + (0.1 / 110.574)
+        local_session.add(
+            Listing(
+                id="test_pool_geo_gem",
+                title="Căn hộ mini đường nội bộ",
+                description="Không gian sạch đẹp",
+                price_vnd=3_200_000.0,
+                area_m2=28.0,
+                lat=near_lat,
+                lng=center_lng,
+                price_score=0.92,
+                safety_score=0.95,
+                amenity_overall=0.95,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                is_active=True,
+                status="active",
+            )
+        )
+        local_session.add(
+            ListingEmbedding(
+                listing_id="test_pool_geo_gem",
+                vector=low_vec,
+                dimension=768,
+                model_name="intfloat/multilingual-e5-base",
+            )
+        )
+
+        # Tin Price Gem: vector trực giao, cách 1.2km, price_score=0.99
+        mid_lat = center_lat + (1.2 / 110.574)
+        local_session.add(
+            Listing(
+                id="test_pool_price_gem",
+                title="Chỗ ở sinh viên giá cực tốt",
+                description="Phòng thoáng mát yên tĩnh",
+                price_vnd=2_800_000.0,
+                area_m2=26.0,
+                lat=mid_lat,
+                lng=center_lng,
+                price_score=0.99,
+                safety_score=0.92,
+                amenity_overall=0.92,
+                region_id=city.id,
+                district_id=dist.id,
+                ward_id=ward.id,
+                room_type_id=1,
+                is_active=True,
+                status="active",
+            )
+        )
+        local_session.add(
+            ListingEmbedding(
+                listing_id="test_pool_price_gem",
+                vector=low_vec,
+                dimension=768,
+                model_name="intfloat/multilingual-e5-base",
+            )
+        )
+        local_session.commit()
+
+        mock_embedder = MagicMock()
+        mock_embedder.model_name = "intfloat/multilingual-e5-base"
+        mock_embedder.encode_query.return_value = np.array(high_vec, dtype=np.float32)
+
+        service = ListingService(local_session)
+        results = service.vector_search(
+            query="Phòng trọ mẫu gần khu công nghệ",
+            model_embedding=mock_embedder,
+            lat=center_lat,
+            lng=center_lng,
+            max_distance_km=5.0,
+            district_id=dist.id,
+            limit=5,
+        )
+        top_ids = [r.listing.id for r in results]
+        assert "test_pool_geo_gem" in top_ids
+        assert "test_pool_price_gem" in top_ids
+    finally:
+        local_session.rollback()
+        local_session.query(ListingEmbedding).filter(ListingEmbedding.listing_id.in_(test_ids)).delete(synchronize_session=False)
+        local_session.query(Listing).filter(Listing.id.in_(test_ids)).delete(synchronize_session=False)
+        if ward is not None:
+            local_session.query(Ward).filter(Ward.id == ward.id).delete(synchronize_session=False)
+        if dist is not None:
+            local_session.query(District).filter(District.id == dist.id).delete(synchronize_session=False)
+        local_session.commit()
+        local_session.close()
+

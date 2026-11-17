@@ -1,24 +1,32 @@
 from typing import Optional, Any
 import math
 import re
-from sqlalchemy import Float, case, cast, func, or_
+import unicodedata
+from sqlalchemy import Float, case, cast, func, or_, union
 from sqlalchemy.orm import Query, Session, joinedload
 
 from app.models.embedding import ListingEmbedding
 from app.models.listing import Listing
+
+RRF_K: float = 60.0
+DEFAULT_HYBRID_ALPHA: float = 0.7
 
 def _active_listing_filter():
     """Bộ lọc tin đăng công khai còn hiệu lực (active và chưa bị gỡ)."""
     return (Listing.is_active == True) & (Listing.status.is_(None) | (func.lower(Listing.status) == "active"))
 
 
+def _strip_accents(text: str) -> str:
+    """Khử dấu tiếng Việt (kể cả đ/Đ -> d/D) để khớp với hàm PostgreSQL f_unaccent."""
+    s = (text or "").replace("đ", "d").replace("Đ", "D")
+    nfd = unicodedata.normalize("NFD", s)
+    return "".join(ch for ch in nfd if unicodedata.category(ch) != "Mn")
+
+
 _FTS_STOPWORDS = {
-    "tìm", "tim", "giúp", "giup", "tôi", "toi", "mình", "minh", "em", "cho",
-    "hỏi", "hoi", "ở", "o", "tại", "tai", "quanh", "gần", "gan", "khu", "vực",
-    "vuc", "dưới", "duoi", "trên", "tren", "tầm", "tam", "khoảng", "khoang",
-    "từ", "tu", "đến", "den", "giá", "gia", "triệu", "trieu", "tr", "vnd",
-    "nhé", "nhe", "ạ", "a", "với", "voi", "có", "co", "và", "va", "cần", "can",
-    "muốn", "muon", "thuê", "thue",
+    "tim", "giup", "toi", "minh", "em", "cho", "hoi", "o", "tai", "quanh", "gan",
+    "khu", "vuc", "duoi", "tren", "tam", "khoang", "tu", "den", "gia", "trieu",
+    "tr", "vnd", "nhe", "a", "voi", "co", "va", "can", "muon", "thue",
 }
 
 ROOM_TYPE_CODE_TO_ID: dict[str, int] = {
@@ -31,11 +39,12 @@ ROOM_TYPE_CODE_TO_ID: dict[str, int] = {
 
 
 def _build_or_tsquery_string(query_text: str) -> str:
-    """Chuyển câu truy vấn tự nhiên thành chuỗi OR-tsquery an toàn cho PostgreSQL simple dictionary.
-    Giúp Sparse Full-Text Search (30% trọng số Hybrid) vẫn chấm điểm khớp từ khóa địa danh/tiện ích
+    """Chuyển câu truy vấn tự nhiên thành chuỗi OR-tsquery không dấu cho PostgreSQL simple + f_unaccent.
+    Giúp Sparse Full-Text Search (30% trọng số Hybrid) khớp cả truy vấn có dấu lẫn không dấu
     ngay cả khi câu hỏi chứa các từ hội thoại ('tìm', 'dưới', 'quanh',...).
     """
-    tokens = re.findall(r"\w+", (query_text or "").lower(), flags=re.UNICODE)
+    normalized = _strip_accents((query_text or "").lower())
+    tokens = re.findall(r"\w+", normalized, flags=re.UNICODE)
     valid_tokens: list[str] = []
     for tok in tokens:
         if len(tok) < 2 or tok in _FTS_STOPWORDS or tok.isdigit():
@@ -246,7 +255,7 @@ class ListingRepository:
         min_bedrooms: int | None = None,
         min_bathrooms: int | None = None,
         limit: int = 50,
-        alpha: float = 0.6,
+        alpha: float = DEFAULT_HYBRID_ALPHA,
         model_name: Optional[str] = None,
         lat: float | None = None,
         lng: float | None = None,
@@ -254,20 +263,17 @@ class ListingRepository:
         amenities: list[Any] | None = None,
         excluded_room_types: list[Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """Tìm kiếm tin đăng kết hợp Hybrid Search (Dense pgvector + Sparse PostgreSQL Full-Text Search).
+        """Tìm kiếm tin đăng kết hợp Hybrid Search (Dense pgvector + Sparse FTS không dấu) qua RRF & Multi-source Union.
 
-        - Dense: Khoảng cách Cosine embedding hiểu ngữ nghĩa sâu
-        - Sparse: ts_rank_cd trên (title, address_raw, description) bắt chính xác tên đường, địa danh, từ khóa
-        - Linear Fusion: alpha * dense + (1 - alpha) * sparse
+        - Dense (alpha=0.7): Cosine embedding hiểu ngữ nghĩa sâu
+        - Sparse (1-alpha=0.3): ts_rank_cd với public.f_unaccent trên (title, address_raw, description) khớp cả không dấu
+        - RRF (k=60): Gộp thứ hạng Dense + Sparse ổn định thang điểm
+        - Multi-source Pool (khi limit >= 100): Dự phòng slot cho Top vị trí gần nhất & Top price_score trước MCDM Rerank.
         """
+        distance_col = ListingEmbedding.vector.cosine_distance(query_vector).label("distance")
 
-        # Biến đổi cosine distance sang column expression
-        distance_col = ListingEmbedding.vector.cosine_distance(
-            query_vector
-        ).label("distance")
-
-        clean_query = (query_text or "").strip()
-        text_content = (
+        clean_query = _strip_accents((query_text or "").strip())
+        text_content = func.public.f_unaccent(
             func.coalesce(Listing.title, "")
             + " "
             + func.coalesce(Listing.address_raw, "")
@@ -275,44 +281,30 @@ class ListingRepository:
             + func.coalesce(Listing.description, "")
         )
         ts_vector = func.to_tsvector("simple", text_content)
-        or_query_str = _build_or_tsquery_string(clean_query)
+        or_query_str = _build_or_tsquery_string(query_text or "")
         if or_query_str:
             ts_query = func.to_tsquery("simple", or_query_str)
         else:
             ts_query = func.plainto_tsquery("simple", clean_query)
-        
+
         sparse_score_col = func.ts_rank_cd(ts_vector, ts_query).label("sparse_score")
+        has_fts_query = bool(or_query_str or clean_query)
 
-        # Chuẩn hoá Dense similarity: [0..1]
-        dense_sim = func.greatest(0.0, func.least(1.0, 1.0 - distance_col))
-        # Chuẩn hoá Sparse rank: clamp(rank * 3.0, 0, 1)
-        sparse_norm = func.greatest(0.0, func.least(1.0, sparse_score_col * 3.0))
-        # Điểm tổng hợp Hybrid Fusion
-        hybrid_score_col = (alpha * dense_sim + (1.0 - alpha) * sparse_norm).label("hybrid_score")
-
-        query = (
-            self.db.query(Listing, distance_col, sparse_score_col)
+        # Lọc cứng dùng chung cho toàn bộ nhánh ứng viên
+        filter_q = (
+            self.db.query(Listing.id)
             .join(ListingEmbedding, Listing.id == ListingEmbedding.listing_id)
-            .options(
-                joinedload(Listing.city),
-                joinedload(Listing.district),
-                joinedload(Listing.ward),
-                joinedload(Listing.room_type),
-            )
             .filter(_active_listing_filter())
         )
-
-        # Filters
         if model_name:
-            query = query.filter(ListingEmbedding.model_name == model_name)
+            filter_q = filter_q.filter(ListingEmbedding.model_name == model_name)
         if city_id is not None:
-            query = query.filter(Listing.region_id == city_id)
+            filter_q = filter_q.filter(Listing.region_id == city_id)
         if district_id is not None:
-            query = query.filter(Listing.district_id == district_id)
+            filter_q = filter_q.filter(Listing.district_id == district_id)
         if ward_id is not None:
-            query = query.filter(Listing.ward_id == ward_id)
+            filter_q = filter_q.filter(Listing.ward_id == ward_id)
 
-        # Lọc theo loại phòng cho phép (room_type đơn hoặc danh sách) và loại trừ (excluded_room_types)
         def _resolve_room_type_ids(raw_items: Any) -> set[int]:
             items = list(raw_items) if isinstance(raw_items, (list, tuple, set)) else ([raw_items] if raw_items is not None else [])
             ids: set[int] = set()
@@ -334,14 +326,14 @@ class ListingRepository:
 
         allowed_ids = _resolve_room_type_ids(room_type)
         if allowed_ids:
-            query = query.filter(Listing.room_type_id.in_(list(allowed_ids)))
+            filter_q = filter_q.filter(Listing.room_type_id.in_(list(allowed_ids)))
 
         excluded_ids = _resolve_room_type_ids(excluded_room_types)
         if excluded_ids:
-            query = query.filter(Listing.room_type_id.notin_(excluded_ids))
+            filter_q = filter_q.filter(Listing.room_type_id.notin_(excluded_ids))
 
-        query = self._apply_numeric_filters(
-            query,
+        filter_q = self._apply_numeric_filters(
+            filter_q,
             min_price=min_price,
             max_price=max_price,
             min_area=min_area,
@@ -350,11 +342,11 @@ class ListingRepository:
             min_bathrooms=min_bathrooms,
         )
 
-        # Lọc không gian Bán kính Tròn Haversine chính xác quanh toạ độ mục tiêu
+        haversine_expr = None
         if lat is not None and lng is not None and max_distance_km:
             lat_delta = float(max_distance_km) / 110.574
             lng_delta = float(max_distance_km) / max(10.0, 111.320 * math.cos(math.radians(lat)))
-            query = query.filter(
+            filter_q = filter_q.filter(
                 Listing.lat.isnot(None),
                 Listing.lng.isnot(None),
                 Listing.lat >= lat - lat_delta,
@@ -373,9 +365,8 @@ class ListingRepository:
                     )
                 )
             )
-            query = query.filter(haversine_expr <= float(max_distance_km))
+            filter_q = filter_q.filter(haversine_expr <= float(max_distance_km))
 
-        # Đồng bộ lọc ngữ nghĩa Tiện ích bắt buộc từ concept_scores
         if amenities:
             for am in amenities:
                 clean_code = str(getattr(am, "value", am)).strip().lower()
@@ -385,26 +376,132 @@ class ListingRepository:
                     c_lock = func.coalesce(cast(Listing.concept_scores.op("->>")("fingerprint_lock"), Float), 0.0) >= 0.5
                     c_guard = func.coalesce(cast(Listing.concept_scores.op("->>")("guard"), Float), 0.0) >= 0.5
                     c_score = func.coalesce(Listing.safety_score, 0.0) >= 0.7
-                    query = query.filter(or_(c_safe, c_cam, c_lock, c_guard, c_score))
+                    filter_q = filter_q.filter(or_(c_safe, c_cam, c_lock, c_guard, c_score))
                 elif clean_code == "furniture":
                     c_furn = func.coalesce(cast(Listing.concept_scores.op("->>")("furniture"), Float), 0.0) >= 0.5
                     c_code = Listing.furnishing_code.in_([1, 2])
-                    query = query.filter(or_(c_furn, c_code))
+                    filter_q = filter_q.filter(or_(c_furn, c_code))
                 elif clean_code == "no_shared_landlord":
                     c_nsl = func.coalesce(cast(Listing.concept_scores.op("->>")("no_shared_landlord"), Float), 0.0) >= 0.5
                     c_free = func.coalesce(cast(Listing.concept_scores.op("->>")("free_hours"), Float), 0.0) >= 0.5
                     c_fp = func.coalesce(cast(Listing.concept_scores.op("->>")("fingerprint_lock"), Float), 0.0) >= 0.5
-                    query = query.filter(or_(c_nsl, c_free & c_fp))
+                    filter_q = filter_q.filter(or_(c_nsl, c_free & c_fp))
                 else:
-                    query = query.filter(
+                    filter_q = filter_q.filter(
                         func.coalesce(cast(Listing.concept_scores.op("->>")(clean_code), Float), 0.0) >= 0.5
                     )
 
-        rows = query.order_by(hybrid_score_col.desc()).limit(limit).all()
+        # Lấy tập ứng viên qua CTE 2 nhánh (Dense + Sparse) + RRF + nhánh Geo/Price dự phòng
+        geo_col = haversine_expr.label("geo_dist") if haversine_expr is not None else cast(0.0, Float).label("geo_dist")
+        filtered_cte = (
+            filter_q.with_entities(
+                Listing.id.label("listing_id"),
+                distance_col,
+                sparse_score_col,
+                func.coalesce(Listing.price_score, 0.0).label("price_score"),
+                geo_col,
+            )
+            .cte("filtered_candidates")
+        )
+
+        branch_k = max(limit, 150)
+        dense_order = (
+            filtered_cte.c.distance.asc(),
+            filtered_cte.c.sparse_score.desc(),
+            filtered_cte.c.listing_id.asc(),
+        )
+        dense_top = (
+            self.db.query(
+                filtered_cte.c.listing_id.label("listing_id"),
+                func.row_number().over(order_by=dense_order).label("dense_rank"),
+            )
+            .order_by(*dense_order)
+            .limit(branch_k)
+            .cte("dense_top")
+        )
+
+        sparse_q = self.db.query(
+            filtered_cte.c.listing_id.label("listing_id"),
+            func.row_number().over(order_by=filtered_cte.c.sparse_score.desc()).label("sparse_rank"),
+        )
+        if has_fts_query:
+            sparse_q = sparse_q.filter(filtered_cte.c.sparse_score > 0.0)
+        else:
+            sparse_q = sparse_q.filter(cast(False, Listing.is_active.type))
+        sparse_top = sparse_q.order_by(filtered_cte.c.sparse_score.desc()).limit(branch_k).cte("sparse_top")
+
+        # Gộp điểm RRF giữa dense_top và sparse_top
+        rrf_score_expr = (
+            case((dense_top.c.dense_rank.isnot(None), alpha / (RRF_K + dense_top.c.dense_rank)), else_=0.0)
+            + case((sparse_top.c.sparse_rank.isnot(None), (1.0 - alpha) / (RRF_K + sparse_top.c.sparse_rank)), else_=0.0)
+        ).label("rrf_score")
+
+        dense_sim_expr = func.greatest(0.0, func.least(1.0, 1.0 - filtered_cte.c.distance))
+        sparse_norm_expr = func.greatest(0.0, func.least(1.0, filtered_cte.c.sparse_score * 3.0))
+        hybrid_sim_expr = (alpha * dense_sim_expr + (1.0 - alpha) * sparse_norm_expr).label("hybrid_sim")
+
+        if limit >= 100:
+            # Chế độ pool cho MCDM Reranker: dành riêng slot cho RRF + vị trí gần + giá hời
+            rrf_budget = max(1, int(limit * 0.6))
+            geo_budget = max(1, int(limit * 0.2)) if haversine_expr is not None else 0
+            price_budget = max(1, limit - rrf_budget - geo_budget)
+
+            rrf_ids_sel = (
+                self.db.query(filtered_cte.c.listing_id.label("listing_id"))
+                .outerjoin(dense_top, filtered_cte.c.listing_id == dense_top.c.listing_id)
+                .outerjoin(sparse_top, filtered_cte.c.listing_id == sparse_top.c.listing_id)
+                .filter(or_(dense_top.c.listing_id.isnot(None), sparse_top.c.listing_id.isnot(None)))
+                .order_by(rrf_score_expr.desc(), hybrid_sim_expr.desc())
+                .limit(rrf_budget)
+            )
+            price_ids_sel = (
+                self.db.query(filtered_cte.c.listing_id.label("listing_id"))
+                .order_by(filtered_cte.c.price_score.desc(), hybrid_sim_expr.desc())
+                .limit(price_budget)
+            )
+            union_parts = [rrf_ids_sel, price_ids_sel]
+            if geo_budget > 0:
+                geo_ids_sel = (
+                    self.db.query(filtered_cte.c.listing_id.label("listing_id"))
+                    .order_by(filtered_cte.c.geo_dist.asc(), filtered_cte.c.price_score.desc())
+                    .limit(geo_budget)
+                )
+                union_parts.append(geo_ids_sel)
+            pool_cte = union(*union_parts).cte("candidate_pool")
+        else:
+            # Caller gọi trực tiếp với limit nhỏ: lấy đúng Top-K theo RRF
+            pool_cte = (
+                self.db.query(filtered_cte.c.listing_id.label("listing_id"))
+                .outerjoin(dense_top, filtered_cte.c.listing_id == dense_top.c.listing_id)
+                .outerjoin(sparse_top, filtered_cte.c.listing_id == sparse_top.c.listing_id)
+                .order_by(rrf_score_expr.desc(), hybrid_sim_expr.desc())
+                .limit(limit)
+                .cte("candidate_pool")
+            )
+
+        rows = (
+            self.db.query(
+                Listing,
+                filtered_cte.c.distance,
+                filtered_cte.c.sparse_score,
+                rrf_score_expr,
+            )
+            .join(filtered_cte, Listing.id == filtered_cte.c.listing_id)
+            .join(pool_cte, Listing.id == pool_cte.c.listing_id)
+            .outerjoin(dense_top, Listing.id == dense_top.c.listing_id)
+            .outerjoin(sparse_top, Listing.id == sparse_top.c.listing_id)
+            .options(
+                joinedload(Listing.city),
+                joinedload(Listing.district),
+                joinedload(Listing.ward),
+                joinedload(Listing.room_type),
+            )
+            .order_by(rrf_score_expr.desc(), hybrid_sim_expr.desc())
+            .all()
+        )
 
         results = []
-        for row in rows:
-            listing, dist, sparse_val = row
+        for listing, dist, sparse_val, rrf_val in rows:
             dist_val = float(dist) if dist is not None else 1.0
             dense_sim = max(0.0, min(1.0, 1.0 - dist_val))
             sparse_norm = max(0.0, min(1.0, float(sparse_val or 0.0) * 3.0))
@@ -414,6 +511,7 @@ class ListingRepository:
                 {
                     "listing": listing,
                     "similarity_score": round(similarity_score, 4),
+                    "rrf_score": round(float(rrf_val or 0.0), 6),
                 }
             )
 

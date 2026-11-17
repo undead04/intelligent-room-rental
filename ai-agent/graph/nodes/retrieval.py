@@ -273,6 +273,7 @@ def make_retrieval_node(deps: Deps):
                 "max_distance_km": base_radius if pref.has_point else None,
                 "weights": weights or None,
                 "prefer_cheapest": float(multipliers.get("price", 1.0)) > 1.0,
+                "include_amenity_overall": float(multipliers.get("amenity", 1.0)) > 1.0,
                 "limit": OVERFETCH_LIMIT if (pref.excluded_room_types or pref.allowed_room_types) else RESULT_LIMIT,
             }
             for key in ("city_id", "district_id", "ward_id", "min_bedrooms"):

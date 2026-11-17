@@ -10,7 +10,8 @@ from typing import Mapping, Optional
 
 from domain.schemas import UserPreferenceState
 
-DEFAULT_BASE_WEIGHTS = {"price": 1.0, "safety": 1.0, "semantic": 1.0, "location": 1.0, "amenity": 1.0}
+# Đồng bộ chuẩn 5 trụ cột với Backend (reranker.DEFAULT_WEIGHTS): semantic luôn có trọng số cơ sở thấp nhất (0.10)
+DEFAULT_BASE_WEIGHTS = {"location": 0.25, "price": 0.25, "safety": 0.20, "amenity": 0.20, "semantic": 0.10}
 BASELINE_AMENITY_SCALE = 0.5
 
 

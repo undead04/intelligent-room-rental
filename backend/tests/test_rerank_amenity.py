@@ -20,24 +20,28 @@ def test_amenity_fit_preferred_and_ignores_mandatory():
     }
 
     # Preferred canonical match (70% preferred + 30% overall)
-    fit_canonical = _amenity_fit(None, concept_scores, preferred=["aircon", "window_balcony"])
+    fit_canonical = _amenity_fit(concept_scores, preferred=["aircon", "window_balcony"])
     assert fit_canonical == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
     # Case-insensitive / whitespace stripped match ('AIRCON' -> 'aircon', ' window_balcony ' -> 'window_balcony')
-    fit_case = _amenity_fit(None, concept_scores, preferred=["AIRCON", " window_balcony "])
+    fit_case = _amenity_fit(concept_scores, preferred=["AIRCON", " window_balcony "])
     assert fit_case == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
     # Negative match in preferred: (0.0 + 1.0) / 2 = 0.5 -> 0.7 * 0.5 + 0.3 * 0.8 = 0.59
-    fit_negative = _amenity_fit(None, concept_scores, preferred=["pet_allowed", "aircon"])
+    fit_negative = _amenity_fit(concept_scores, preferred=["pet_allowed", "aircon"])
     assert fit_negative == pytest.approx(0.7 * 0.5 + 0.3 * 0.8)
 
-    # Mandatory (requested) is ignored in _amenity_fit (already hard-filtered at SQL & Grounding)
-    fit_with_mandatory = _amenity_fit(["pet_allowed"], concept_scores, preferred=["aircon"])
-    assert fit_with_mandatory == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
+    # Mandatory (amenities) is ignored in _amenity_fit / rerank (already hard-filtered at SQL & Grounding)
+    bd_with_mandatory = rerank(
+        [{"id": "r1", "listing": {"concept_scores": concept_scores}}],
+        user_pref={"amenities": ["pet_allowed"], "preferred_amenities": ["aircon"]},
+        limit=1,
+    )[0][0]
+    assert bd_with_mandatory["parts"]["amenity"] == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
     # AmenityCode Enum instance match
     from app.schemas.listing import AmenityCode
-    fit_enum_pref = _amenity_fit(None, concept_scores, preferred=[AmenityCode.AIRCON])
+    fit_enum_pref = _amenity_fit(concept_scores, preferred=[AmenityCode.AIRCON])
     assert fit_enum_pref == pytest.approx(0.7 * 1.0 + 0.3 * 0.8)
 
 
@@ -45,12 +49,17 @@ def test_amenity_fit_fallback_overall():
     concept_scores = {
         "amenity_overall": 0.75,
     }
-    # No preferred amenities -> falls back to amenity_overall (even if mandatory requested is passed)
-    assert _amenity_fit(None, concept_scores) == 0.75
-    assert _amenity_fit(["aircon"], concept_scores) == 0.75
+    # No preferred amenities -> falls back to amenity_overall (even if mandatory amenities are passed in rerank)
+    assert _amenity_fit(concept_scores) == 0.75
+    bd_mandatory_only = rerank(
+        [{"id": "r1", "listing": {"concept_scores": concept_scores}}],
+        user_pref={"amenities": ["aircon"]},
+        limit=1,
+    )[0][0]
+    assert bd_mandatory_only["parts"]["amenity"] == 0.75
 
     # Completely empty concept scores -> falls back to neutral 1.0
-    assert _amenity_fit(None, {}) == 1.0
+    assert _amenity_fit({}) == 1.0
 
 
 def test_dynamic_weights():
@@ -130,7 +139,7 @@ def test_canonical_amenities_and_partial_weights():
         "amenity_overall": 1.0,
     }
     # Canonical taxonomy codes ('aircon', 'mezzanine', 'pet_allowed')
-    fit = _amenity_fit(None, concept_scores, preferred=["aircon", "mezzanine", "pet_allowed"])
+    fit = _amenity_fit(concept_scores, preferred=["aircon", "mezzanine", "pet_allowed"])
     assert fit == 1.0
 
 
@@ -168,18 +177,21 @@ def test_amenity_fit_deduplicates_preferred_amenities():
     # Passing duplicate 'aircon' in preferred must not double-count aircon:
     # unique normalized codes are ['aircon', 'mezzanine'] -> pref_fit = (1.0 + 0.0) / 2 = 0.5
     # blended with amenity_overall (0.5): 0.7 * 0.5 + 0.3 * 0.5 = 0.5
-    fit = _amenity_fit(None, concept_scores, preferred=["aircon", "aircon", "mezzanine"])
+    fit = _amenity_fit(concept_scores, preferred=["aircon", "aircon", "mezzanine"])
     assert fit == pytest.approx(0.5)
 
 
 def test_build_or_tsquery_string_for_sparse_fts():
     from app.repositories.listing_repository import _build_or_tsquery_string
 
-    q = _build_or_tsquery_string("Tìm phòng gần UIT dưới 4 triệu có máy lạnh")
+    q = _build_or_tsquery_string("Tìm phòng gần UIT Thủ Đức dưới 4 triệu có máy lạnh")
+    tokens = q.split(" | ")
     assert " | " in q
-    assert "uit" in q
-    assert "tìm" not in q.split(" | ")
-    assert "dưới" not in q.split(" | ")
+    assert "uit" in tokens
+    assert "thu" in tokens and "duc" in tokens
+    assert "may" in tokens and "lanh" in tokens
+    assert "tìm" not in tokens and "tim" not in tokens
+    assert "dưới" not in tokens and "duoi" not in tokens
 
 
 def test_listing_schemas_validation():
@@ -279,9 +291,11 @@ def test_price_fit_cheapest_mode_and_excluded_room_types():
     assert score_cheap_priority > score_exp_priority
     assert score_cheap_priority - score_exp_priority > 0.15
 
-    # Kiểm tra VectorSearchBody nhận excluded_room_types hợp lệ
+    # Kiểm tra VectorSearchBody nhận excluded_room_types và include_amenity_overall hợp lệ
     body = VectorSearchBody(
         query="tìm phòng trọ",
         excluded_room_types=["SLEEPBOX", 4],
+        include_amenity_overall=True,
     )
     assert body.excluded_room_types == ["SLEEPBOX", 4]
+    assert body.include_amenity_overall is True

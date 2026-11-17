@@ -118,8 +118,9 @@ def test_search_rooms_api_builds_body_and_normalizes(be):
                                                   "max_price": 3_000_000, "amenities": ["aircon", "mezzanine"], "weights": {"price": 0.5}}
     assert "city_id" not in body and "district_id" not in body                                       # có toạ độ -> bỏ ID hành chính
 
-    ht.search_rooms_api({"query": "phòng giá rẻ", "prefer_cheapest": True})
+    ht.search_rooms_api({"query": "phòng giá rẻ", "prefer_cheapest": True, "include_amenity_overall": True})
     assert be.calls[-1][3]["prefer_cheapest"] is True
+    assert be.calls[-1][3]["include_amenity_overall"] is True
 
 
 def test_search_rooms_api_admin_ids_when_no_coordinates_and_limit_floor(be):

@@ -356,3 +356,59 @@ def test_vague_query_does_not_over_reward_cheap_low_quality_rooms():
     bd_map = {item["id"]: bd for bd, item in cheap_bd}
     assert bd_map["cheap_poor"]["parts"]["price"] > bd_map["good_value"]["parts"]["price"]
 
+
+def test_ai_agent_weights_do_not_reward_missing_amenity_data():
+    """Hồi quy Lệch pha #1: Khi AI Agent truyền weights (có amenity > 0), phòng thiếu dữ liệu
+    tiện nghi (amenity_overall=None, concept_scores={}) KHÔNG được thưởng điểm 1.0 mà phải nhận
+    UNKNOWN_SCORE (0.0) ở cả chế độ nói chung chung lẫn chế độ có preferred_amenities/include_amenity_overall.
+    """
+    good_room = {
+        "id": "good_room",
+        "listing": {
+            "id": "good_room",
+            "price_vnd": 3_400_000,
+            "price_score": 0.85,
+            "safety_score": 0.75,
+            "amenity_overall": 0.85,
+            "concept_scores": {"aircon": 1.0, "amenity_overall": 0.85},
+            "similarity_score": 0.75,
+        },
+    }
+    missing_amenity_room = {
+        "id": "missing_amenity_room",
+        "listing": {
+            "id": "missing_amenity_room",
+            "price_vnd": 3_400_000,
+            "price_score": 0.85,
+            "safety_score": 0.75,
+            "amenity_overall": None,
+            "concept_scores": {},
+            "similarity_score": 0.75,
+        },
+    }
+
+    # Kịch bản 1: User nói chung chung, AI Agent gửi vector weights đã chuẩn hóa (amenity=0.15 > 0)
+    agent_vague_weights = {"price": 0.39, "safety": 0.31, "semantic": 0.15, "amenity": 0.15}
+    res_vague = rerank(
+        [missing_amenity_room, good_room],
+        user_pref={"max_price": 4_000_000, "include_amenity_overall": False},
+        base_weights=agent_vague_weights,
+        limit=5,
+    )
+    assert res_vague[0][1]["id"] == "good_room"
+    bd_vague = {item["id"]: bd for bd, item in res_vague}
+    assert bd_vague["missing_amenity_room"]["parts"]["amenity"] == UNKNOWN_SCORE
+    assert bd_vague["missing_amenity_room"]["weights"]["amenity"] == pytest.approx(0.15)
+
+    # Kịch bản 2: User nhấn mạnh tiện nghi (include_amenity_overall=True + preferred_amenities)
+    agent_amenity_weights = {"price": 0.25, "safety": 0.20, "semantic": 0.10, "amenity": 0.45}
+    res_pref = rerank(
+        [missing_amenity_room, good_room],
+        user_pref={"max_price": 4_000_000, "preferred_amenities": ["aircon"], "include_amenity_overall": True},
+        base_weights=agent_amenity_weights,
+        limit=5,
+    )
+    assert res_pref[0][1]["id"] == "good_room"
+    bd_pref = {item["id"]: bd for bd, item in res_pref}
+    assert bd_pref["missing_amenity_room"]["parts"]["amenity"] == UNKNOWN_SCORE
+

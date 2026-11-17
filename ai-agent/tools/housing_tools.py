@@ -133,6 +133,8 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
         body["weights"] = args["weights"]
     if args.get("prefer_cheapest") is not None:
         body["prefer_cheapest"] = bool(args["prefer_cheapest"])
+    if args.get("include_amenity_overall") is not None:
+        body["include_amenity_overall"] = bool(args["include_amenity_overall"])
 
     res = request("POST", "/listings/vector-search", json=body)
     if res.get("ok") and not res.get("data"):

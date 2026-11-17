@@ -35,18 +35,22 @@ def test_active_keys_follow_preferences():
     w_basic = compute_normalized_weights(_pref(False, False), ones)
     assert set(w_basic) == {"price", "safety", "semantic", "amenity"}
     assert w_basic["amenity"] < w_basic["price"]
+    assert w_basic["semantic"] == pytest.approx(0.15, abs=0.01)
 
     w_loc = compute_normalized_weights(_pref(True, False), ones)
     assert set(w_loc) == set(CRITERIA)
     assert w_loc["amenity"] < w_loc["location"]
+    assert w_loc["semantic"] == pytest.approx(w_loc["amenity"])
 
     w_amen = compute_normalized_weights(_pref(False, True), ones)
     assert set(w_amen) == {"price", "safety", "semantic", "amenity"}
-    assert w_amen["amenity"] == pytest.approx(w_amen["price"])
+    assert w_amen["amenity"] == pytest.approx(w_amen["safety"])
+    assert w_amen["amenity"] < w_amen["price"]
+    assert w_amen["semantic"] < w_amen["amenity"]
 
     w_full = compute_normalized_weights(_pref(True, True), ones)
     assert set(w_full) == set(CRITERIA)
-    assert w_full["amenity"] == pytest.approx(w_full["location"])
+    assert w_full == pytest.approx({"location": 0.25, "price": 0.25, "safety": 0.20, "amenity": 0.20, "semantic": 0.10})
 
 
 def test_mandatory_amenities_alone_do_not_boost_amenity_weight():

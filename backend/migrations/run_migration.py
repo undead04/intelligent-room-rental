@@ -84,6 +84,66 @@ def run_migration(rollback: bool = False):
         else:
             print(f"\n[MIGRATION] CẢNH BÁO: Chỉ tìm thấy {len(res)}/2 index.")
 
+def run_migration_002(rollback: bool = False):
+    """Thực thi hoặc rollback migration 002 (unaccent + f_unaccent + GIN index không dấu) trong transaction."""
+    db_url = settings.sync_database_url
+    print(f"[MIGRATION 002] Kết nối tới CSDL: {settings.POSTGRES_DB}@{settings.POSTGRES_SERVER}:{settings.POSTGRES_PORT}")
+    engine = create_engine(db_url)
+
+    with engine.begin() as conn:
+        if rollback:
+            print("[MIGRATION 002] Bắt đầu rollback (DROP INDEX & FUNCTION)...")
+            t0 = time.time()
+            conn.execute(text("DROP INDEX IF EXISTS idx_listings_fts_unaccent;"))
+            conn.execute(text("DROP FUNCTION IF EXISTS public.f_unaccent(text);"))
+            print(f"[MIGRATION 002] Hoàn thành rollback trong {time.time() - t0:.2f}s.")
+            return
+
+        print("[MIGRATION 002] Bắt đầu thực thi UP MIGRATION...")
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent;"))
+        conn.execute(text("""
+            CREATE OR REPLACE FUNCTION public.f_unaccent(input_text text)
+            RETURNS text
+            LANGUAGE sql
+            IMMUTABLE
+            PARALLEL SAFE
+            STRICT
+            AS $$
+                SELECT translate(public.unaccent('public.unaccent', input_text), 'đĐ', 'dD');
+            $$;
+        """))
+        t_gin = time.time()
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_listings_fts_unaccent
+            ON listings
+            USING gin (
+                to_tsvector(
+                    'simple',
+                    public.f_unaccent(
+                        coalesce(title, '') || ' ' || coalesce(address_raw, '') || ' ' || coalesce(description, '')
+                    )
+                )
+            );
+        """))
+        print(f"  -> GIN Index không dấu hoàn tất ({time.time() - t_gin:.2f}s)!")
+
+        idx_rows = conn.execute(text("""
+            SELECT i.relname, am.amname, pg_size_pretty(pg_relation_size(i.oid))
+            FROM pg_class i
+            JOIN pg_am am ON am.oid = i.relam
+            WHERE i.relname = 'idx_listings_fts_unaccent';
+        """)).fetchall()
+        sample = conn.execute(text("SELECT public.f_unaccent('Phòng trọ Thủ Đức, ĐHQG có máy lạnh')")).scalar()
+        print(f"  -> Kiểm chứng f_unaccent: {sample}")
+        print(f"  -> Index mới: {idx_rows}")
+
+
 if __name__ == "__main__":
     is_rollback = "--rollback" in sys.argv
-    run_migration(rollback=is_rollback)
+    if "--002" in sys.argv:
+        run_migration_002(rollback=is_rollback)
+    elif "--all" in sys.argv:
+        run_migration(rollback=is_rollback)
+        run_migration_002(rollback=is_rollback)
+    else:
+        run_migration(rollback=is_rollback)

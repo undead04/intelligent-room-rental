@@ -79,7 +79,6 @@ def _normalize_amenity(code: object) -> str:
 
 
 def _amenity_fit(
-    requested: Optional[Sequence[object]] = None,
     concept_scores: Optional[Mapping[str, float]] = None,
     amenity_overall: Optional[float] = None,
     preferred: Optional[Sequence[object]] = None,
@@ -107,17 +106,25 @@ def _amenity_fit(
     return overall_val
 
 
-def _has_explicit_amenity_intent(user_pref: object, base: Optional[Mapping[str, float]]) -> bool:
-    """Xác định caller/người dùng có chủ động yêu cầu ưu tiên tiện nghi mềm hay không."""
-    preferred_amenities = _get(user_pref, "preferred_amenities")
-    include_overall = bool(_get(user_pref, "include_amenity_overall", False))
-    explicit_amenity_weight = (
+def _has_caller_amenity_weight(base: Optional[Mapping[str, float]]) -> bool:
+    """True khi caller chủ động truyền vector base_weights tùy chỉnh có amenity > 0."""
+    return (
         base is not None
         and base is not DEFAULT_WEIGHTS
         and "amenity" in base
         and float(base.get("amenity", 0.0)) > 0
     )
-    return bool(preferred_amenities) or include_overall or explicit_amenity_weight
+
+
+def _has_explicit_amenity_intent(user_pref: object, base: Optional[Mapping[str, float]]) -> bool:
+    """Xác định người dùng có chủ động yêu cầu ưu tiên tiện nghi mềm hay không.
+
+    Không suy diễn từ `base['amenity'] > 0` vì AI Agent luôn truyền đủ 5 trọng số
+    (kể cả khi nói chung chung với mức nền nhẹ).
+    """
+    preferred_amenities = _get(user_pref, "preferred_amenities")
+    include_overall = bool(_get(user_pref, "include_amenity_overall", False))
+    return bool(preferred_amenities) or include_overall
 
 
 # --- Weights ---
@@ -125,7 +132,7 @@ def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = No
     """Chỉ giữ tiêu chí đang bật, rồi chuẩn hóa L1 để tổng trọng số = 1.0.
     - Tiện ích bắt buộc (amenities) chỉ lọc cứng ở SQL & Grounding, KHÔNG kích hoạt trọng số đầy đủ.
     - Trọng số amenity bật ở mức đầy đủ khi có preferred_amenities, include_amenity_overall,
-      hoặc caller chủ động truyền trọng số 'amenity' > 0 trong base_weights.
+      hoặc caller chủ động truyền trọng số 'amenity' > 0 trong base_weights tùy chỉnh.
     - Khi người dùng nói chung chung (chưa rõ tiện ích ưu tiên), vẫn bật amenity ở mức nền nhẹ
       (BASELINE_AMENITY_WEIGHT) theo amenity_overall để tránh phòng kém tiện nghi nhưng giá rẻ độc chiếm top.
     """
@@ -133,6 +140,7 @@ def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = No
     lat = _get(user_pref, "lat")
     lng = _get(user_pref, "lng")
     has_explicit_amenity = _has_explicit_amenity_intent(user_pref, base)
+    use_caller_amenity_weight = _has_caller_amenity_weight(base)
     caller_disabled_amenity = (
         base is not None
         and base is not DEFAULT_WEIGHTS
@@ -151,7 +159,7 @@ def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = No
     for k, on in active.items():
         if not on:
             continue
-        if k == "amenity" and not has_explicit_amenity:
+        if k == "amenity" and not has_explicit_amenity and not use_caller_amenity_weight:
             w[k] = BASELINE_AMENITY_WEIGHT
         else:
             w[k] = float(eff_base.get(k, DEFAULT_WEIGHTS.get(k, 0.2)))
@@ -228,7 +236,6 @@ def _match_breakdown(
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
         "amenity": lambda: _amenity_fit(
-            _get(user_pref, "amenities"), # type: ignore
             _get(orm, "concept_scores"), # type: ignore
             _get(orm, "amenity_overall"), # type: ignore
             preferred=_get(user_pref, "preferred_amenities"), # type: ignore
@@ -260,7 +267,8 @@ def rerank(
 
     effective_weights = base_weights or DEFAULT_WEIGHTS
     computed_weights = _dynamic_weights(user_pref, effective_weights)
-    missing_amenity_default = 1.0 if _has_explicit_amenity_intent(user_pref, effective_weights) else UNKNOWN_SCORE
+    # Tin thiếu hoàn toàn amenity_overall/concept_scores luôn nhận UNKNOWN_SCORE (0.0) khi rerank
+    missing_amenity_default = UNKNOWN_SCORE
 
     scored = [(_match_breakdown(c, user_pref, computed_weights, missing_amenity_default=missing_amenity_default), c) for c in candidates]
     scored.sort(

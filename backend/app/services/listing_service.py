@@ -274,6 +274,7 @@ class ListingService:
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         prefer_cheapest: Optional[bool] = None,
+        include_amenity_overall: Optional[bool] = None,
         min_area: Optional[float] = None,
         max_area: Optional[float] = None,
         min_bedrooms: Optional[int] = None,
@@ -285,7 +286,7 @@ class ListingService:
         raw_vector = model_embedding.encode_query(query)
         query_vector: list[float] = raw_vector.tolist() # type: ignore
 
-        candidate_limit = max(limit * 4, 100) if (lat is not None and lng is not None) else max(limit * 2, 50)
+        candidate_limit = max(limit * 20, 250)
 
         repo_kwargs: dict[str, object] = {
             "query_vector": query_vector,
@@ -351,6 +352,8 @@ class ListingService:
             "prefer_cheapest": bool(prefer_cheapest),
             "query": query,
         }
+        if include_amenity_overall is not None:
+            user_pref["include_amenity_overall"] = bool(include_amenity_overall)
 
         reranked = rerank(
             candidates=candidates, # type: ignore

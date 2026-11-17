@@ -4,25 +4,28 @@ Tài liệu này đặc tả chi tiết kiến trúc của phân hệ **Hybrid S
 
 ---
 
-## 1. Cơ Chế Tìm Kiếm Lai (Hybrid Search: Dense + Sparse FTS)
+## 1. Cơ Chế Tìm Kiếm Lai (Hybrid Search: Dense + Sparse FTS Không Dấu + RRF Multi-Source)
 
-Hệ thống kết hợp 2 phương pháp tìm kiếm để bù trừ nhược điểm cho nhau:
+Hệ thống kết hợp 2 nhánh tìm kiếm với tỉ trọng **70% Dense / 30% Sparse** ($\alpha = 0.7$) qua **Reciprocal Rank Fusion (`RRF`, `k = 60`)** và hợp nhất đa nguồn trước khi đưa vào MCDM Reranker:
 
-$$\text{Hybrid Score} = \alpha \times \text{Dense Sim} + (1 - \alpha) \times \text{Sparse Rank}$$
-*(Trong đó mặc định $\alpha = 0.6$ đến $0.7$)*
+$$\text{RRF Score} = \frac{\alpha}{60 + \text{rank}_{\text{dense}}} + \frac{1 - \alpha}{60 + \text{rank}_{\text{sparse}}}$$
+$$\text{Hybrid Similarity (Semantic Fit)} = \alpha \times \text{Dense Sim} + (1 - \alpha) \times \text{Sparse Norm}$$
 
 ```mermaid
 flowchart TD
-    Query["Câu truy vấn người dùng<br/>'phòng trọ có máy giặt gần ĐHQG'"] --> Dense["Dense Branch (pgvector)<br/>Khoảng cách Cosine trên E5 vector 768d<br/>-> Bắt ý nghĩa ngữ nghĩa sâu"]
-    Query --> Sparse["Sparse Branch (PostgreSQL FTS)<br/>ts_rank_cd trên to_tsvector(simple)<br/>-> Bắt chính xác tên đường, địa danh"]
+    Query["Câu truy vấn người dùng<br/>'phong tro co may giat gan DHQG'"] --> Dense["Dense Branch (pgvector)<br/>Cosine trên E5 vector 768d (alpha = 0.7)"]
+    Query --> Sparse["Sparse Branch (PostgreSQL FTS)<br/>ts_rank_cd + public.f_unaccent + GIN idx_listings_fts_unaccent (0.3)"]
     
-    Dense --> Fusion["Linear Fusion<br/>alpha * Dense + (1 - alpha) * Sparse"]
-    Sparse --> Fusion
-    Fusion --> Rerank["MCDM Multi-Criteria Reranker"]
+    Dense --> RRF["RRF Fusion (k=60, 60% slot budget)"]
+    Sparse --> RRF
+    GeoPrice["Nhánh phụ Vị trí gần (20%) & Giá hời price_score (20%)"] --> Pool["Multi-source Candidate Pool (limit >= 250)"]
+    RRF --> Pool
+    Pool --> Rerank["MCDM Multi-Criteria Reranker"]
 ```
 
-* **Dense Branch:** Đo lường Cosine Distance trên bảng `listing_embeddings` (`pgvector` HNSW index).
-* **Sparse Branch:** Đánh giá độ khớp từ khóa chính xác trên `title`, `address_raw`, `description` qua PostgreSQL Full-Text Search (`ts_rank_cd`).
+* **Dense Branch:** Đo lường Cosine Distance trên bảng `listing_embeddings` (`pgvector` HNSW index `idx_listing_embeddings_vector_hnsw`).
+* **Sparse Branch (hỗ trợ tiếng Việt không dấu):** Đánh giá `ts_rank_cd` trên `to_tsvector('simple', public.f_unaccent(title || ' ' || address_raw || ' ' || description))` kết hợp GIN index `idx_listings_fts_unaccent` (Migration `002_add_unaccent_fts.sql`) và `OR-tsquery` không dấu.
+* **Multi-source Candidate Pool (`candidate_limit >= 250`):** `ListingService.vector_search` lấy pool rộng (`max(limit * 20, 250)`) với slot dự phòng riêng cho Top RRF (60%), Top khoảng cách gần nhất (20% khi có tọa độ) và Top `price_score` (phần còn lại), tránh tình trạng phòng gần/giá hời bị cắt mất trước khi vào MCDM Reranker.
 
 ---
 
@@ -47,11 +50,12 @@ Sắp xếp lại tập ứng viên ban đầu theo 5 trụ cột:
 | **Location Fit** | `0.25` | Khoảng cách đường chim bay (Haversine formula). Áp dụng suy giảm phi tuyến ($ratio^{1.5}$) trong khoảng `near_km = 0.8` đến `far_km = max_distance_km`. |
 | **Price Fit** | `0.25` | Đánh giá mức độ hợp lý thị trường qua ML `price_score` kết hợp độ rẻ tiền danh nghĩa (`savings_ratio`). Mặc định ưu tiên giá trị hời theo thị trường (`80%` `ml_score` + `20%` `savings_ratio`); chỉ đẩy lên `85%` rẻ danh nghĩa khi bật tường minh `prefer_cheapest=True` (`multipliers['price'] > 1.0`). |
 | **Safety Fit** | `0.20` | Điểm an ninh tổng hợp (`safety_score`) dựa trên camera, bảo vệ, khóa vân tay, an toàn PCCC. |
-| **Amenity Fit** | `0.20` | Chấm độ khớp tiện ích mềm (`preferred_amenities`) 70% + điểm tổng thể (`amenity_overall`) 30%. Khi nói chung chung (không có tiện ích mềm), vẫn bật nền nhẹ (`0.10` ở Backend / `BASELINE_AMENITY_SCALE = 0.5` ở Agent) theo `amenity_overall` (tin thiếu dữ liệu nhận `0.0`). |
+| **Amenity Fit** | `0.20` | Chấm độ khớp tiện ích mềm (`preferred_amenities`) 70% + điểm tổng thể (`amenity_overall`) 30%. Khi nói chung chung (không có tiện ích mềm), vẫn bật nền nhẹ (`0.10` ở Backend / `BASELINE_AMENITY_SCALE = 0.5` trên nền `0.20` ở Agent) theo `amenity_overall` (tin thiếu dữ liệu luôn nhận `0.0` trong `rerank()`). |
 | **Semantic Fit** | `0.10` | Điểm tương đồng ngữ nghĩa từ Hybrid Search (`similarity_score`). |
 
 ### Cơ Chế Trọng Số Động (Dynamic Weights & L1 Normalization):
-- **Luôn kích hoạt:** `price`, `safety`, `semantic`, và `amenity` (`amenity` dùng mức nền nhẹ theo `amenity_overall` khi người dùng nói chung chung hoặc chỉ có tiện ích bắt buộc; nâng lên mức đầy đủ khi có `preferred_amenities`, `include_amenity_overall`, hoặc nhấn mạnh tiện nghi).
+- **Đồng bộ Trọng Số Cơ Sở:** Cả `backend` (`reranker.DEFAULT_WEIGHTS`) và `ai-agent` (`intent_weights.DEFAULT_BASE_WEIGHTS`) dùng chung bộ cơ sở `location=0.25, price=0.25, safety=0.20, amenity=0.20, semantic=0.10`.
+- **Luôn kích hoạt:** `price`, `safety`, `semantic`, và `amenity` (`amenity` dùng mức nền nhẹ theo `amenity_overall` khi người dùng nói chung chung hoặc chỉ có tiện ích bắt buộc; nâng lên mức đầy đủ khi có `preferred_amenities`, `include_amenity_overall=True`, hoặc nhấn mạnh tiện nghi `multipliers['amenity'] > 1.0`). Caller truyền vector `weights` tùy chỉnh vẫn được `_dynamic_weights` tôn trọng mà không làm kích hoạt nhầm điểm mặc định cho tin thiếu dữ liệu tiện nghi.
 - **Kích hoạt có điều kiện:** `location` (chỉ bật khi có tọa độ điểm mốc).
 - **Chuẩn hoá L1:** Tổng trọng số các tiêu chí đang bật luôn được chuẩn hóa để $\sum w_i = 1.0$. Không dùng trọng số `price` sau chuẩn hóa L1 để suy diễn `prefer_cheapest`.
 
