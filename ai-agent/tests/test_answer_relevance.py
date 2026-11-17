@@ -118,7 +118,7 @@ def test_verify_node_triggers_retry_on_unaddressed_questions():
 
     deps = default_deps(enable_critic=True)
     deps.verify_answers = True
-    deps.get_llm = lambda name: critic_model
+    deps.get_llm = lambda temperature=None: critic_model
     verify_node = make_verify_node(deps)
 
     room = RoomItem(id="nhatot_1", title="Phòng 1", price="3 triệu", priceNum=3_000_000, area="20m2", address="Q1", images=[], rank=1)

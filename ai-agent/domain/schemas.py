@@ -525,3 +525,18 @@ class AgentResponse(BaseModel):
         description="Các bước suy nghĩ và thực thi tool (model_request, model_response, tool_started, tool_finished)",
     )
     searched: bool = Field(False, description="True nếu lượt này đã thực hiện tìm kiếm phòng")
+    page: int = Field(1, description="Trang hiện tại đang hiển thị (1..10)")
+    page_size: int = Field(5, description="Số phòng trên mỗi trang")
+    total_rooms: int = Field(0, description="Tổng số phòng hợp lệ đã tìm được (tối đa 50)")
+    total_pages: int = Field(0, description="Tổng số trang khả dụng (tối đa 10)")
+
+
+class SessionRoomsPageResponse(BaseModel):
+    """Phản hồi phân trang tức thì từ SessionData.paged_rooms (không gọi LLM/Backend lại)."""
+
+    session_id: str
+    rooms: list[RoomItem] = Field(default_factory=list)
+    page: int = 1
+    page_size: int = 5
+    total_rooms: int = 0
+    total_pages: int = 0

@@ -63,16 +63,25 @@ def test_amenity_fit_fallback_overall():
 
 
 def test_dynamic_weights():
-    # Basic (nói chung chung): price, safety, semantic + amenity mức nền nhẹ
+    # Basic (nói chung chung, không nhắc an ninh): price, semantic + amenity mức nền nhẹ (safety tắt)
     w_basic = _dynamic_weights({}, DEFAULT_WEIGHTS)
-    assert set(w_basic.keys()) == {"price", "safety", "amenity", "semantic"}
+    assert set(w_basic.keys()) == {"price", "amenity", "semantic"}
+    assert "safety" not in w_basic
     assert round(sum(w_basic.values()), 5) == 1.0
 
     # Mandatory amenities alone -> amenity giữ nguyên mức nền nhẹ (không bị nâng lên 0.20)
     w_mandatory = _dynamic_weights({"amenities": ["aircon"]}, DEFAULT_WEIGHTS)
-    assert set(w_mandatory.keys()) == {"price", "safety", "amenity", "semantic"}
+    assert set(w_mandatory.keys()) == {"price", "amenity", "semantic"}
     assert w_mandatory["amenity"] == pytest.approx(w_basic["amenity"])
     assert round(sum(w_mandatory.values()), 5) == 1.0
+
+    # Nhắc an ninh (amenities=['safe_area'] / camera / include_safety) -> safety tự động bật
+    w_safe_am = _dynamic_weights({"amenities": ["safe_area"]}, DEFAULT_WEIGHTS)
+    assert "safety" in w_safe_am and w_safe_am["safety"] > 0
+    assert round(sum(w_safe_am.values()), 5) == 1.0
+
+    w_safe_flag = _dynamic_weights({"include_safety": True}, DEFAULT_WEIGHTS)
+    assert "safety" in w_safe_flag and w_safe_flag["safety"] > 0
 
     # Preferred amenities requested -> amenity bật mức đầy đủ (cao hơn mức nền)
     w_pref = _dynamic_weights({"preferred_amenities": ["aircon"]}, DEFAULT_WEIGHTS)
@@ -80,20 +89,21 @@ def test_dynamic_weights():
     assert w_pref["amenity"] > w_basic["amenity"]
     assert round(sum(w_pref.values()), 5) == 1.0
 
-    # AI Agent passes explicit amenity weight (e.g., user emphasized 'full nội thất') -> amenity active
+    # AI Agent / Caller truyền custom weights có safety & amenity -> bật đúng những trụ cột đó
     w_explicit = _dynamic_weights({}, {"price": 0.25, "safety": 0.25, "semantic": 0.25, "amenity": 0.25})
-    assert "amenity" in w_explicit
+    assert "amenity" in w_explicit and "safety" in w_explicit
     assert round(sum(w_explicit.values()), 5) == 1.0
 
-    # Location provided -> location active, amenity giữ mức nền nhẹ (< 0.20)
+    # Location provided (chưa nhắc an ninh) -> location bật, safety tắt, amenity giữ mức nền nhẹ (0.10 / 0.70)
     w_loc = _dynamic_weights({"lat": 10.8, "lng": 106.7}, DEFAULT_WEIGHTS)
     assert "location" in w_loc
+    assert "safety" not in w_loc
     assert "amenity" in w_loc
-    assert w_loc["amenity"] == pytest.approx(0.10 / 0.90)
+    assert w_loc["amenity"] == pytest.approx(0.10 / 0.70)
 
-    # include_amenity_overall requested -> amenity bật mức đầy đủ (0.20 / 0.75)
+    # include_amenity_overall requested (chưa nhắc an ninh) -> amenity bật mức đầy đủ (0.20 / 0.55)
     w_overall = _dynamic_weights({"include_amenity_overall": True}, DEFAULT_WEIGHTS)
-    assert w_overall["amenity"] == pytest.approx(0.20 / 0.75)
+    assert w_overall["amenity"] == pytest.approx(0.20 / 0.55)
 
 
 def test_rerank_with_candidates():
@@ -247,15 +257,16 @@ def test_location_fit_non_linear_and_default_weights():
     assert DEFAULT_WEIGHTS["semantic"] == 0.10
     assert sum(DEFAULT_WEIGHTS.values()) == pytest.approx(1.0)
 
-    # 2. Kiểm tra _location_fit phi tuyến
+    # 2. Kiểm tra _location_fit suy giảm mũ bán rã (Exponential Half-life)
+    from math import exp, log
+
     assert _location_fit(0.5, near_km=0.8, far_km=5.0) == 1.0
     assert _location_fit(0.8, near_km=0.8, far_km=5.0) == 1.0
-    assert _location_fit(5.0, near_km=0.8, far_km=5.0) == 0.0
+    assert _location_fit(5.0, near_km=0.8, far_km=5.0) == pytest.approx(exp(-log(2.0) * 4.2 / 3.0))
     assert _location_fit(6.0, near_km=0.8, far_km=5.0) == 0.0
 
-    # Tại trung điểm (ratio = 0.5): 1 - 0.5^1.5 ≈ 0.6464 > 0.5 (ưu tiên vị trí gần hơn mô hình tuyến tính)
-    mid_dist = 0.8 + (5.0 - 0.8) * 0.5  # 2.9 km
-    assert _location_fit(mid_dist, near_km=0.8, far_km=5.0) == pytest.approx(1.0 - (0.5 ** 1.5))
+    # Tại near_km + half_life_km (0.8 + 3.0 = 3.8 km): đúng bằng 0.50
+    assert _location_fit(3.8, near_km=0.8, far_km=5.0, half_life_km=3.0) == pytest.approx(0.5)
 
     # 3. Kiểm tra _location_part với max_distance_km tùy chỉnh từ user_pref
     listing = {"listing": {"lat": 10.87, "lng": 106.80}}

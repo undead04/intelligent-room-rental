@@ -19,6 +19,7 @@ export type {
   AgentTraceEvent,
   DecisionInsight,
   RoomItem,
+  SessionRoomsPageResponse,
   TradeOffAnalysis,
   UserPreferenceState,
 } from "./agent";

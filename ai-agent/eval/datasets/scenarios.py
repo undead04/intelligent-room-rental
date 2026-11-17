@@ -50,6 +50,10 @@ SCENARIOS: list[Scenario] = [
                                   lambda r: (not r.rooms and len(r.text_reply) > 20) or all(x.priceNum <= 510_000 for x in r.rooms))])], ("zero_result",)),
     Scenario("negation_room_type", [Turn("tìm phòng ở Thủ Đức, không lấy ký túc xá", [("không có phòng SLEEPBOX", lambda r: all(str(x.room_type) != "SLEEPBOX" for x in r.rooms))])], ("nlu",)),
     Scenario("vague_location", [Turn("tìm phòng gần khu công nghiệp ở Bình Dương", [("hỏi lại tên cụ thể", lambda r: r.need_clarification and not r.rooms)])], ("nlu",)),
+    Scenario("budget_clarify", [
+        Turn("tìm phòng ở Thủ Đức dưới 3 triệu", [has_reply, within_budget(3_000_000)]),
+        Turn("nới giá lên nữa đi", [("hỏi lại mức ngân sách mới", lambda r: r.need_clarification and not r.rooms and r.current_preferences and r.current_preferences.max_price == 3_000_000)]),
+    ], ("nlu", "multi_turn")),
     Scenario("followup", [
         Turn("tìm phòng ở Thủ Đức dưới 4 triệu", [has_reply]),
         Turn("phòng số 2 giá bao nhiêu?", [has_reply, no_id_leak, not_template_dump, grounded]),

@@ -180,7 +180,6 @@ class VectorSearchBody(BaseModel):
     min_bedrooms: Optional[int] = Field(None, ge=1, description="Số phòng ngủ tối thiểu")
     min_bathrooms: Optional[int] = Field(None, ge=1, description="Số phòng vệ sinh tối thiểu")
     limit: int = Field(default=5, ge=1, le=100, description="Số lượng kết quả trả về")
-    offset: int = Field(default=0, ge=0, description="Số lượng kết quả bỏ qua")
 
     @field_validator("query")
     @classmethod

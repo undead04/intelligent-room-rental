@@ -162,7 +162,6 @@ def vector_search_listings(
         min_bathrooms=body.min_bathrooms,
         max_distance_km=body.max_distance_km,
         limit=body.limit,
-        offset=body.offset,
     )
     return ResponseDTO[list[VectorSearchResult]](data=results)
 

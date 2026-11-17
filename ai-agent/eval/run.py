@@ -1,7 +1,7 @@
 """CLI: python -m eval.run guardrail grounding [--llm] [--ablation] [--out eval_results]
 
   guardrail, grounding     : chạy ngay, tất định, không cần LLM/backend
-  nlu                      : đo NLU bằng LLM thật (llm.get_llm("fast")) khi truyền --llm
+  nlu                      : đo NLU bằng LLM thật (llm.get_llm(temperature=0.0)) khi truyền --llm
   e2e / ablation           : cần hệ thống thật (default_deps: backend + LLM); chạy kịch bản và so sánh các cấu hình
   agent_eval               : chạy Eval Set lặp k lần (pass^k), chấm Trajectory + DoD và kiểm định Regression (--baseline)
 """
@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from core.config import LLM_NLU_TEMPERATURE
 from core.llm import get_llm
 from eval import report
 from eval.datasets.agent_eval_set import AGENT_EVAL_CASES
@@ -54,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         results["grounding"] = grounding.run(args.seed)
     if "nlu" in args.suites:
         if args.llm:
-            model = get_llm("fast")
+            model = get_llm(temperature=LLM_NLU_TEMPERATURE)
             if model is None:
                 print("Không có LLM (kiểm tra cấu hình) - bỏ qua NLU bằng LLM", file=sys.stderr)
             else:
@@ -70,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     if "agent_eval" in args.suites:
         picked_ids = {s.strip() for s in args.scenarios.split(",") if s.strip()} if args.scenarios else set()
         picked_cases = [c for c in AGENT_EVAL_CASES if not picked_ids or c.case_id in picked_ids]
-        results["agent_eval"] = run_repeated_eval(picked_cases, k=args.k, pass_threshold=args.threshold)
+        results["agent_eval"] = run_repeated_eval(picked_cases, k=args.k, pass_threshold=args.threshold, use_real_llm=args.llm)
         if args.baseline:
             raw_base = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
             base_eval = raw_base["agent_eval"] if isinstance(raw_base, dict) and "agent_eval" in raw_base else raw_base

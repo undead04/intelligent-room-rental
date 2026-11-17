@@ -19,47 +19,57 @@ from tests.e2e_helpers import FakeLLM, nlu
 from tests.helpers import room
 
 
-def test_clear_guardrail_prevents_accidental_location_deletion():
-    """Kiểm tra Guardrail trong _postprocess chặn LLM tự tiện xóa location khi người dùng chỉ nói 'thêm máy lạnh'."""
-    # Giả lập LLM tự tiện sinh clear: ['location', 'price', 'amenities']
+def test_clear_decision_respected_by_postprocess_and_apply_patch():
+    """Kiểm tra _postprocess tôn trọng quyết định patch.clear từ Cloud LLM (không chặn bằng regex) và apply_patch xóa đúng nhóm."""
+    from intelligence.nlu import apply_patch
+
     analysis = TurnAnalysis(
         intent="refine_search",
         patch=PreferencePatch(
             amenities_add=[Amenity.AIRCON],
-            clear=["location", "price", "amenities"],
+            clear=["location"],
         ),
     )
 
-    # 1. Người dùng chỉ nói "thêm máy lạnh nữa nha" -> Bác bỏ clear location, price, amenities
-    processed = _postprocess(analysis.model_copy(deep=True), user_text="thêm máy lạnh nữa nha")
-    assert "location" not in processed.patch.clear
-    assert "price" not in processed.patch.clear
-    assert "amenities" not in processed.patch.clear
+    processed = _postprocess(analysis.model_copy(deep=True), user_text="bỏ vị trí cũ đi, thêm máy lạnh")
+    assert processed.patch.clear == ["location"]
     assert processed.patch.amenities_add == [Amenity.AIRCON]
 
-    # 2. Người dùng chủ động nói "bỏ vị trí cũ đi, tìm ở đâu cũng được" -> Cho phép clear location
-    analysis_loc = analysis.model_copy(deep=True)
-    processed_loc = _postprocess(analysis_loc, user_text="bỏ vị trí cũ đi, tìm ở đâu cũng được")
-    assert "location" in processed_loc.patch.clear
-
-    # 3. Người dùng nói "reset hết yêu cầu" -> Cho phép clear toàn bộ
-    analysis_reset = analysis.model_copy(deep=True)
-    processed_reset = _postprocess(analysis_reset, user_text="reset lại từ đầu tìm phòng mới")
-    assert "location" in processed_reset.patch.clear
-    assert "price" in processed_reset.patch.clear
+    pref = UserPreferenceState(location_text="UIT", max_price=3_500_000, amenities=[Amenity.MEZZANINE])
+    updated = apply_patch(pref, processed.patch)
+    assert updated.location_text is None
+    assert updated.max_price == 3_500_000
+    assert updated.amenities == [Amenity.MEZZANINE, Amenity.AIRCON]
 
 
-def test_clear_guardrail_protects_all_six_groups():
-    """Kiểm tra Guardrail bảo vệ toàn bộ 6 nhóm tiêu chí tích lũy."""
+def test_clear_all_six_groups_via_apply_patch():
+    """Kiểm tra apply_patch xóa sạch cả 6 nhóm khi LLM đặt clear đầy đủ."""
+    from intelligence.nlu import apply_patch
+
     analysis = TurnAnalysis(
         intent="refine_search",
         patch=PreferencePatch(
             clear=["location", "price", "area", "room_type", "amenities", "special_requirements"],
         ),
     )
-    # Câu nói bình thường không có từ khóa hủy -> Bác bỏ toàn bộ clear
-    processed = _postprocess(analysis.model_copy(deep=True), user_text="cho mình xem thêm phòng có gác")
-    assert processed.patch.clear == []
+    processed = _postprocess(analysis.model_copy(deep=True), user_text="reset tất cả tiêu chí")
+    assert len(processed.patch.clear) == 6
+
+    pref = UserPreferenceState(
+        location_text="UIT",
+        max_price=3_500_000,
+        min_area=20.0,
+        allowed_room_types=[RoomType.ROOM],
+        amenities=[Amenity.AIRCON],
+        special_requirements=["yên tĩnh"],
+    )
+    cleared = apply_patch(pref, processed.patch)
+    assert cleared.location_text is None
+    assert cleared.max_price is None
+    assert cleared.min_area is None
+    assert cleared.allowed_room_types == []
+    assert cleared.amenities == []
+    assert cleared.special_requirements == []
 
 
 def test_budget_adjustment_two_way_cheaper_and_higher():

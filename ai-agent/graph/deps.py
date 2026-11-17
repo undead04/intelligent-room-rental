@@ -22,7 +22,7 @@ from tools.location_service import AdminLookup
 @dataclass
 class Deps:
     sessions: Any                                            # SessionStore: get_or_create_session / commit_turn
-    get_llm: Callable[[str], Any]                            # "main" | "fast" -> chat model | None
+    get_llm: Callable[..., Any]                              # (temperature=None) -> chat model | None
     base_prompt: str
     decision_system_prompt: str
     search_rooms: Callable[[dict[str, Any]], dict[str, Any]]            # args -> {"ok": bool, "data": [...], "error"?}
@@ -82,7 +82,7 @@ def default_deps(*, enable_critic: bool = False, sessions: Any = None) -> Deps:
         from tools.registry import DETAIL_TOOLS
 
         return create_agent(
-            model=get_llm("main"),
+            model=get_llm(),
             tools=DETAIL_TOOLS,
             system_prompt=decision_prompt,
             middleware=[ModelCallLimitMiddleware(run_limit=MODEL_CALL_LIMIT), ToolCallLimitMiddleware(run_limit=TOOL_CALL_LIMIT)],

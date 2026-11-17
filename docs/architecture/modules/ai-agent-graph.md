@@ -51,9 +51,10 @@ flowchart TD
 
 ### Trạng Thái Graph (`HousingAgentState`) & Quy Tắc Lệch Giá Thị Trường / Tự Chủ Phản Hồi:
 * `HousingAgentState` (`ai-agent/graph/state.py`) truyền trực tiếp `location_not_found: bool`, `admin_not_found: bool`, `ambiguous_candidates`, `dropped_summary: list[str]` (tóm tắt các phòng bị `check_hard_constraints` loại kèm lý do), và `market_context: Optional[MarketContext]` (`area_name`, `user_budget`, `user_budget_str`, `market_min_price`, `market_min_price_str`, `market_avg_price`, `market_avg_price_str`, `is_market_gap`, `message`) từ `retrieval_node` sang `decision_node`, `verify_node`, `formatter_node` và `replies.py` (`reply_when_no_rooms`).
-* **Chính sách Fail-Fast cho vị trí chưa phân giải được (`admin_not_found` / `location_not_found`):** Khi `resolve_location` trả `unresolved_point` hoặc `admin_not_found`, `retrieval_node` dừng trước bước gọi `search_rooms` (`rooms = []`), dọn sạch `location_text` lỗi khỏi `session.preferences` và snapshot mới nhất (nhưng giữ nguyên ngân sách, diện tích, loại phòng, tiện ích) để tránh tái lỗi ở lượt sau, đồng thời bật `need_clarification = True` trong `formatter_node` và gắn `skipped_pre_search_location_issue` trong `DoD Verifier`.
-* **Quyền tự chủ NLU & sinh câu trả lời tự do có hậu kiểm:**
-  - `understand.py` tôn trọng hoàn toàn `Priorities` và `priority_reasons` do NLU LLM suy luận theo ngữ cảnh, không dùng từ khóa cứng (`"mắc hơn"`, `"rẻ hơn"`) để tự động ghi đè `multipliers`.
+* **Chính sách Retry & Fail-Fast cho định vị (`resolve_location_with_retry`):** Khi `resolve_location` trả `unresolved_point` hoặc `admin_not_found`, hệ thống thử lại tối đa 2 lần (`RESOLVE_LOCATION_MAX_RETRIES = 2`: Retry 1 biến thể cấu trúc chuỗi, Retry 2 dùng Cloud LLM viết lại tên địa danh chính thức) và ghi trace chi tiết. Nếu vẫn không phân giải được, `retrieval_node` Fail-Fast dừng trước `search_rooms` (`rooms = []`), dọn sạch `location_text` lỗi khỏi `session.preferences` và snapshot mới nhất (nhưng giữ nguyên ngân sách, diện tích, loại phòng, tiện ích), bật `need_clarification = True` trong `formatter_node` và gắn `skipped_pre_search_location_issue` trong `DoD Verifier`.
+* **Quyền tự chủ NLU hoàn toàn (0 Regex ngữ nghĩa) & sinh câu trả lời có hậu kiểm:**
+  - `nlu.py` và `understand.py` giao 100% quyền phân tích ngữ nghĩa (`patch.clear`, loại trừ `SLEEPBOX`, `task_order` đa mệnh lệnh, `page_action`/`target_page`, `revert_mode`/`revert_turn`, `is_location_pivot`, `Priorities`) cho Cloud LLM qua structured output `TurnAnalysis`; code chỉ điều phối workflow và giữ bất biến cấu trúc/an toàn.
+  - NLU gọi 1 Cloud model duy nhất với `temperature = 0.0` ở lần đầu và tự nâng `0.3` khi retry; các node sinh văn bản (`decision_node`, `advisory_node`, `clarification_node`) dùng mặc định `temperature = 0.3`.
   - `default_deps()` mặc định `constrained_generation = False` (có thể bật lại qua `HOMIGO_CONSTRAINED_GENERATION=true`) để `decision_agent` tự do viết câu trả lời cho cả lượt tìm mới lẫn hỏi tiếp (chỉ prefetch `get_listing_detail` và gắn `<focus>` khi `is_followup=True`), sau đó vẫn đi qua `verify_node` hậu kiểm số liệu.
 * **Nhánh 0 phòng (tự phân tích & phản hồi tự do, không tự ý nới tìm kiếm):** Khi `retrieval_node` tìm được 0 phòng hợp lệ ở trạng thái `ok`, `propose_budget()` kích hoạt `is_market_gap = True` khi `user_max < market.min_price` (nếu cỡ mẫu đủ lớn). `decision_node` nhận đầy đủ `UserPreferenceState`, bán kính đã quét, `market_context`, `neighbor_bullets` và `dropped_summary` để LLM tự phân tích nguyên nhân gốc và viết câu trả lời tự nhiên (đưa các bằng chứng số liệu vào `tool_evidence` cho `verify_node`), đồng thời giữ `reply_when_no_rooms` làm fallback xác định khi LLM lỗi.
 
@@ -63,18 +64,26 @@ flowchart TD
 
 1. **Proactive Search, Disambiguation Gate & Multi-Turn Ambiguous:**
    - Tự động bỏ qua hỏi lại khi truy vấn đã chứa trường ĐH/địa danh hoặc quận cụ thể (ví dụ: *"Bách Khoa CS1 Q10"*, *"Bến xe Miền Đông mới"*, *"KCN Amata Biên Hòa"*). Khi LLM NLU lỡ gắn `location_is_vague=true` cho tên POI cụ thể, `understand.py` tự động đối chiếu từ điển POI cục bộ (`find_poi_in_text`) để giải cứu sang tìm kiếm.
+   - Khi người dùng yêu cầu tăng/giảm/nới ngân sách nhưng chưa nêu số cụ thể (`needs_budget_clarification=true`), `understand` đặt `needs_clarification=true` để rẽ qua `clarification_node` hỏi lại mức trần mong muốn kèm gợi ý mức giá tiếp theo thay vì tự suy đoán số tiền.
    - Khi địa danh trả `ambiguous` (nhiều cơ sở/cụm > 500m), `retrieval_node` lưu cả `pending_ambiguous_location` và `pending_ambiguous_candidates` vào `SessionData`; ở lượt kế tiếp, nếu người dùng chọn theo STT/tên chip thì `understand.py` gán thẳng tọa độ ứng viên, còn nếu trả lời ngắn quận/tỉnh/cơ sở thì tự ghép với `pending_ambiguous_location`.
    - `_infer_session_region_hint` kiểm soát chặt khi `intent == "new_search"` có địa điểm mới để không ép nhầm `region_hint` của lượt cũ sang tỉnh/thành mới.
 2. **Adaptive Radius Retrieval (Bán kính thích ứng 2 pha):**
-   - Với điểm đơn lẻ: khởi đầu $R = 2.5\text{ km}$, nếu số phòng hợp lệ < 3 và người dùng không cố định bán kính, tự động nới lỏng sang $3.5\text{ km} \rightarrow 5.0\text{ km}$.
+   - Với điểm đơn lẻ: khởi đầu $R = 3.0\text{ km}$, nếu số phòng hợp lệ < 3 và người dùng không cố định bán kính, tự động nới lỏng sang $5.0\text{ km} \rightarrow 7.0\text{ km}$.
    - Với khu vực/khuôn viên rộng (`_is_broad_area_location`: Làng Đại học, ĐHQG, KĐT, KCN/KCX/KCNC...): khởi đầu $R = 4.0\text{ km}$ và tự động nới lỏng sang $5.0\text{ km} \rightarrow 6.5\text{ km}$.
 3. **Từ Điển POI Tùy Chọn & Direct TrackAsia Geocoding (`university_campuses.json`, `location_service.py`, `housing_tools.py`):**
    - Duy trì toạ độ viết tắt Trường ĐH/KCN/Bến xe/Metro cốt lõi cho **6 vùng hỗ trợ** (có thể bật/tắt qua `HOMIGO_USE_LOCAL_POI=false`, ưu tiên nhường các KĐT/vùng rộng cho TrackAsia giải quyết tự động thay vì hardcode tay).
    - Khi miss từ điển POI (hoặc khi tắt POI cục bộ), `geocode_point()` gọi thẳng Backend `/geocode(query, hint)` (`0 LLM`), tuyệt đối **không tự bỏ `hint`**.
-4. **Dual-Mode LLM Compatibility:**
-   - Tương thích song song cả LM Studio cục bộ (bảo toàn payload `thinking`) và Google Gemini / OpenAI Cloud (xóa `thinking` tránh lỗi 400).
+4. **Cloud-Native LLM & HTTP Transient Retry:**
+   - Vận hành thuần trên 1 Cloud model duy nhất qua `core/llm.py` (`core/config.py` làm SSOT).
+   - `tools/http.py` tự động retry tối đa `HTTP_MAX_RETRIES = 1` lần khi gặp lỗi kết nối/timeout hoặc HTTP `502/503/504` (không retry `4xx`/404).
 5. **Rate Limit Resilience:**
    - Phân biệt Fast-fail cạn Quota ngày (`RESOURCE_EXHAUSTED` / 500 RPD) vs Exponential Backoff cho Rate Limit phút (15 RPM).
+6. **Phân Trang 10 Trang (`paged_rooms`, `MAX = 50` phòng), Chuyển Trang Kép & Tra Cứu Rank Toàn Cục:**
+   - **Pre-fetch 1 lần theo phiên (`retrieval.py`, `session_store.py`):** `retrieval_node` gọi `search_rooms` với `limit = 50` (không dùng `offset`), lưu tối đa `MAX_PAGED_ROOMS = 50` phòng (`10` trang × `5` phòng/trang) vào `SessionData.paged_rooms` (persist trong SQLite qua `PersistentSessionStore`), đồng thời chỉ nạp `5` phòng của trang hiện tại vào `decision_node` và `formatter_node` (`AgentResponse` gồm thêm `page`, `page_size`, `total_rooms`, `total_pages`).
+   - **Hai kênh chuyển trang không gọi lại Vector Search:**
+     - *UI Pagination:* Frontend gọi `GET /api/v1/session/{session_id}/rooms?page=X&page_size=5` (`SessionRoomsPageResponse`) để đổi trang trực tiếp ở `0 LLM`.
+     - *Chat Navigation (`_parse_page_navigation`):* Khi người dùng nhắn *"cần những phòng khác"*, *"qua trang 3"*, *"trang trước/sau/đầu/cuối"* mà **không** kèm tiêu chí lọc/ưu tiên mới (`has_search_patch` và `has_priority_emphasis` đều rỗng), `understand.py` chuyển trang ngay qua `SessionStore.switch_page` dưới dạng `direct_reply` (kèm báo biên rõ khi ở trang cuối/quá trang). Nếu câu nói có thêm điều kiện mới (*"những phòng khác rẻ hơn"*), hệ thống tự động đi qua `retrieval_node` tìm lại như bình thường.
+   - **Tra cứu `rank` toàn cục khi `room_followup`:** Khi đứng ở bất kỳ trang nào (ví dụ Trang 3 hiển thị `Top 11..15`), hỏi đích danh *"phòng top 1"* hoặc *"phòng số 12"* sẽ đối chiếu `room.rank` trên toàn `session.paged_rooms` thay vì chỉ lấy chỉ số mảng của trang hiện tại; còn *"phòng đầu tiên trang này"* mặc định bám theo trang đang hiển thị.
 
 ---
 

@@ -270,32 +270,33 @@ def test_interpret_turn_handles_quota_error():
     assert "500 requests/ngày" in (plan.final_text or "")
 
 
-def test_sleepbox_auto_exclusion_guardrail():
+def test_sleepbox_exclusion_preserved_from_llm_without_regex_override():
     from intelligence.nlu import _postprocess, TurnAnalysis, PreferencePatch
     from domain.enums import Amenity, RoomType
 
-    # 1. Người dùng tìm phòng có WC riêng -> tự động loại trừ SLEEPBOX
+    # 1. LLM chủ động loại trừ SLEEPBOX -> _postprocess giữ nguyên
     a1 = TurnAnalysis(
         intent="new_search",
-        patch=PreferencePatch(amenities_add=[Amenity.PRIVATE_WC]),
+        patch=PreferencePatch(amenities_add=[Amenity.PRIVATE_WC], excluded_room_types=[RoomType.SLEEPBOX]),
     )
     res1 = _postprocess(a1, user_text="tìm phòng có wc riêng")
-    assert RoomType.SLEEPBOX in res1.patch.excluded_room_types
+    assert res1.patch.excluded_room_types == [RoomType.SLEEPBOX]
 
-    # 2. Người dùng tìm phòng khép kín / cho 2 bạn -> tự động loại trừ SLEEPBOX
+    # 2. LLM không đặt excluded_room_types -> _postprocess không tự dùng regex ép thêm
     a2 = TurnAnalysis(
         intent="new_search",
         patch=PreferencePatch(allowed_room_types=[RoomType.ROOM]),
     )
     res2 = _postprocess(a2, user_text="tìm phòng khép kín cho 2 bạn nữ")
-    assert RoomType.SLEEPBOX in res2.patch.excluded_room_types
+    assert res2.patch.excluded_room_types == []
 
-    # 3. Người dùng chủ động tìm KTX / sleepbox -> KHÔNG bị loại trừ
+    # 3. Người dùng chủ động tìm KTX / sleepbox -> giữ nguyên allowed_room_types=[SLEEPBOX]
     a3 = TurnAnalysis(
         intent="new_search",
         patch=PreferencePatch(allowed_room_types=[RoomType.SLEEPBOX]),
     )
     res3 = _postprocess(a3, user_text="tìm ký túc xá hoặc sleepbox gần trường")
+    assert res3.patch.allowed_room_types == [RoomType.SLEEPBOX]
     assert RoomType.SLEEPBOX not in res3.patch.excluded_room_types
 
 

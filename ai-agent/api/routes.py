@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import logging
-import os
 import uuid
 from typing import Any, Iterator, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.sse import stream_graph_events
+from core.config import DEFAULT_PAGE_SIZE, MAX_PAGINATION_PAGES, get_runtime_settings
 from core.paths import DEFAULT_DB_PATH
 from core.session_store import PersistentSessionStore
-from domain.schemas import AgentResponse
+from domain.schemas import AgentResponse, SessionRoomsPageResponse
 from graph import build_housing_graph, default_deps, run_turn
 from tools.http import set_client
 
@@ -127,12 +127,7 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
-cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
-allowed_origins = (
-    [o.strip() for o in cors_origins_env.split(",") if o.strip()]
-    if cors_origins_env
-    else ["http://localhost:3000", "http://127.0.0.1:3000"]
-)
+allowed_origins = list(get_runtime_settings().cors_allowed_origins)
 
 app.add_middleware(
     CORSMiddleware,
@@ -155,6 +150,29 @@ def delete_session_endpoint(session_id: str) -> dict[str, str]:
     """Xóa bộ nhớ session trên server để reset hội thoại hoàn toàn."""
     SESSION_STORE.clear_session(session_id.strip())
     return {"status": "ok", "session_id": session_id, "message": "Đã xoá phiên làm việc thành công."}
+
+
+@app.get("/api/v1/session/{session_id}/rooms", response_model=SessionRoomsPageResponse)
+@app.get("/session/{session_id}/rooms", response_model=SessionRoomsPageResponse)
+def get_session_rooms_page(
+    session_id: str,
+    page: int = Query(1, ge=1, le=MAX_PAGINATION_PAGES, description="Số trang muốn xem (1..10)"),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=20, description="Số phòng mỗi trang"),
+) -> SessionRoomsPageResponse:
+    """Phân trang tức thì danh sách phòng đã lưu trong phiên (0 LLM, 0 Embedding)."""
+    clean_sid = session_id.strip()
+    if not clean_sid:
+        raise HTTPException(status_code=400, detail="session_id không được để trống.")
+    session = SESSION_STORE.get_or_create_session(clean_sid)
+    rooms, eff_page, eff_size, total_rooms, total_pages = SESSION_STORE.switch_page(session, page, page_size)
+    return SessionRoomsPageResponse(
+        session_id=clean_sid,
+        rooms=rooms,
+        page=eff_page,
+        page_size=eff_size,
+        total_rooms=total_rooms,
+        total_pages=total_pages,
+    )
 
 
 @app.post("/api/v1/chat", response_model=AgentResponse)

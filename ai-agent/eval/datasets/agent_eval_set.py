@@ -30,7 +30,7 @@ EvalCategory = Literal[
     "out_of_scope",
 ]
 
-EVAL_SET_VERSION = "2026.11.v1"
+EVAL_SET_VERSION = "2026.11.v3"
 
 # Danh mục yêu cầu chức năng & an toàn của Agent — mỗi yêu cầu phải có >= 1 case nhắm riêng
 AGENT_REQUIREMENTS: Mapping[str, str] = MappingProxyType({
@@ -46,6 +46,8 @@ AGENT_REQUIREMENTS: Mapping[str, str] = MappingProxyType({
     "req_followup_detail": "Giải đáp câu hỏi chi tiết về phòng đã đề xuất bằng get_listing_detail, không search lại",
     "req_skill_advisory": "Kích hoạt advisory_node và gọi consult_housing_skill khi người dùng hỏi cẩm nang",
     "req_clarification": "Hỏi làm rõ khi thông tin cốt lõi mơ hồ hoặc thiếu tên địa điểm cụ thể",
+    "req_budget_clarification": "Hỏi làm rõ mức trần ngân sách mới khi người dùng đòi tăng/nới giá mà chưa nêu con số cụ thể",
+    "req_multi_intent_orchestration": "Điều phối tuần tự đa mệnh lệnh theo đúng task_order do LLM quyết định",
     "req_conflict_handling": "Xử lý nhất quán khi người dùng đổi ý hoặc dữ liệu DB mâu thuẫn với ràng buộc",
     "req_tool_fault_resilience": "Xử lý an toàn khi tool bên ngoài gặp sự cố; không crash và không báo thành công giả",
     "req_guardrail_safety": "Chặn prompt injection tại guardrail_node trước khi gọi NLU và tools",
@@ -94,6 +96,12 @@ EVAL_SET_CHANGELOG: tuple[Mapping[str, Any], ...] = (
         "action": "modified_from_legacy",
         "case_ids": ("err_geocode_failure_fallback",),
         "reason": "Chuyển chính sách xử lý unresolved_point sang Fail-Fast (không gọi search_rooms tìm mò khi chưa định vị được tọa độ; trả clarification trung thực và giữ DoD passed).",
+    }),
+    MappingProxyType({
+        "version": "2026.11.v3",
+        "action": "added",
+        "case_ids": ("norm_multi_intent_ordered", "miss_vague_budget_adjustment", "err_geocode_retry_succeeds"),
+        "reason": "Bổ sung độ phủ cho kiến trúc mới: đa mệnh lệnh theo task_order từ LLM, làm rõ ngân sách khi thiếu số cụ thể và cơ chế retry resolve_location_with_retry.",
     }),
 )
 
@@ -145,6 +153,7 @@ class InitialSystemState:
 
     rooms: tuple[dict[str, Any], ...] = ()
     geocode_place_ok: bool = True
+    geocode_accept_queries: tuple[str, ...] = ()
     initial_preferences: Mapping[str, Any] = field(default_factory=dict)
     market_stats: Optional[Mapping[str, Any]] = None
     min_rooms_radius_km: Optional[float] = None
@@ -529,7 +538,7 @@ AGENT_EVAL_CASES: tuple[EvalCase, ...] = (
             max_rooms=1,
             expect_clarification=False,
             expect_verifier_passed=True,
-            expected_preferences_subset={"allowed_room_types": ["ROOM"], "excluded_room_types": ["SLEEPBOX", "STUDIO"]},
+            expected_preferences_subset={"allowed_room_types": ["ROOM"], "excluded_room_types": ["STUDIO", "SLEEPBOX"]},
             trajectory=TrajectorySpec(
                 required_tools=("resolve_location", "search_rooms"),
                 max_calls_per_tool={"resolve_location": 2, "search_rooms": 2},
@@ -687,6 +696,108 @@ AGENT_EVAL_CASES: tuple[EvalCase, ...] = (
             {"intent": "off_topic"},
         ),
     ),
+    # -------------------- 7. KIẾN TRÚC MỚI (MULTI-INTENT, BUDGET CLARIFY & LOCATION RETRY) --------------------
+    EvalCase(
+        case_id="norm_multi_intent_ordered",
+        category="normal",
+        target_requirements=("req_multi_intent_orchestration", "req_followup_detail", "req_hybrid_search"),
+        description="Đa mệnh lệnh có task_order=['followup', 'search']: kiểm tra phòng cũ trước rồi mới tìm phòng mới.",
+        turns=("tìm phòng ở UIT dưới 3.5 triệu", "phòng số 1 điện nước sao, xong tìm phòng ở Dĩ An dưới 3.5 triệu"),
+        initial_state=InitialSystemState(rooms=_THREE_ROOMS),
+        fault_injection=FaultInjection(),
+        expected=ExpectedOutcome(
+            expected_intent="new_search",
+            min_rooms=1,
+            expect_clarification=False,
+            expect_verifier_passed=True,
+            expected_preferences_subset={"location_text": "Dĩ An", "max_price": 3_500_000},
+            trajectory=TrajectorySpec(
+                required_tools=("resolve_location", "search_rooms", "get_listing_detail"),
+                max_calls_per_tool={"resolve_location": 2, "search_rooms": 2, "get_listing_detail": 1},
+            ),
+        ),
+        verdict_criteria="Chạy đúng thứ tự followup phòng cũ rồi mới search phòng mới tại Dĩ An, DoD đạt.",
+        scripted_nlu=(
+            {"intent": "new_search", "patch": {"location_text": "UIT", "location_kind": "place", "max_price": 3_500_000}},
+            {
+                "intent": "new_search",
+                "referenced_room_rank": 1,
+                "is_multi_intent": True,
+                "task_order": ["followup", "search"],
+                "patch": {"location_text": "Dĩ An", "location_kind": "admin", "max_price": 3_500_000},
+            },
+        ),
+        scripted_advice=(_DEFAULT_GOOD_ADVICE, _DEFAULT_GOOD_ADVICE),
+        scripted_agent_replies=(
+            {
+                "content": "Phòng số 1 tính điện 3.500đ/kWh và nước 100k/tháng.",
+                "tool_name": "get_listing_detail",
+                "tool_content": '{"electricity": "3.500đ/kWh", "water": "100k/tháng"}',
+            },
+        ),
+    ),
+    EvalCase(
+        case_id="miss_vague_budget_adjustment",
+        category="missing_info",
+        target_requirements=("req_budget_clarification", "req_clarification"),
+        description="Lượt 1 tìm 3tr -> Lượt 2 đòi nới giá chung chung chưa có số -> hỏi làm rõ ngân sách, không search lại.",
+        turns=("tìm phòng gần UIT dưới 3 triệu", "nới giá lên nữa đi"),
+        initial_state=InitialSystemState(rooms=_THREE_ROOMS),
+        fault_injection=FaultInjection(),
+        expected=ExpectedOutcome(
+            expected_intent="refine_search",
+            min_rooms=0,
+            max_rooms=0,
+            expect_clarification=True,
+            expect_verifier_passed=None,
+            expected_preferences_subset={"location_text": "UIT", "max_price": 3_000_000},
+            must_contain_any=("bao nhiêu", "triệu", "ngân sách"),
+            trajectory=TrajectorySpec(
+                required_tools=("resolve_location", "search_rooms"),
+                max_calls_per_tool={"resolve_location": 1, "search_rooms": 1},
+            ),
+        ),
+        verdict_criteria="Lượt 2 giữ nguyên max_price=3_000_000 trong state, không gọi thêm search_rooms và hỏi lại mức giá mong muốn.",
+        scripted_nlu=(
+            {"intent": "new_search", "patch": {"location_text": "UIT", "location_kind": "place", "max_price": 3_000_000}},
+            {"intent": "refine_search", "needs_budget_clarification": True},
+        ),
+        scripted_advice=(_DEFAULT_GOOD_ADVICE,),
+        scripted_clarify=(
+            {
+                "text": "Bạn muốn nâng trần ngân sách lên tối đa khoảng bao nhiêu (vd: 3.5 triệu hay 4 triệu) ạ?",
+                "suggestions": ["3.5 triệu", "4 triệu"],
+            },
+        ),
+    ),
+    EvalCase(
+        case_id="err_geocode_retry_succeeds",
+        category="tool_error",
+        target_requirements=("req_location_resolution", "req_tool_fault_resilience", "req_grounding_and_dod"),
+        description="Địa danh có tiền tố mô tả ('cổng sau Chợ Đầm Mới') trượt lần đầu nhưng thành công qua Retry 1 ('Chợ Đầm Mới') vẫn giữ 1 tool span.",
+        turns=("tìm phòng gần cổng sau Chợ Đầm Mới dưới 3.5 triệu",),
+        initial_state=InitialSystemState(
+            rooms=_THREE_ROOMS,
+            geocode_place_ok=True,
+            geocode_accept_queries=("Chợ Đầm Mới",),
+        ),
+        fault_injection=FaultInjection(),
+        expected=ExpectedOutcome(
+            expected_intent="new_search",
+            min_rooms=1,
+            expect_clarification=False,
+            expect_verifier_passed=True,
+            trajectory=TrajectorySpec(
+                required_tools=("resolve_location", "search_rooms"),
+                max_calls_per_tool={"resolve_location": 1, "search_rooms": 1},
+            ),
+        ),
+        verdict_criteria="resolve_location_with_retry phục hồi thành công ở Retry 1 mà không vượt quá 1 span resolve_location trên trace.",
+        scripted_nlu=(
+            {"intent": "new_search", "patch": {"location_text": "cổng sau Chợ Đầm Mới", "location_kind": "place", "max_price": 3_500_000}},
+        ),
+        scripted_advice=(_DEFAULT_GOOD_ADVICE,),
+    ),
 )
 
 
@@ -700,6 +811,7 @@ def _canonical_case_payload(case: EvalCase) -> dict[str, Any]:
         "initial_state": {
             "rooms": list(case.initial_state.rooms),
             "geocode_place_ok": case.initial_state.geocode_place_ok,
+            "geocode_accept_queries": list(case.initial_state.geocode_accept_queries),
             "initial_preferences": dict(case.initial_state.initial_preferences),
             "market_stats": dict(case.initial_state.market_stats) if case.initial_state.market_stats else None,
             "min_rooms_radius_km": case.initial_state.min_rooms_radius_km,

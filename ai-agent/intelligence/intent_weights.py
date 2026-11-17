@@ -8,11 +8,36 @@ from __future__ import annotations
 
 from typing import Mapping, Optional
 
+from domain.enums import Amenity, normalize_amenities
 from domain.schemas import UserPreferenceState
 
 # Đồng bộ chuẩn 5 trụ cột với Backend (reranker.DEFAULT_WEIGHTS): semantic luôn có trọng số cơ sở thấp nhất (0.10)
 DEFAULT_BASE_WEIGHTS = {"location": 0.25, "price": 0.25, "safety": 0.20, "amenity": 0.20, "semantic": 0.10}
 BASELINE_AMENITY_SCALE = 0.5
+SAFETY_AMENITIES = frozenset({
+    Amenity.SAFE_AREA,
+    Amenity.CAMERA,
+    Amenity.GUARD,
+    Amenity.FINGERPRINT_LOCK,
+})
+
+
+def _has_safety_signal(
+    preferences: UserPreferenceState,
+    multipliers: Mapping[str, float],
+    base_weights: Optional[Mapping[str, float]] = None,
+) -> bool:
+    """Chỉ bật trụ cột safety khi người dùng nhắc tới an ninh/an toàn (hoặc caller truyền custom safety > 0)."""
+    if multipliers.get("safety", 1.0) > 1.0:
+        return True
+    all_amenities = set(normalize_amenities(preferences.amenities)) | set(
+        normalize_amenities(preferences.preferred_amenities)
+    )
+    if all_amenities & SAFETY_AMENITIES:
+        return True
+    if base_weights is not None and base_weights is not DEFAULT_BASE_WEIGHTS:
+        return float(base_weights.get("safety", 0.0)) > 0.0
+    return False
 
 
 def compute_normalized_weights(
@@ -23,18 +48,19 @@ def compute_normalized_weights(
 ) -> dict[str, float]:
     """Vector trọng số chuẩn hoá L1 (tổng = 1.0).
 
-    price, safety, semantic, amenity: luôn bật. location: chỉ khi có toạ độ.
-    amenity bật ở mức đầy đủ khi có tiện ích ưu tiên mềm (preferred_amenities) hoặc khi người dùng
-    nhấn mạnh tiện nghi (multipliers['amenity'] > 1.0). Khi nói chung chung hoặc chỉ có tiện ích bắt buộc
-    (amenities), amenity vẫn giữ mức nền nhẹ (BASELINE_AMENITY_SCALE) theo amenity_overall để cân bằng chất lượng.
+    - price, semantic, amenity: luôn bật (amenity ở mức nền nhẹ nếu chưa nêu tiện ích mềm).
+    - location: chỉ bật khi có toạ độ điểm mốc.
+    - safety: chỉ bật khi người dùng nhắc tới an ninh/an toàn (`multipliers['safety'] > 1.0`,
+      có tiện ích an ninh trong amenities/preferred_amenities, hoặc custom base_weights có safety > 0).
     """
     base = base_weights or DEFAULT_BASE_WEIGHTS
     has_explicit_amenity = bool(preferences.preferred_amenities) or multipliers.get("amenity", 1.0) > 1.0
     amenity_active = has_explicit_amenity or (base_weights is None) or ("amenity" in base)
+    safety_active = _has_safety_signal(preferences, multipliers, base_weights)
 
     active = {
         "price": True,
-        "safety": True,
+        "safety": safety_active,
         "semantic": True,
         "location": preferences.has_point,
         "amenity": amenity_active,

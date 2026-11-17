@@ -10,14 +10,20 @@ import {
   CANONICAL_ROOM_TYPES_MAP,
 } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 import { agentApi } from "@/lib/api/client";
+import { mergeTraceEvents } from "@/app/tim-kiem-ai/_components/traceUtils";
 
 const STORAGE_KEY = "homigo_ai_workspace_session_v2";
+const PAGE_SIZE = 5;
 
 export function useAiChat() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [isPaging, setIsPaging] = useState(false);
   const [rooms, setRooms] = useState<RoomItem[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalRooms, setTotalRooms] = useState(0);
   const [insights, setInsights] = useState<DecisionInsight | null>(null);
   const [preferences, setPreferences] = useState<UserPreferenceState | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string>(DEFAULT_ROOM_ID);
@@ -34,6 +40,9 @@ export function useAiChat() {
         queueMicrotask(() => {
           if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
           if (parsed.rooms && parsed.rooms.length > 0) setRooms(parsed.rooms);
+          if (typeof parsed.currentPage === "number" && parsed.currentPage > 0) setCurrentPage(parsed.currentPage);
+          if (typeof parsed.totalPages === "number" && parsed.totalPages >= 0) setTotalPages(parsed.totalPages);
+          if (typeof parsed.totalRooms === "number" && parsed.totalRooms >= 0) setTotalRooms(parsed.totalRooms);
           if (parsed.insights) setInsights(parsed.insights);
           if (parsed.preferences) setPreferences(parsed.preferences);
           if (parsed.selectedRoomId) setSelectedRoomId(parsed.selectedRoomId);
@@ -58,6 +67,9 @@ export function useAiChat() {
           JSON.stringify({
             messages,
             rooms,
+            currentPage,
+            totalPages,
+            totalRooms,
             insights,
             preferences,
             selectedRoomId,
@@ -68,7 +80,7 @@ export function useAiChat() {
         console.warn("Could not persist AI chat session", e);
       }
     }
-  }, [messages, rooms, insights, preferences, selectedRoomId, sessionId, isHydrated]);
+  }, [messages, rooms, currentPage, totalPages, totalRooms, insights, preferences, selectedRoomId, sessionId, isHydrated]);
 
   // Xoá lịch sử phiên làm việc hiện tại để bắt đầu hội thoại mới
   const resetConversation = () => {
@@ -80,10 +92,39 @@ export function useAiChat() {
     } catch {}
     setMessages(INITIAL_MESSAGES);
     setRooms([]);
+    setCurrentPage(1);
+    setTotalPages(0);
+    setTotalRooms(0);
+    setIsPaging(false);
     setInsights(null);
     setPreferences(null);
     setSelectedRoomId(DEFAULT_ROOM_ID);
     setSessionId(null);
+  };
+
+  // Chuyển trang danh sách phòng theo session đã pre-fetch (tối đa 10 trang)
+  const goToPage = async (targetPage: number) => {
+    if (!sessionId || isPaging || isTyping) return;
+    if (totalPages > 0 && (targetPage < 1 || targetPage > totalPages)) return;
+    if (targetPage === currentPage) return;
+
+    setIsPaging(true);
+    setConnectionError(null);
+    try {
+      const pageData = await agentApi.getSessionRooms(sessionId, targetPage, PAGE_SIZE);
+      setRooms(pageData.rooms || []);
+      setCurrentPage(pageData.page);
+      setTotalPages(pageData.total_pages);
+      setTotalRooms(pageData.total_rooms);
+      if (pageData.rooms && pageData.rooms.length > 0) {
+        setSelectedRoomId(pageData.rooms[0].id);
+      }
+    } catch (e) {
+      console.warn("Could not switch room page", e);
+      setConnectionError("Không thể tải trang phòng yêu cầu. Vui lòng thử lại.");
+    } finally {
+      setIsPaging(false);
+    }
   };
 
   const sendMessage = async (event?: React.FormEvent, customText?: string) => {
@@ -134,18 +175,30 @@ export function useAiChat() {
         {
           onTrace: (traceEv) => {
             let nextStatus = "Đang xử lý...";
-            if (traceEv.type === "model_request") {
-              nextStatus = `Đang suy nghĩ (Model call #${traceEv.model_call_index || 1})...`;
+            if (traceEv.type === "node_step") {
+              nextStatus = `${traceEv.label || traceEv.node || "Đang xử lý"}...`;
+            } else if (traceEv.type === "model_request") {
+              nextStatus = `Đang suy nghĩ (LLM #${traceEv.model_call_index || 1})...`;
             } else if (traceEv.type === "model_response") {
               if (traceEv.requested_tools && traceEv.requested_tools.length > 0) {
                 nextStatus = `Chuẩn bị gọi tool: ${traceEv.requested_tools.join(", ")}...`;
+              } else if (traceEv.node === "understand_node") {
+                nextStatus = "Đã phân tích xong yêu cầu...";
               } else {
                 nextStatus = "Đang viết câu trả lời...";
               }
             } else if (traceEv.type === "tool_started") {
-              nextStatus = `Đang chạy tool ${traceEv.tool_name}...`;
+              nextStatus = `Đang chạy tool ${traceEv.tool_name || traceEv.tool}...`;
             } else if (traceEv.type === "tool_finished") {
-              nextStatus = `Hoàn tất tool ${traceEv.tool_name} (${traceEv.elapsed_ms ?? 0} ms) — đang phân tích kết quả...`;
+              nextStatus = `Hoàn tất ${traceEv.tool_name || traceEv.tool} (${traceEv.elapsed_ms ?? traceEv.duration_ms ?? 0} ms)...`;
+            } else if (traceEv.type === "adaptive_radius_expansion") {
+              nextStatus = `Mở rộng bán kính tìm kiếm lên ${traceEv.to_radius ?? "?"} km...`;
+            } else if (traceEv.type === "verifier_decision") {
+              nextStatus = traceEv.passed
+                ? "Đã kiểm chứng DoD đạt chuẩn..."
+                : "Phát hiện sai lệch, đang xử lý kiểm chứng...";
+            } else if (traceEv.type === "model_error") {
+              nextStatus = "Gặp lỗi khi gọi mô hình AI...";
             }
 
             setMessages((prev) =>
@@ -181,15 +234,25 @@ export function useAiChat() {
       }
 
       if (res.rooms && res.rooms.length > 0) {
+        const nextPage = res.page && res.page > 0 ? res.page : 1;
+        const pageChanged = nextPage !== currentPage || res.searched === true;
         setRooms(res.rooms);
-        // Tự động focus đúng phòng nếu câu hỏi người dùng chỉ định rõ Top 2 hoặc Top 3
-        const lowerText = textToSend.toLowerCase();
-        if ((lowerText.includes("top 2") || lowerText.includes("phòng 2") || lowerText.includes("phòng số 2")) && res.rooms.length > 1) {
-          setSelectedRoomId(res.rooms[1].id);
-        } else if ((lowerText.includes("top 3") || lowerText.includes("phòng 3") || lowerText.includes("phòng số 3")) && res.rooms.length > 2) {
-          setSelectedRoomId(res.rooms[2].id);
-        } else {
+        setCurrentPage(nextPage);
+        setTotalPages(res.total_pages ?? 1);
+        setTotalRooms(res.total_rooms ?? res.rooms.length);
+
+        // Tự động focus đúng phòng nếu câu hỏi người dùng chỉ định rõ Top N / phòng số N
+        const rankMatch = textToSend.toLowerCase().match(/(?:top|phòng(?:\s*số)?)\s*(\d+)/);
+        const requestedRank = rankMatch ? Number(rankMatch[1]) : null;
+        const matchedByRank = requestedRank
+          ? res.rooms.find((r) => r.rank === requestedRank)
+          : undefined;
+        if (matchedByRank) {
+          setSelectedRoomId(matchedByRank.id);
+        } else if (pageChanged) {
           setSelectedRoomId(res.rooms[0].id);
+        } else {
+          setSelectedRoomId((prev) => (res.rooms.some((r) => r.id === prev) ? prev : res.rooms[0].id));
         }
       } else if (
         res.grounding_report?.blocked_by_guardrail ||
@@ -198,6 +261,9 @@ export function useAiChat() {
       ) {
         // Chỉ làm trống danh sách phòng khi tìm kiếm thực sự ra 0 kết quả, bị chặn, hoặc người dùng yêu cầu reset
         setRooms([]);
+        setCurrentPage(1);
+        setTotalPages(0);
+        setTotalRooms(0);
         setSelectedRoomId(DEFAULT_ROOM_ID);
         setInsights(null);
       }
@@ -282,7 +348,7 @@ export function useAiChat() {
                 text: res.text_reply || m.text,
                 isStreaming: false,
                 statusText: undefined,
-                traceEvents: res.trace_events && res.trace_events.length > 0 ? res.trace_events : m.traceEvents,
+                traceEvents: mergeTraceEvents(m.traceEvents || [], res.trace_events),
                 mandatoryCriteria: mandatory.length > 0 ? mandatory : undefined,
                 priorityCriteria: priority.length > 0 ? priority : undefined,
                 summaryCount: res.rooms && res.rooms.length > 0 ? res.rooms.length : undefined,
@@ -326,8 +392,13 @@ export function useAiChat() {
     inputValue,
     setInputValue,
     isTyping,
+    isPaging,
     sendMessage,
     rooms,
+    currentPage,
+    totalPages,
+    totalRooms,
+    goToPage,
     insights,
     preferences,
     selectedRoomId,

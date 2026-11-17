@@ -10,15 +10,15 @@ from typing import Any, Optional
 
 from langchain_core.tools import tool
 
+from core.config import DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, NEARBY_AREAS_LIMIT
 from domain.enums import normalize_amenities, normalize_room_type
 from domain.schemas import format_vnd_million
 from skills.skills_discovery import discover_housing_skills, get_skill
 from tools.http import request
-from tools.location_service import infer_region_from_location_text, resolve_admin, resolve_location
+from tools.location_service import infer_region_from_location_text, resolve_admin, resolve_location_with_retry
 
 logger = logging.getLogger(__name__)
 
-MAX_LIMIT = 20
 _LISTING_ID = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 
 
@@ -101,7 +101,7 @@ def search_rooms_api(args: dict[str, Any]) -> dict[str, Any]:
     lat, lng = args.get("lat"), args.get("lng")
     raw_q = str(args.get("query") or "").strip()
     query_str = raw_q if raw_q else "phòng trọ"
-    body: dict[str, Any] = {"query": query_str, "limit": max(1, min(int(args.get("limit") or 5), MAX_LIMIT)), "offset": 0}
+    body: dict[str, Any] = {"query": query_str, "limit": max(1, min(int(args.get("limit") or DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT))}
     if lat is not None:
         body["lat"] = lat
     if lng is not None:
@@ -181,7 +181,7 @@ def search_rooms(
     max_distance_km: Optional[float] = None,
     weights: Optional[dict[str, float]] = None,
     prefer_cheapest: Optional[bool] = None,
-    limit: int = 5,
+    limit: int = DEFAULT_SEARCH_LIMIT,
 ) -> str:
     """Tìm kiếm phòng trọ bằng Vector Search kết hợp Rerank đa tiêu chí từ Backend.
 
@@ -440,7 +440,7 @@ def lookup_market_price_stats(
 
     # Nếu không phải địa giới hành chính thuần (vd tên trường ĐH / KCN / địa điểm), thử geocode -> lấy thống kê vùng lân cận
     if location_kind != "admin":
-        pt_res = resolve_location(loc, location_kind, adm_fn, geo_fn, region_hint=effective_hint)
+        pt_res, _ = resolve_location_with_retry(loc, location_kind, adm_fn, geo_fn, region_hint=effective_hint)
         if pt_res.kind == "ambiguous":
             return {
                 "ok": False,
@@ -454,7 +454,7 @@ def lookup_market_price_stats(
                 lat=pt_res.lat,
                 lng=pt_res.lng,
                 room_type=rt.value if rt is not None else None,
-                limit=4,
+                limit=NEARBY_AREAS_LIMIT,
             )
             if nearby:
                 return {
@@ -462,7 +462,7 @@ def lookup_market_price_stats(
                     "source": "nearby_areas",
                     "location": loc,
                     "room_type": rt.label_vi if rt is not None else None,
-                    "nearby_areas": nearby[:4],
+                    "nearby_areas": nearby[:NEARBY_AREAS_LIMIT],
                 }
 
     return {
@@ -480,7 +480,7 @@ def fetch_nearby_locations(
     ward_id: Optional[int] = None,
     city_id: Optional[int] = None,
     radius_km: float = 12.0,
-    limit: int = 4,
+    limit: int = NEARBY_AREAS_LIMIT,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     room_type: Optional[str] = None,

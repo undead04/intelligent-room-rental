@@ -67,30 +67,13 @@ def test_happy_path_resolve_university_pois_without_calling_geocode():
     assert res_spkt.lng == pytest.approx(106.7720, abs=0.005)
 
 
-def test_happy_path_nlu_sleepbox_defense_triggers():
-    """Nhóm 1:
-    Các phát biểu ngụ ý không gian riêng tư:
-    - 'tìm phòng khép kín'
-    - 'wc riêng'
-    - 'không chung chủ'
-    - 'cho 2 bạn nữ'
-    - 'cần tìm studio'
-    đều phải tự động kích hoạt RoomType.SLEEPBOX vào patch.excluded_room_types.
-    """
-    cues = [
-        "tìm phòng khép kín",
-        "wc riêng",
-        "không chung chủ",
-        "cho 2 bạn nữ",
-        "cần tìm studio",
-    ]
+def test_happy_path_nlu_sleepbox_decision_respected():
+    """Nhóm 1: _postprocess tôn trọng hoàn toàn quyết định loại trừ/cho phép SLEEPBOX từ LLM."""
+    a_excl = TurnAnalysis(intent="new_search", patch=PreferencePatch(excluded_room_types=[RoomType.SLEEPBOX]))
+    assert _postprocess(a_excl, user_text="tìm phòng khép kín").patch.excluded_room_types == [RoomType.SLEEPBOX]
 
-    for cue in cues:
-        raw_analysis = TurnAnalysis(intent="new_search", patch=PreferencePatch())
-        processed = _postprocess(raw_analysis, user_text=cue)
-        assert RoomType.SLEEPBOX in processed.patch.excluded_room_types, (
-            f"Phát biểu '{cue}' phải tự động loại trừ RoomType.SLEEPBOX, nhưng không tìm thấy trong {processed.patch.excluded_room_types}"
-        )
+    a_plain = TurnAnalysis(intent="new_search", patch=PreferencePatch())
+    assert _postprocess(a_plain, user_text="tìm phòng khép kín").patch.excluded_room_types == []
 
 
 # ============================================================================

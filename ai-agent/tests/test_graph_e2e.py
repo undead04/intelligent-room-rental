@@ -18,7 +18,7 @@ def test_new_search_by_place_end_to_end():
     r = h.turn("tìm phòng gần UIT dưới 3tr5 có máy lạnh")
     assert r.session_id == "s1" and [x.id for x in r.rooms] == ["nhatot_1", "nhatot_2", "nhatot_3"]
     a = h.search_calls[0]
-    assert (a["lat"], a["lng"]) == (10.87, 106.8) and a["max_price"] == 3_500_000 and a["amenities"] == ["aircon"] and a["limit"] == 5
+    assert (a["lat"], a["lng"]) == (10.87, 106.8) and a["max_price"] == 3_500_000 and a["amenities"] == ["aircon"] and a["limit"] == 50
     assert "city_id" not in a and a["query"] == "Phòng trọ, khu vực UIT, máy lạnh"
     assert a["weights"]["location"] > a["weights"]["price"] and abs(sum(a["weights"].values()) - 1) < 1e-3
     assert "Giá thuê: 2.4 triệu/tháng" in r.text_reply and "Điểm phù hợp: 84%" in r.text_reply and "Mình tìm được vài phòng" in r.text_reply
@@ -125,7 +125,7 @@ def test_excluded_room_types_overfetch_filter_and_renumber():
     rooms = [raw_room(1, room_type={"id": 4}), raw_room(2, room_type={"id": 4}), raw_room(3, room_type={"id": 1}), raw_room(4)]
     h = Harness(search_llm(excluded_room_types=["ktx"]), rooms)
     r = h.turn("tìm phòng gần UIT, không lấy ktx")
-    assert h.search_calls[0]["limit"] == 10
+    assert h.search_calls[0]["limit"] == 50
     assert [x.id for x in r.rooms] == ["nhatot_3", "nhatot_4"] and [x.rank for x in r.rooms] == [1, 2]
     assert r.current_preferences.excluded_room_types == [RoomType.SLEEPBOX]
 
@@ -299,10 +299,10 @@ def test_multi_turn_skill_advisory_passes_compact_history_and_preserves_kv_cache
 
 
 def test_adaptive_radius_expansion_when_few_rooms_found():
-    """Kiểm tra thuật toán 2 pha: Khởi đầu 2.5km, nếu thiếu (< 3 phòng) thì tự động nới lỏng sang 3.5km."""
+    """Kiểm tra thuật toán 2 pha: Khởi đầu 3.0km, nếu thiếu (< 3 phòng) thì tự động nới lỏng sang 5.0km."""
     def dynamic_rooms(args):
         rad = args.get("max_distance_km")
-        if rad is not None and rad <= 2.5:
+        if rad is not None and rad <= 3.0:
             return [raw_room(1, 2_400_000, 25)]
         return [raw_room(1, 2_400_000, 25), raw_room(2, 2_800_000, 21), raw_room(3, 3_000_000, 30)]
 
@@ -310,17 +310,17 @@ def test_adaptive_radius_expansion_when_few_rooms_found():
     h = Harness(llm, rooms=dynamic_rooms)
     r = h.turn("tìm phòng quanh UIT")
 
-    # Đã gọi search 2 lần: lần 1 bán kính 2.5km, lần 2 nới lên 3.5km
+    # Đã gọi search 2 lần: lần 1 bán kính 3.0km, lần 2 nới lên 5.0km
     assert len(h.search_calls) == 2
-    assert h.search_calls[0]["max_distance_km"] == 2.5
-    assert h.search_calls[1]["max_distance_km"] == 3.5
+    assert h.search_calls[0]["max_distance_km"] == 3.0
+    assert h.search_calls[1]["max_distance_km"] == 5.0
     assert len(r.rooms) == 3
 
     # Kiểm tra event trace ghi nhận sự kiện mở rộng bán kính
     adaptive_events = [e for e in r.trace_events if e.get("type") == "adaptive_radius_expansion"]
     assert len(adaptive_events) == 1
-    assert adaptive_events[0]["from_radius"] == 2.5
-    assert adaptive_events[0]["to_radius"] == 3.5
+    assert adaptive_events[0]["from_radius"] == 3.0
+    assert adaptive_events[0]["to_radius"] == 5.0
 
 
 def test_fixed_user_max_distance_does_not_expand():
@@ -456,3 +456,45 @@ def test_sse_streaming_response_handles_contextvar_across_threadpool():
     assert resp.status_code == 200
     assert "event: complete" in resp.text
     assert "event: error" not in resp.text
+
+
+def test_vague_budget_adjustment_asks_clarification_then_searches_new_budget():
+    """Lượt 1 tìm 3tr -> Lượt 2 nói 'tăng giá nữa đi' (chưa nêu số) -> hỏi lại -> Lượt 3 '4 triệu' -> tìm mới với 4tr."""
+    from graph.nodes.clarification import ClarifyReply
+
+    llm = (
+        FakeLLM()
+        .on(
+            "TurnAnalysis",
+            nlu("new_search", location_text="UIT", location_kind="place", max_price=3_000_000),
+            nlu("refine_search").model_copy(update={"needs_budget_clarification": True}),
+            nlu("refine_search", max_price=4_000_000),
+        )
+        .on(
+            "ClarifyReply",
+            ClarifyReply(
+                text="Bạn muốn nâng trần ngân sách lên tối đa khoảng bao nhiêu (vd: 3.5 triệu hay 4 triệu) ạ?",
+                suggestions=["3.5 triệu", "4 triệu"],
+            ),
+        )
+        .on("Advice", GOOD_ADVICE)
+    )
+    h = Harness(llm, THREE)
+
+    r1 = h.turn("tìm phòng gần UIT dưới 3 triệu")
+    assert len(h.search_calls) == 1
+    assert r1.current_preferences.max_price == 3_000_000
+
+    # Lượt 2: nói nới giá chung chung -> KHÔNG gọi search_rooms, rẽ sang clarification_node
+    r2 = h.turn("nới giá lên nữa đi")
+    assert len(h.search_calls) == 1
+    assert r2.need_clarification is True
+    assert r2.current_preferences.max_price == 3_000_000
+    assert "3.5 triệu" in r2.follow_up_questions and "4 triệu" in r2.follow_up_questions
+    assert "bao nhiêu" in r2.text_reply
+
+    # Lượt 3: user cung cấp con số mới -> search lại với max_price = 4_000_000
+    r3 = h.turn("4 triệu")
+    assert len(h.search_calls) == 2
+    assert h.search_calls[-1]["max_price"] == 4_000_000
+    assert r3.current_preferences.max_price == 4_000_000

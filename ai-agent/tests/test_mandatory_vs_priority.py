@@ -50,16 +50,17 @@ def test_normalized_weights_not_boosted_for_regular_amenity():
     multipliers = {"price": 1.0, "location": 1.0, "safety": 1.0, "amenity": 1.0, "semantic": 1.0}
 
     w = compute_normalized_weights(p, multipliers)
-    assert set(w.keys()) == {"price", "location", "safety", "amenity", "semantic"}
+    assert set(w.keys()) == {"price", "location", "amenity", "semantic"}
+    assert "safety" not in w
     assert w["amenity"] < w["price"]
     assert w["amenity"] < 0.2
     assert abs(sum(w.values()) - 1.0) < 1e-4
 
-    # Chỉ khi có preferred_amenities hoặc có ý định nhấn mạnh tổng thể thì amenity mới bật mức đầy đủ (0.20)
+    # Chỉ khi có preferred_amenities hoặc có ý định nhấn mạnh tổng thể thì amenity mới bật mức đầy đủ (0.25 khi không bật safety)
     p_pref = UserPreferenceState(lat=10.87, lng=106.8, max_price=5_000_000, amenities=["aircon"], preferred_amenities=["window_balcony"])
     w_pref = compute_normalized_weights(p_pref, multipliers)
     assert "amenity" in w_pref
-    assert w_pref["amenity"] == 0.2
+    assert w_pref["amenity"] == 0.25
 
 
 def test_grounding_hard_constraints_filters_room_without_aircon():

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from contextlib import contextmanager
 from pathlib import Path
@@ -24,15 +25,19 @@ import time
 import uuid
 from typing import Any, Callable, Generator, Optional, Union
 
-from domain.schemas import RoomItem, UserPreferenceState
+from core.config import (
+    DEFAULT_PAGE_SIZE,
+    HISTORY_WINDOW,
+    MAX_PAGED_ROOMS,
+    MAX_PAGINATION_PAGES,
+    MAX_SESSION_MESSAGES,
+    MAX_SESSIONS,
+    SESSION_TTL_SECONDS,
+)
 from core.paths import DEFAULT_DB_PATH
+from domain.schemas import RoomItem, UserPreferenceState
 
 logger = logging.getLogger(__name__)
-
-MAX_SESSION_MESSAGES = 20
-HISTORY_WINDOW = 8
-MAX_SESSIONS = 500
-SESSION_TTL_SECONDS = 86_400
 
 DEFAULT_MULTIPLIERS = {"price": 1.0, "location": 1.0, "safety": 1.0, "amenity": 1.0, "semantic": 1.0}
 
@@ -74,6 +79,9 @@ class SessionData:
         self.zero_result_streak: int = 0
         self.history: list[tuple[str, str]] = []
         self.last_rooms: list[RoomItem] = []
+        self.paged_rooms: list[RoomItem] = []
+        self.current_page: int = 1
+        self.page_size: int = DEFAULT_PAGE_SIZE
         self.last_active: float = clock()
         self.lock = threading.RLock()
         self.version: int = 0          # số phiên bản đã lưu (PersistentSessionStore dùng để biết cache có cũ không)
@@ -204,8 +212,21 @@ class SessionStore:
         with self._lock:
             self._sessions.pop(session_id, None)
 
-    def commit_turn(self, session: SessionData, user_text: str, assistant_reply: str, rooms: list[RoomItem], *, searched: bool = False) -> None:
-        """searched=True khi lượt này đã chạy tìm kiếm: last_rooms được THAY (kể cả rỗng)."""
+    def commit_turn(
+        self,
+        session: SessionData,
+        user_text: str,
+        assistant_reply: str,
+        rooms: list[RoomItem],
+        *,
+        searched: bool = False,
+        paged_rooms: Optional[list[RoomItem]] = None,
+        current_page: Optional[int] = None,
+        page_switched: bool = False,
+    ) -> None:
+        """searched=True khi lượt này đã chạy tìm kiếm: last_rooms & paged_rooms được THAY (kể cả rỗng).
+        page_switched=True khi chỉ chuyển trang trên paged_rooms hiện có: cập nhật last_rooms & current_page.
+        """
         with session.lock:
             session.history.append(("user", user_text))
             session.history.append(("assistant", assistant_reply))
@@ -213,8 +234,51 @@ class SessionStore:
                 session.history = session.history[-MAX_SESSION_MESSAGES:]
             if searched:
                 session.last_rooms = list(rooms)
+                pool = list(paged_rooms) if paged_rooms is not None else list(rooms)
+                session.paged_rooms = pool[:MAX_PAGED_ROOMS]
+                session.current_page = 1
+                session.focused_room_rank = None
+            elif page_switched:
+                session.last_rooms = list(rooms)
+                if current_page is not None:
+                    session.current_page = max(1, int(current_page))
                 session.focused_room_rank = None
             session.last_active = self._clock()
+
+    def get_page(
+        self,
+        session: SessionData,
+        page: int = 1,
+        page_size: int = DEFAULT_PAGE_SIZE,
+    ) -> tuple[list[RoomItem], int, int, int, int]:
+        """Trả về (rooms_on_page, effective_page, eff_page_size, total_rooms, total_pages) từ session.paged_rooms."""
+        eff_size = max(1, min(int(page_size or DEFAULT_PAGE_SIZE), 20))
+        with session.lock:
+            pool = list(session.paged_rooms or session.last_rooms or [])[:MAX_PAGED_ROOMS]
+            total_rooms = len(pool)
+            if total_rooms == 0:
+                return [], 1, eff_size, 0, 0
+            total_pages = min(MAX_PAGINATION_PAGES, max(1, math.ceil(total_rooms / eff_size)))
+            eff_page = max(1, min(int(page or 1), total_pages))
+            start = (eff_page - 1) * eff_size
+            return pool[start : start + eff_size], eff_page, eff_size, total_rooms, total_pages
+
+    def switch_page(
+        self,
+        session: SessionData,
+        page: int,
+        page_size: int = DEFAULT_PAGE_SIZE,
+    ) -> tuple[list[RoomItem], int, int, int, int]:
+        """Chuyển trang trực tiếp trên session (dùng cho REST API phân trang UI)."""
+        with session.lock:
+            page_rooms, eff_page, eff_size, total_rooms, total_pages = self.get_page(session, page, page_size)
+            if total_rooms > 0:
+                session.last_rooms = list(page_rooms)
+                session.current_page = eff_page
+                session.page_size = eff_size
+                session.focused_room_rank = None
+            session.last_active = self._clock()
+            return page_rooms, eff_page, eff_size, total_rooms, total_pages
 
     def __len__(self) -> int:
         return len(self._sessions)
@@ -226,13 +290,30 @@ class SessionStore:
 def _dump(s: SessionData) -> str:
     return json.dumps({
         "preferences": s.preferences.model_dump(mode="json"), "multipliers": s.multipliers,
-        "zero_result_streak": s.zero_result_streak, "history": s.history, "last_rooms": [r.model_dump(mode="json") if hasattr(r, "model_dump") else r for r in s.last_rooms],
+        "zero_result_streak": s.zero_result_streak, "history": s.history,
+        "last_rooms": [r.model_dump(mode="json") if hasattr(r, "model_dump") else r for r in s.last_rooms],
+        "paged_rooms": [r.model_dump(mode="json") if hasattr(r, "model_dump") else r for r in s.paged_rooms],
+        "current_page": s.current_page,
+        "page_size": s.page_size,
         "preference_history": [p.model_dump(mode="json") for p in s.preference_history],
         "turn_snapshots": [p.model_dump(mode="json") for p in s.turn_snapshots], "initial_preference": s.initial_preference.model_dump(mode="json") if s.initial_preference else None,
         "focused_room_rank": s.focused_room_rank,
         "pending_ambiguous_location": s.pending_ambiguous_location,
         "pending_ambiguous_candidates": s.pending_ambiguous_candidates,
     }, ensure_ascii=False)
+
+
+def _load_rooms_list(raw_list: Any) -> list[RoomItem]:
+    loaded: list[RoomItem] = []
+    for r in raw_list or []:
+        try:
+            if isinstance(r, dict) and "id" in r and "title" in r:
+                loaded.append(RoomItem.model_validate(r))
+            elif isinstance(r, dict) and "listing" in r:
+                loaded.append(RoomItem.from_backend_result(r, rank=len(loaded) + 1))
+        except Exception:
+            pass
+    return loaded
 
 
 def _load(session_id: str, payload: str, version: int, last_active: float, clock: Callable[[], float]) -> SessionData:
@@ -242,16 +323,11 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s.multipliers = {**DEFAULT_MULTIPLIERS, **(d.get("multipliers") or {})}
     s.zero_result_streak = int(d.get("zero_result_streak") or 0)
     s.history = [(str(r), str(t)) for r, t in d.get("history") or []]
-    loaded_rooms = []
-    for r in d.get("last_rooms") or []:
-        try:
-            if isinstance(r, dict) and "id" in r and "title" in r:
-                loaded_rooms.append(RoomItem.model_validate(r))
-            elif isinstance(r, dict) and "listing" in r:
-                loaded_rooms.append(RoomItem.from_backend_result(r, rank=len(loaded_rooms) + 1))
-        except Exception:
-            pass
-    s.last_rooms = loaded_rooms
+    s.last_rooms = _load_rooms_list(d.get("last_rooms"))
+    raw_paged = d.get("paged_rooms")
+    s.paged_rooms = _load_rooms_list(raw_paged) if raw_paged is not None else list(s.last_rooms)
+    s.current_page = max(1, int(d.get("current_page") or 1))
+    s.page_size = max(1, int(d.get("page_size") or DEFAULT_PAGE_SIZE))
     s.preference_history = [UserPreferenceState.model_validate(p) for p in d.get("preference_history") or []]
     s.turn_snapshots = [UserPreferenceState.model_validate(p) for p in d.get("turn_snapshots") or []]
     s.initial_preference = UserPreferenceState.model_validate(d["initial_preference"]) if d.get("initial_preference") else None
@@ -333,10 +409,41 @@ class PersistentSessionStore(SessionStore):
         with self._lock:
             self._delete(session_id)
 
-    def commit_turn(self, session: SessionData, user_text: str, assistant_reply: str, rooms: list[RoomItem], *, searched: bool = False) -> None:
-        super().commit_turn(session, user_text, assistant_reply, rooms, searched=searched)
+    def commit_turn(
+        self,
+        session: SessionData,
+        user_text: str,
+        assistant_reply: str,
+        rooms: list[RoomItem],
+        *,
+        searched: bool = False,
+        paged_rooms: Optional[list[RoomItem]] = None,
+        current_page: Optional[int] = None,
+        page_switched: bool = False,
+    ) -> None:
+        super().commit_turn(
+            session,
+            user_text,
+            assistant_reply,
+            rooms,
+            searched=searched,
+            paged_rooms=paged_rooms,
+            current_page=current_page,
+            page_switched=page_switched,
+        )
         with self._lock:
             self._save(session)
+
+    def switch_page(
+        self,
+        session: SessionData,
+        page: int,
+        page_size: int = DEFAULT_PAGE_SIZE,
+    ) -> tuple[list[RoomItem], int, int, int, int]:
+        res = super().switch_page(session, page, page_size)
+        with self._lock:
+            self._save(session)
+        return res
 
     def _save(self, session: SessionData) -> None:
         try:
@@ -357,10 +464,6 @@ class PersistentSessionStore(SessionStore):
 
 
 __all__ = [
-    "MAX_SESSION_MESSAGES",
-    "HISTORY_WINDOW",
-    "MAX_SESSIONS",
-    "SESSION_TTL_SECONDS",
     "DEFAULT_MULTIPLIERS",
     "new_session_id",
     "SessionData",

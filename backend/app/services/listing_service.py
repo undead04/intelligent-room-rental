@@ -281,12 +281,11 @@ class ListingService:
         min_bathrooms: Optional[int] = None,
         max_distance_km: Optional[float] = 8.0,
         limit: int = 5,
-        offset: int = 0,
     ) -> list[VectorSearchResult]:
         raw_vector = model_embedding.encode_query(query)
         query_vector: list[float] = raw_vector.tolist() # type: ignore
 
-        candidate_limit = max(limit * 20, 250)
+        candidate_limit = max(limit * 5, 250)
 
         repo_kwargs: dict[str, object] = {
             "query_vector": query_vector,
@@ -360,7 +359,6 @@ class ListingService:
             user_pref=user_pref,
             base_weights=weights,
             limit=limit,
-            offset=offset,
         )
 
         def _unwrap(candidate: object) -> object:

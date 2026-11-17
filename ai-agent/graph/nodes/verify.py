@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from core.config import LLM_NLU_TEMPERATURE
 from graph.deps import Deps
 from graph.nodes.decision import followup_fallback_reply
 from graph.replies import reply_when_no_rooms
@@ -92,11 +93,11 @@ def make_verify_node(deps: Deps):
         # Lớp Critic LLM chỉ chạy khi toàn bộ 3 tầng code validation đã qua
         critic_res = None
         if not issues and deps.enable_critic and deps.verify_answers and rooms:
-            fast_llm = deps.get_llm("fast")
+            critic_llm = deps.get_llm(temperature=LLM_NLU_TEMPERATURE)
             critic_res = traced_call(
                 trace_store.sink(),
                 lambda: critic_answer_validation(
-                    fast_llm, final_text, rooms, extra_texts, user_text=eff_user_msg
+                    critic_llm, final_text, rooms, extra_texts, user_text=eff_user_msg
                 ),
                 node="verify_node",
                 input_data={"user_text": eff_user_msg, "room_count": len(rooms)},
@@ -134,7 +135,11 @@ def make_verify_node(deps: Deps):
 
         # 2) DoD Verifier độc lập: đọc trạng thái trực tiếp + trace bất biến (không tin tự báo)
         search_args = state.get("last_search_args") or {}
-        effective_radius = search_args.get("radius_km") if isinstance(search_args, dict) else None
+        effective_radius = (
+            (search_args.get("max_distance_km") or search_args.get("radius_km"))
+            if isinstance(search_args, dict)
+            else None
+        )
         spec = derive_dod_spec(
             eff_intent,
             pref,
@@ -251,7 +256,10 @@ def make_verify_node(deps: Deps):
                         next_decision = "fallback_template"
                         session = deps.sessions.get_or_create_session(state["session_id"]) if (deps.sessions and state.get("session_id")) else None
                         focus_rank = state.get("focus_rank") or getattr(session, "focused_room_rank", None) or 1
-                        target_room = rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else rooms[0]
+                        target_room = next(
+                            (r for r in rooms if getattr(r, "rank", None) == focus_rank),
+                            rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else rooms[0],
+                        )
                         update["final_text"] = followup_fallback_reply(target_room)
                     else:
                         next_decision = "fallback_template"

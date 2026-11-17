@@ -58,6 +58,7 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
    - Quy đổi: "3tr" = 3000000; "3tr5" = "3 triệu rưỡi" = "3 củ rưỡi" = 3500000; "800k" = 800000; "4 củ" = 4000000.
    - Người dùng nêu MỘT mức giá ("dưới 3tr", "khoảng 3 triệu", "tầm 3tr5", "loanh quanh 3 củ rưỡi", "phòng 4 củ") -> CHỈ điền max_price, BẮT BUỘC min_price=null.
    - CHỈ điền min_price khi có khoảng "từ X đến Y" (điền cả hai) hoặc "trên X / ít nhất X" (chỉ min_price).
+   - Nếu người dùng yêu cầu tăng/giảm/nới/điều chỉnh ngân sách NHƯNG CHƯA nêu con số cụ thể (vd: "nới giá lên nữa đi", "tăng ngân sách thêm chút", "giảm tiền xuống") -> giữ patch.max_price=null, patch.min_price=null và đặt needs_budget_clarification=true (KHÔNG tự suy đoán số tiền mới).
 5. MỨC ƯU TIÊN (priorities): Mặc định null (giữ nguyên). Đặt "high" (hoặc "very_high" nếu nhấn rất mạnh) theo ĐÚNG NGỮ CẢNH nhu cầu thực sự của người dùng (kèm mô tả ngắn vào priority_reasons):
    - Giá rẻ ("rẻ nhất", "tiết kiệm", "sinh viên nghèo", "tìm rẻ hơn trong tầm giá này") -> priorities.price.
    - Vị trí gần ("sát bên", "đi bộ được tới trường", "rất gần") -> priorities.location.
@@ -68,19 +69,25 @@ NLU_RULES = """QUY TẮC BÓC TÁCH:
      + Nếu muốn tăng chất lượng phòng/nội thất hơn (hoặc an ninh/vị trí tốt hơn) trong tầm giá đã đặt -> tăng đúng tiêu chí mà người dùng hướng tới, không mặc định gán cho amenity.
      + Nếu nêu mức giá mới ("nới lên 4tr") -> điền vào patch.max_price.
 6. SỐ NGƯỜI Ở & PHÒNG NGỦ: Nếu người dùng nêu số người ở ("2 người ở", "ở ghép 3 bạn") nhưng KHÔNG nói số phòng ngủ, đưa thông tin này vào semantic_query và để min_bedrooms=null (không tự quy đổi sang diện tích, giá hay số phòng ngủ). CHỈ điền min_bedrooms khi người dùng nói rõ số phòng ngủ ("2 phòng ngủ", "ít nhất 2 PN", "nhà 3 phòng ngủ").
-7. ĐA MỆNH LỆNH (is_multi_intent):
-   - Đặt true CHỈ khi người dùng gộp >= 2 mệnh lệnh thuộc các nhánh khác nhau trong cùng một câu (vd: vừa tìm phòng mới kèm tiêu chí vừa hỏi hợp đồng bằng skill_slug; hoặc vừa hỏi chi tiết phòng cũ vừa đổi tiêu chí tìm phòng).
-   - Khi gộp: intent là nhánh CHÍNH (hành động đầu tiên người dùng nêu), các tiêu chí còn lại vẫn bóc tách đầy đủ.
-   - Nếu chỉ kể tình huống hợp đồng/đặt cọc để hỏi tư vấn pháp lý mà không yêu cầu tìm phòng (intent=skill_advice) -> patch rỗng, is_multi_intent=false.
-   - Nếu chỉ hỏi mặt bằng giá / giá phòng trung bình ở một khu vực (vd: "giá phòng trọ trung bình ở Gò Vấp") -> intent=skill_advice, skill_slug="market-price-advisor", điền khu vực vào patch.location_text, is_multi_intent=false (KHÔNG coi là đa mệnh lệnh tìm phòng).
+7. ĐA MỆNH LỆNH (`is_multi_intent`, `task_order`):
+   - Đặt `is_multi_intent=true` CHỈ khi người dùng gộp >= 2 mệnh lệnh thuộc các nhánh khác nhau (`search`, `followup`, `advisory`) trong cùng một câu (vd: vừa tìm phòng mới kèm tiêu chí vừa hỏi hợp đồng; hoặc vừa hỏi chi tiết phòng cũ vừa đổi tiêu chí tìm phòng).
+   - Điền `task_order` theo ĐÚNG THỨ TỰ xuất hiện trong câu nói của người dùng (vd: `["followup", "search"]`, `["advisory", "search"]`, `["search", "advisory", "followup"]`).
+   - Khi gộp: `intent` là nhánh CHÍNH (hành động đầu tiên hoặc tìm kiếm nếu có patch), các tiêu chí còn lại vẫn bóc tách đầy đủ.
+   - Nếu chỉ kể tình huống hợp đồng/đặt cọc để hỏi tư vấn pháp lý mà không yêu cầu tìm phòng (`intent=skill_advice`) -> patch rỗng, `is_multi_intent=false`.
+   - Nếu chỉ hỏi mặt bằng giá / giá phòng trung bình ở một khu vực (vd: "giá phòng trọ trung bình ở Gò Vấp", hoặc "giá trung bình ở đây" -> tự lấy tên khu vực từ tiêu chí hiện tại vào `patch.location_text`) -> `intent=skill_advice`, `skill_slug="market-price-advisor"`, `is_multi_intent=false`.
 8. SEMANTIC_QUERY: Luôn viết lại 1 câu truy vấn RAG tiếng Việt tự nhiên, tổng hợp nhu cầu hiện tại và lịch sử; loại bỏ hoàn toàn từ đệm giao tiếp và than phiền. Riêng smalltalk, off_topic, prompt_injection thì để null.
 9. QUY TẮC CLEAR (XÓA BỎ TIÊU CHÍ):
-   - Mặc định TUYỆT ĐỐI để clear=[] rỗng.
-   - CHỈ đưa "location", "price", "amenities", "room_type"... vào clear khi người dùng TUYÊN BỐ RÕ RÀNG từ chối hoặc yêu cầu bỏ tiêu chí cũ (vd: "không tìm ở UIT nữa", "bỏ giới hạn giá đi", "bỏ máy lạnh").
-   - Khi người dùng chỉ nêu thêm tiện ích (vd: "thêm máy lạnh", "có gác không") hoặc đổi giá, TUYỆT ĐỐI KHÔNG đưa "location" hay các tiêu chí khác vào clear.
+   - Mặc định TUYỆT ĐỐI để `clear=[]` rỗng.
+   - CHỈ đưa "location", "price", "amenities", "room_type", "area", "special_requirements" vào `clear` khi người dùng TUYÊN BỐ RÕ RÀNG từ chối hoặc yêu cầu bỏ tiêu chí cũ (vd: "không tìm ở UIT nữa", "bỏ giới hạn giá đi", "bỏ máy lạnh", "reset từ đầu").
+   - Khi người dùng chỉ nêu thêm tiện ích (vd: "thêm máy lạnh", "có gác không") hoặc đổi giá, TUYỆT ĐỐI KHÔNG đưa "location" hay các tiêu chí khác vào `clear`.
 10. QUY TẮC LOẠI PHÒNG (`allowed_room_types`, `excluded_room_types`):
    - Nếu khách chọn 1 hoặc nhiều loại phòng muốn tìm (vd: "phòng trọ", "căn hộ studio", "phòng trọ hoặc studio", "ktx hoặc phòng trọ"): điền danh sách vào `allowed_room_types` (vd: `['ROOM']`, `['ROOM', 'STUDIO']`).
-   - Nếu khách cấm/phủ định loại phòng (vd: "không lấy ktx", "trừ sleepbox"): điền danh sách vào `excluded_room_types`."""
+   - Nếu khách cấm/phủ định loại phòng (vd: "không lấy ktx", "trừ sleepbox"): điền danh sách vào `excluded_room_types`.
+11. ĐIỀU KHIỂN CHUYỂN TRANG, QUAY LẠI & LÀM RÕ ĐỊA ĐIỂM:
+   - Chuyển trang (`page_action`, `target_page`): Khi đã có danh sách phòng phân trang và người dùng chỉ muốn xem trang khác / thêm phòng khác ("qua trang 3" -> `page_action="goto", target_page=3`; "trang tiếp / xem thêm phòng khác" -> `page_action="next"`; "trang trước" -> `"prev"`; "trang đầu" -> `"first"`; "trang cuối" -> `"last"`). TUYỆT ĐỐI KHÔNG đặt `page_action` nếu người dùng có thêm/đổi tiêu chí lọc mới (vd: "cho phòng khác rẻ hơn").
+   - Hỏi phòng đầu trang hiện tại: đặt `followup_current_page_first=true` khi hỏi chi tiết phòng đầu tiên của trang đang xem mà không nêu số Top cụ thể.
+   - Quay lại tiêu chí cũ (`revert_mode`, `revert_turn`): đặt `"initial"` ("như lúc đầu"), `"previous"` ("như lúc nãy / trước đó"), `"turn"` + `revert_turn` ("quay lại lượt 2").
+   - Đổi ý khi đang làm rõ địa điểm (`is_location_pivot=true`): khi hệ thống đang hỏi làm rõ địa điểm trùng tên/mơ hồ nhưng người dùng bỏ qua để chuyển sang khu vực khác."""
 
 
 def build_nlu_system_prompt(skills_catalog: str = "") -> str:

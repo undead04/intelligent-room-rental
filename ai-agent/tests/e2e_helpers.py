@@ -111,7 +111,7 @@ class Harness:
             return {"ok": True, "instructions": "Hướng dẫn chi tiết về hợp đồng thuê trọ. " * 5, "references": {}}
 
         self.deps = Deps(
-            sessions=self.sessions, get_llm=lambda role: self.llm, base_prompt="BASE", decision_system_prompt="DECISION",
+            sessions=self.sessions, get_llm=lambda temperature=None: self.llm, base_prompt="BASE", decision_system_prompt="DECISION",
             search_rooms=search, geocode=geocode, admin_lookup=db, consult_skill=consult, skills=lambda: {SKILL.slug: SKILL},
             market_fetcher=market, decision_agent=(lambda: self.agent) if agent else None, enable_critic=critic,
         )

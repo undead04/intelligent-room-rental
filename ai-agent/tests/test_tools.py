@@ -114,7 +114,7 @@ def test_search_rooms_api_builds_body_and_normalizes(be):
                              "max_price": 3_000_000, "amenities": ["ml", "máy lạnh", "gác", "xyz"], "weights": {"price": 0.5}, "limit": 999})
     assert r == {"ok": True, "data": [{"listing": {"id": "x"}}]}
     body = be.calls[-1][3]
-    assert be.calls[-1][0] == "POST" and body == {"query": "phòng", "limit": 20, "offset": 0, "lat": 10.87, "lng": 106.8, "room_type": "STUDIO",
+    assert be.calls[-1][0] == "POST" and body == {"query": "phòng", "limit": 50, "lat": 10.87, "lng": 106.8, "room_type": "STUDIO",
                                                   "max_price": 3_000_000, "amenities": ["aircon", "mezzanine"], "weights": {"price": 0.5}}
     assert "city_id" not in body and "district_id" not in body                                       # có toạ độ -> bỏ ID hành chính
 
@@ -197,7 +197,7 @@ def test_skill_tools_do_not_leak_server_paths(skill_dir):
 def _deps(llm):
     from graph import Deps
     from core.session_store import SessionStore
-    return Deps(sessions=SessionStore(), get_llm=lambda role: llm, base_prompt="BASE", decision_system_prompt="DECISION", search_rooms=ht.search_rooms_api,
+    return Deps(sessions=SessionStore(), get_llm=lambda temperature=None: llm, base_prompt="BASE", decision_system_prompt="DECISION", search_rooms=ht.search_rooms_api,
                 geocode=ht.geocode_point, admin_lookup=ht.admin_lookup, consult_skill=ht.consult_skill, skills=sd.discover_housing_skills)
 
 
@@ -294,5 +294,42 @@ def test_geocode_point_forwards_ambiguous_and_handles_5xx():
         assert ambig["candidates"][0]["lng"] == pytest.approx(106.6578)
 
         assert ht.geocode_point("địa điểm 503", hint="TP.HCM") is None
+    finally:
+        http.set_client(None)
+
+
+def test_http_request_retries_transient_errors_only():
+    attempts = {"503": 0, "timeout": 0, "404": 0}
+
+    def _handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/retry-503"):
+            attempts["503"] += 1
+            if attempts["503"] == 1:
+                return httpx.Response(503, json={"message": "temporary"})
+            return httpx.Response(200, json={"success": True, "data": {"ok": 1}})
+        if req.url.path.endswith("/retry-timeout"):
+            attempts["timeout"] += 1
+            if attempts["timeout"] == 1:
+                raise httpx.ReadTimeout("timed out", request=req)
+            return httpx.Response(200, json={"success": True, "data": {"ok": 2}})
+        if req.url.path.endswith("/no-retry-404"):
+            attempts["404"] += 1
+            return httpx.Response(404, json={"message": "missing"})
+        return httpx.Response(502, json={"message": "bad gateway"})
+
+    http.set_client(httpx.Client(transport=httpx.MockTransport(_handler), base_url="http://test/api/v1"))
+    try:
+        assert http.request("GET", "/retry-503") == {"ok": True, "data": {"ok": 1}}
+        assert attempts["503"] == 2
+
+        assert http.request("GET", "/retry-timeout") == {"ok": True, "data": {"ok": 2}}
+        assert attempts["timeout"] == 2
+
+        res_404 = http.request("GET", "/no-retry-404")
+        assert res_404["ok"] is False and res_404["status"] == 404
+        assert attempts["404"] == 1
+
+        res_502 = http.request("GET", "/always-502")
+        assert res_502["ok"] is False and res_502.get("network_error") is True
     finally:
         http.set_client(None)

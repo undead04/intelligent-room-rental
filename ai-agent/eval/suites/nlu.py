@@ -50,7 +50,16 @@ def llm_analyzer(model: Any, skills: dict) -> Analyzer:
         ctx = c["ctx"]
         n = ctx.get("n_rooms", 0)
         brief = "; ".join(f"Top {i}: Phòng {i}" for i in range(1, n + 1))
-        return analyze_turn(model, c["text"], _pref(ctx), rooms_brief=brief, n_rooms=n, skills=skills)
+        return analyze_turn(
+            model,
+            c["text"],
+            _pref(ctx),
+            rooms_brief=brief,
+            n_rooms=n,
+            skills=skills,
+            page_info=ctx.get("page_info", ""),
+            pending_location=ctx.get("pending_location", ""),
+        )
     return run
 
 
@@ -80,6 +89,15 @@ def oracle_analyzer() -> Analyzer:
             intent=intent,
             skill_slug=e.get("skill"),
             referenced_room_rank=e.get("rank"),
+            is_multi_intent=bool(e.get("is_multi_intent", False)),
+            task_order=list(e.get("task_order", [])),
+            page_action=e.get("page_action"),
+            target_page=e.get("target_page"),
+            revert_mode=e.get("revert_mode"),
+            revert_turn=e.get("revert_turn"),
+            is_location_pivot=bool(e.get("is_location_pivot", False)),
+            followup_current_page_first=bool(e.get("followup_current_page_first", False)),
+            needs_budget_clarification=bool(e.get("needs_budget_clarification", False)),
             patch=patch,
             priorities=Priorities(**e.get("priorities", {})),
         )
@@ -106,6 +124,15 @@ def _flat(a: TurnAnalysis) -> dict[str, Any]:
         "clear": set(p.clear),
         "skill": a.skill_slug,
         "rank": a.referenced_room_rank,
+        "is_multi_intent": a.is_multi_intent,
+        "task_order": list(a.task_order),
+        "page_action": a.page_action,
+        "target_page": a.target_page,
+        "revert_mode": a.revert_mode,
+        "revert_turn": a.revert_turn,
+        "is_location_pivot": a.is_location_pivot,
+        "followup_current_page_first": a.followup_current_page_first,
+        "needs_budget_clarification": a.needs_budget_clarification,
         "priorities": {k: v for k, v in a.priorities.model_dump().items() if v is not None},
     }
 

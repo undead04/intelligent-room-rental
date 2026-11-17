@@ -12,7 +12,7 @@ interface AgentInsightPanelProps {
 
 const FACTOR_LABELS: Record<string, { label: string; icon: string }> = {
   price: { label: "Độ hợp lý giá (ML)", icon: "payments" },
-  location: { label: "Vị trí & Khoảng cách", icon: "near_me" },
+  location: { label: "Vị trí khu vực", icon: "near_me" },
   safety: { label: "An ninh khu vực", icon: "shield" },
   amenity: { label: "Tiện nghi yêu cầu", icon: "home_iot_device" },
   semantic: { label: "Độ khớp nhu cầu", icon: "psychology" },
@@ -79,12 +79,14 @@ export default function AgentInsightPanel({
     // 2. Score comparison
     const higherScoreCount = otherRooms.filter((r) => room.matchScore > r.matchScore).length;
 
-    // 3. Amenities comparison
-    const uniqueTags = room.tags.filter(
+    // 3. Amenities comparison (lọc bỏ nhãn diện tích thuần như "16 m²")
+    const isAreaOnlyTag = (tag: string) => /^\d+(\.\d+)?\s*(m²|m2)$/i.test(tag.trim());
+    const comparableTags = room.tags.filter((t) => !isAreaOnlyTag(t));
+    const uniqueTags = comparableTags.filter(
       (tag) => !otherRooms.some((o) => o.tags.includes(tag))
     );
     const missingTags = Array.from(
-      new Set(otherRooms.flatMap((o) => o.tags))
+      new Set(otherRooms.flatMap((o) => o.tags.filter((t) => !isAreaOnlyTag(t))))
     ).filter((tag) => !room.tags.includes(tag));
 
     // 4. Advantages (+) vs the other 4 rooms
@@ -124,8 +126,8 @@ export default function AgentInsightPanel({
       advantages.push(
         `Đặc điểm nổi bật riêng: Có ${uniqueTags.join(", ")} mà các phòng còn lại chưa ghi nhận.`
       );
-    } else if (room.tags.length > 0) {
-      advantages.push(`Đặc điểm & tiện ích: ${room.tags.join(", ")}.`);
+    } else if (comparableTags.length > 0) {
+      advantages.push(`Đặc điểm & tiện ích: ${comparableTags.join(", ")}.`);
     }
 
     advantages.push(`Địa chỉ cụ thể: ${room.address} (Khoảng cách: ${room.distance}).`);
@@ -142,9 +144,9 @@ export default function AgentInsightPanel({
       );
     }
 
-    if (room.rank > 1 && rooms[0]) {
+    if (room.rank > rooms[0]?.rank && rooms[0]) {
       considerations.push(
-        `So với Phòng Top #1 (${rooms[0].price}): Điểm tổng thể thấp hơn (${(room.matchScore * 100).toFixed(1)}% so với ${(rooms[0].matchScore * 100).toFixed(1)}%).`
+        `So với Phòng Top #${rooms[0].rank} (${rooms[0].price}): Điểm tổng thể thấp hơn (${(room.matchScore * 100).toFixed(1)}% so với ${(rooms[0].matchScore * 100).toFixed(1)}%).`
       );
     }
 
@@ -211,48 +213,49 @@ export default function AgentInsightPanel({
   }, [room]);
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col flex-1 min-h-0 overflow-hidden">
-      <div className="px-4 py-2 border-b border-[#E8E4DC] flex items-center justify-between bg-white shrink-0">
-        <h2 className="text-sm font-bold text-[#0F5F4A] flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#0F5F4A]"></span>
-          <span>4. Phân tích & So sánh của Agent</span>
+    <div className="bg-white rounded-2xl border border-[#D8E4DF] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col flex-1 min-h-0 overflow-hidden">
+      {/* Header đồng nhất 44px */}
+      <div className="h-11 px-4 border-b border-[#E8E4DC] flex items-center justify-between gap-2 bg-white shrink-0">
+        <h2 className="text-[13.5px] font-bold text-[#0F5F4A] flex items-center gap-2 whitespace-nowrap min-w-0">
+          <span className="w-2 h-2 rounded-full bg-[#0F5F4A] shrink-0"></span>
+          <span className="truncate">4. Phân tích của AI Agent</span>
         </h2>
         {rooms.length > 0 && (
-          <span className="text-[10px] text-[#0F5F4A] bg-[#E6F4EE] font-bold px-2 py-0.5 rounded-full">
-            Đối sánh {rooms.length} phòng
+          <span className="text-[11px] text-[#0F5F4A] bg-[#E6F4EE] border border-[#0F5F4A]/15 font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0">
+            Đối sánh Top {rooms.length}
           </span>
         )}
       </div>
 
       {!room ? (
-        <div className="flex-1 p-5 overflow-y-auto bg-[#FAFBF9] flex flex-col items-center justify-center text-center">
-          <div className="w-12 h-12 rounded-2xl bg-[#E6F4EE] border border-[#0F5F4A]/20 flex items-center justify-center text-[#0F5F4A] mb-3 shadow-xs">
+        <div className="flex-1 p-5 overflow-y-auto bg-[#FAF8F4]/55 flex flex-col items-center justify-center text-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#E6F4EE] border border-[#0F5F4A]/20 flex items-center justify-center text-[#0F5F4A] mb-3 shadow-2xs">
             <span className="material-symbols-outlined text-[24px]">psychology</span>
           </div>
-          <h3 className="text-xs font-bold text-[#121E1A] mb-1">
+          <h3 className="text-sm font-bold text-[#121E1A] mb-1">
             Chưa chọn phòng trọ
           </h3>
-          <p className="text-[11px] text-[#6F7974] max-w-[270px] leading-relaxed mb-4">
+          <p className="text-xs text-[#4A5550] max-w-[280px] leading-relaxed">
             Bấm vào bất kỳ phòng nào trong danh sách hoặc trên bản đồ để xem chi tiết điểm Rerank, địa chỉ và so sánh ưu/nhược điểm.
           </p>
         </div>
       ) : (
-        <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs bg-[#FAFBF9]">
+        <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs bg-[#FAF8F4]/55">
           {/* AI Agent Decision Support (Dynamic MCDM) */}
           {insights && (room.rank === 1 || room.id === insights.selected_top_1_id) && (
             <div className="bg-gradient-to-r from-[#E6F4EE]/90 via-[#F0FDF8] to-white rounded-xl p-3.5 border border-[#0F5F4A]/25 shadow-2xs space-y-2">
-              <div className="flex items-center gap-1.5 text-[#0F5F4A] font-bold text-[12px]">
+              <div className="flex items-center gap-1.5 text-[#0F5F4A] font-bold text-[12.5px]">
                 <span className="material-symbols-outlined text-[16px]">psychology</span>
-                <span>Lý do lựa chọn Top 1 (Dynamic MCDM):</span>
+                <span>Lý do lựa chọn Top 1 (Dynamic MCDM)</span>
               </div>
-              <p className="text-[11px] text-[#121E1A] leading-relaxed">
+              <p className="text-[12px] text-[#121E1A] leading-relaxed">
                 {insights.top_1_reason}
               </p>
               {insights.key_factors && insights.key_factors.length > 0 && (
                 <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                  <span className="text-[10px] text-[#6F7974] font-medium">Tiêu chí then chốt:</span>
+                  <span className="text-[11px] text-[#6F7974] font-medium">Tiêu chí then chốt:</span>
                   {insights.key_factors.map((kf, idx) => (
-                    <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-[#0F5F4A]/20 text-[#0F5F4A] text-[10px] font-bold shadow-2xs">
+                    <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-[#0F5F4A]/20 text-[#0F5F4A] text-[10.5px] font-bold shadow-2xs">
                       {kf}
                     </span>
                   ))}
@@ -264,26 +267,35 @@ export default function AgentInsightPanel({
           {/* Detailed Room Header Card */}
           <div className="bg-white rounded-xl p-3.5 border border-[#E8E4DC] shadow-2xs space-y-2.5">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-1.5 text-[#0F5F4A] font-bold min-w-0">
-                <span className="text-[#FF6B4A] shrink-0 mt-0.5">
-                  {room.rank === 1 ? "👑" : room.rank === 2 ? "🥈" : room.rank === 3 ? "🥉" : "📌"}
+              <div className="flex items-start gap-2 min-w-0">
+                <span
+                  className={`inline-flex items-center justify-center gap-0.5 px-2 py-0.5 rounded-full text-[10.5px] font-bold shrink-0 mt-0.5 ${
+                    room.rank === 1
+                      ? "bg-[#0F5F4A] text-white"
+                      : "bg-[#E6F4EE] text-[#0F5F4A] border border-[#0F5F4A]/20"
+                  }`}
+                >
+                  {room.rank === 1 && (
+                    <span className="material-symbols-outlined text-[12px]">workspace_premium</span>
+                  )}
+                  <span>#{room.rank}</span>
                 </span>
-                <span className="leading-snug text-[#121E1A] font-bold text-[12.5px]">
-                  Phòng #{room.rank}: {room.title}
+                <span className="leading-snug text-[#121E1A] font-bold text-[13px]">
+                  {room.title}
                 </span>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#E6F4EE] text-[#0F5F4A] border border-[#0F5F4A]/20 shrink-0 whitespace-nowrap">
-                Độ hợp: {(room.matchScore * 100).toFixed(1)}% ({room.matchScore})
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#E6F4EE] text-[#0F5F4A] border border-[#0F5F4A]/20 shrink-0 whitespace-nowrap">
+                Độ hợp: {(room.matchScore * 100).toFixed(1)}%
               </span>
             </div>
 
             {/* Full Street Address */}
-            <div className="flex items-start gap-1.5 text-[11px] text-[#334155] bg-[#F8FAFC] px-2.5 py-1.5 rounded-lg border border-[#E2E8F0]">
+            <div className="flex items-start gap-1.5 text-[11.5px] text-[#4A5550] bg-[#FAF8F4] px-2.5 py-1.5 rounded-lg border border-[#E8E4DC]">
               <span className="material-symbols-outlined text-[15px] text-[#0F5F4A] shrink-0 mt-0.5">
                 location_on
               </span>
               <div>
-                <span className="font-semibold text-[#0F172A]">Địa chỉ: </span>
+                <span className="font-semibold text-[#121E1A]">Địa chỉ: </span>
                 <span>{room.address}</span>
               </div>
             </div>
@@ -342,34 +354,41 @@ export default function AgentInsightPanel({
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {explainBreakdown.factors.map((f) => (
-                    <div
-                      key={f.key}
-                      className="bg-[#FAFBF9] border border-[#E8E4DC] rounded-lg px-2.5 py-1.5 space-y-1"
-                    >
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="font-semibold text-[#1E293B] truncate">{f.label}</span>
-                        <span className="font-bold text-[#0F5F4A] shrink-0">
-                          {f.fitPct}%{" "}
-                          <span className="text-[9px] font-normal text-[#64748B]">
-                            (w={f.weightPct}%)
+                  {explainBreakdown.factors.map((f, idx) => {
+                    const isOddLast =
+                      explainBreakdown.factors.length % 2 === 1 &&
+                      idx === explainBreakdown.factors.length - 1;
+                    return (
+                      <div
+                        key={f.key}
+                        className={`bg-[#FAF8F4] border border-[#E8E4DC] rounded-lg px-2.5 py-2 space-y-1 ${
+                          isOddLast ? "sm:col-span-2" : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px] gap-2">
+                          <span className="font-semibold text-[#121E1A] truncate">{f.label}</span>
+                          <span className="font-bold text-[#0F5F4A] shrink-0">
+                            {f.fitPct}%{" "}
+                            <span className="text-[10px] font-normal text-[#6F7974]">
+                              (w={f.weightPct}%)
+                            </span>
                           </span>
-                        </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-[#E8E4DC] rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              f.fitPct >= 70
+                                ? "bg-[#0F5F4A]"
+                                : f.fitPct >= 45
+                                ? "bg-[#E88C38]"
+                                : "bg-[#DC2626]"
+                            }`}
+                            style={{ width: `${Math.max(6, Math.min(100, f.fitPct))}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            f.fitPct >= 70
-                              ? "bg-[#0F5F4A]"
-                              : f.fitPct >= 45
-                              ? "bg-[#F59E0B]"
-                              : "bg-[#EF4444]"
-                          }`}
-                          style={{ width: `${Math.max(6, Math.min(100, f.fitPct))}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
