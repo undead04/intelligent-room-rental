@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from core.llm import invoke_with_retry
 from domain.enums import amenity_label
 from domain.schemas import UserPreferenceState
 from graph.deps import Deps
@@ -60,7 +61,7 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
         return "", []
 
     is_followup = bool(state.get("is_followup"))
-    explicit_focus = state.get("focus_rank")
+    explicit_focus = state.get("focus_rank") if is_followup else None
     focus_rank: Optional[int] = (
         explicit_focus
         if explicit_focus is not None
@@ -76,8 +77,15 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
     )
     compact_detail: dict[str, Any] = {}
     room_detail_str = ""
+    is_retry = int(state.get("answer_retry_count") or 0) > 0
+    prior_evidence = list(state.get("tool_evidence") or [])
 
-    if target_room:
+    if target_room and is_retry:
+        room_detail_str = next(
+            (str(ev) for ev in prior_evidence if isinstance(ev, str) and ev.strip().startswith("{") and target_room.id in ev),
+            "",
+        )
+    elif target_room:
         res = tool_event(
             trace,
             "get_listing_detail",
@@ -89,13 +97,26 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
             compact_detail = compact_listing_detail(res.get("data"))
             room_detail_str = dump({"ok": True, "data": compact_detail})
 
+    cur_task = state.get("current_task")
+    pending_tasks = list(state.get("pending_tasks") or [])
+    has_pending_followup = (cur_task == "search" and "followup" in pending_tasks)
+    if has_pending_followup:
+        scoped_q = (state.get("semantic_query") or state.get("user_message", "")).strip()
+        effective_question = (
+            f"{scoped_q}\n"
+            "(Lưu ý phạm vi bước này: chỉ tóm tắt và so sánh ngắn gọn các phòng vừa tìm được; "
+            "KHÔNG gọi `get_listing_detail` vì phần kiểm tra chi tiết phòng sẽ chạy ở bước kế tiếp.)"
+        )
+    else:
+        effective_question = state.get("user_message", "")
+
     context_msg = build_decision_context_message(
         pref,
         rooms,
         target_room_detail=room_detail_str or None,
     )
     query_msg = build_decision_query_message(
-        state.get("user_message", ""),
+        effective_question,
         focus_rank=focus_rank,
         retry_issues=state.get("answer_issues"),
     )
@@ -112,7 +133,10 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
             *hist,
             HumanMessage(content=query_msg),
         ]
-        result = agent.invoke({"messages": messages}, config={"callbacks": [TraceCollector(trace, node_name="decision_node")]})
+        result = invoke_with_retry(
+            lambda: agent.invoke({"messages": messages}, config={"callbacks": [TraceCollector(trace, node_name="decision_node")]}),
+            context="decision_node",
+        )
         msgs = result.get("messages", [])
         evidence.extend(extract_message_text(m) for m in msgs if isinstance(m, ToolMessage))
         for m in reversed(msgs):

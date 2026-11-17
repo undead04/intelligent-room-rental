@@ -22,6 +22,10 @@ from safety.grounding import (
 _NON_RETRYABLE_DOD_CONDS = frozenset({
     "cond_search_trace",
     "cond_skill_trace",
+    "cond_market_stats_trace",
+    "cond_no_unrequested_search",
+    "cond_no_premature_detail_on_search",
+    "cond_no_duplicate_detail_call",
     "cond_max_price",
     "cond_min_price",
     "cond_min_area",
@@ -51,16 +55,36 @@ def make_verify_node(deps: Deps):
         pending_tasks = list(state.get("pending_tasks") or [])
         cur_task = state.get("current_task")
         is_multi_step = bool(pending_tasks or state.get("partial_replies"))
-        eff_skill = None if ("advisory" in pending_tasks or cur_task in ("followup", "search")) else matched_skill
-        if cur_task == "followup":
-            eff_intent = "room_followup"
-            eff_user_msg = "" if is_multi_step else user_msg
-        elif cur_task == "search":
-            eff_intent = "new_search" if intent in ("skill_advice", "room_followup") else intent
-            eff_user_msg = (state.get("semantic_query") or "") if is_multi_step else user_msg
+        is_advisory_step = (cur_task == "advisory") or (
+            not cur_task
+            and intent == "skill_advice"
+            and bool(matched_skill or state.get("matched_skills"))
+        )
+        if is_advisory_step:
+            eff_skill = matched_skill
+            eff_skills = state.get("matched_skills")
+            eff_intent = "skill_advice"
+            eff_user_msg = "" if (is_multi_step or state.get("needs_clarification")) else user_msg
+            grounding_rooms = []
+            grounding_pref = None
+            enforce_constraints = False
+            dod_pref = None
         else:
-            eff_intent = intent
-            eff_user_msg = user_msg
+            eff_skill = None if ("advisory" in pending_tasks or cur_task in ("followup", "search")) else matched_skill
+            eff_skills = None if eff_skill is None else state.get("matched_skills")
+            grounding_rooms = rooms
+            grounding_pref = pref
+            enforce_constraints = True
+            dod_pref = pref
+            if cur_task == "followup":
+                eff_intent = "room_followup"
+                eff_user_msg = "" if is_multi_step else user_msg
+            elif cur_task == "search":
+                eff_intent = "new_search" if intent in ("skill_advice", "room_followup") else intent
+                eff_user_msg = (state.get("semantic_query") or "") if is_multi_step else user_msg
+            else:
+                eff_intent = intent
+                eff_user_msg = user_msg
 
         # Bổ sung ngữ cảnh thị trường/ngân sách khi kiểm tra trường hợp 0 phòng
         extra_texts = list(evidence)
@@ -79,12 +103,12 @@ def make_verify_node(deps: Deps):
         # 1) Validation 3 tầng theo chi phí tăng dần (Short-circuit tại tầng lỗi đầu tiên)
         chk = verify_answer_grounding(
             final_text,
-            rooms,
-            pref,
+            grounding_rooms,
+            grounding_pref,
             extra_texts=extra_texts,
             extra_amounts=extra_amounts,
             user_text=user_msg,
-            enforce_room_constraints=True,
+            enforce_room_constraints=enforce_constraints,
             short_circuit=True,
         )
         issues = list(chk.issues)
@@ -92,15 +116,15 @@ def make_verify_node(deps: Deps):
 
         # Lớp Critic LLM chỉ chạy khi toàn bộ 3 tầng code validation đã qua
         critic_res = None
-        if not issues and deps.enable_critic and deps.verify_answers and rooms:
+        if not issues and deps.enable_critic and deps.verify_answers and grounding_rooms:
             critic_llm = deps.get_llm(temperature=LLM_NLU_TEMPERATURE)
             critic_res = traced_call(
                 trace_store.sink(),
                 lambda: critic_answer_validation(
-                    critic_llm, final_text, rooms, extra_texts, user_text=eff_user_msg
+                    critic_llm, final_text, grounding_rooms, extra_texts, user_text=eff_user_msg
                 ),
                 node="verify_node",
-                input_data={"user_text": eff_user_msg, "room_count": len(rooms)},
+                input_data={"user_text": eff_user_msg, "room_count": len(grounding_rooms)},
             )
             for c in critic_res.unsupported_claims:
                 msg = f"Phát biểu thiếu căn cứ trong dữ liệu: {c}"
@@ -140,24 +164,59 @@ def make_verify_node(deps: Deps):
             if isinstance(search_args, dict)
             else None
         )
+        is_advisory_sorry = isinstance(final_text, str) and final_text.startswith(
+            "Xin lỗi bạn, Homigo chưa tra cứu được cẩm nang"
+        )
+        require_market_stats = (
+            is_advisory_step
+            and not bool(state.get("needs_clarification"))
+            and not is_advisory_sorry
+        )
+        allow_unrequested_search = (
+            intent == "skill_advice"
+            and cur_task != "search"
+            and "search" not in pending_tasks
+        )
+        forbid_premature_detail = (cur_task == "search" and "followup" in pending_tasks)
+        forbid_dup_detail = (cur_task == "followup" or bool(state.get("is_followup")))
+        reused_cached = set(state.get("reused_cached_skills") or [])
+        dod_intent = eff_intent
+        dod_skill = eff_skill
+        dod_skills = eff_skills
+        if is_advisory_step and reused_cached:
+            raw_eff = list(eff_skills or ([eff_skill] if eff_skill else []))
+            uncached_skills = [s for s in raw_eff if s not in reused_cached]
+            if not uncached_skills:
+                dod_skill = None
+                dod_skills = []
+                if dod_intent == "skill_advice":
+                    dod_intent = "skill_advice_cached"
+            else:
+                dod_skill = uncached_skills[0]
+                dod_skills = uncached_skills
         spec = derive_dod_spec(
-            eff_intent,
-            pref,
+            dod_intent,
+            dod_pref,
             user_message=eff_user_msg,
-            matched_skill=eff_skill,
+            matched_skill=dod_skill,
+            matched_skills=dod_skills,
             effective_radius_km=effective_radius,
-            include_answer_checks=True,
+            include_answer_checks=not is_advisory_sorry,
+            require_market_stats_trace=require_market_stats,
+            allow_unrequested_search_check=allow_unrequested_search,
+            forbid_detail_on_search_step=forbid_premature_detail,
+            forbid_duplicate_detail_call=forbid_dup_detail,
         )
         direct_system_state = {
-            "rooms": rooms,
+            "rooms": grounding_rooms,
             "tool_evidence": evidence,
             "market_context": state.get("market_context"),
             "admin_not_found": state.get("admin_not_found"),
             "location_not_found": state.get("location_not_found"),
             "ambiguous_candidates": state.get("ambiguous_candidates"),
             "search_error": state.get("search_error"),
-            "lat": getattr(pref, "lat", None) if pref else None,
-            "lng": getattr(pref, "lng", None) if pref else None,
+            "lat": getattr(dod_pref, "lat", None) if dod_pref else None,
+            "lng": getattr(dod_pref, "lng", None) if dod_pref else None,
         }
         dod_report = verify_dod(
             spec,
@@ -181,7 +240,15 @@ def make_verify_node(deps: Deps):
         enforce = bool(deps.verify_answers)
         failure_cids = {f.get("condition_id") for f in verifier_out.get("failures", [])}
         non_retryable_trace_fail = bool(
-            failure_cids & {"cond_search_trace", "cond_skill_trace"}
+            failure_cids
+            & {
+                "cond_search_trace",
+                "cond_skill_trace",
+                "cond_market_stats_trace",
+                "cond_no_unrequested_search",
+                "cond_no_premature_detail_on_search",
+                "cond_no_duplicate_detail_call",
+            }
         ) or bool(state.get("search_error"))
         state_level_only = (
             bool(failure_cids)
@@ -210,7 +277,17 @@ def make_verify_node(deps: Deps):
                 # Lỗi ở tầng hệ thống/ràng buộc phòng hoặc trace: Decision retry không sửa được -> dừng & báo lỗi rõ ràng
                 next_decision = "ask_user" if state.get("admin_not_found") or state.get("location_not_found") or state.get("ambiguous_candidates") else "stop_and_report"
                 retry_notes.append(f"Verifier {next_decision}: {all_issues}")
-                if not rooms:
+                if is_advisory_step:
+                    if non_retryable_trace_fail or not str(final_text).strip():
+                        update["final_text"] = (
+                            "Hệ thống chưa xác thực được đầy đủ dữ liệu tư vấn hoặc thống kê giá thực tế cho yêu cầu này. "
+                            "Bạn vui lòng thử lại hoặc nêu rõ tên quận/huyện cần tra cứu nhé."
+                        )
+                        if "cond_no_unrequested_search" in failure_cids:
+                            update["retrieved_rooms"] = []
+                            update["searched"] = False
+                        fallback_used = True
+                elif not rooms:
                     session = None
                     if deps.sessions is not None and state.get("session_id"):
                         session = deps.sessions.get_or_create_session(state["session_id"])
@@ -230,6 +307,9 @@ def make_verify_node(deps: Deps):
                         "Hệ thống phát hiện kết quả hiện tại chưa thỏa mãn đầy đủ điều kiện kiểm định DoD "
                         f"({'; '.join(all_issues[:2])}). Bạn vui lòng điều chỉnh lại tiêu chí tìm kiếm hoặc xác nhận yêu cầu để mình lọc lại chính xác hơn."
                     )
+                    if "cond_no_unrequested_search" in failure_cids:
+                        update["retrieved_rooms"] = []
+                        update["searched"] = False
                     fallback_used = True
                 answer_grounded = True
             else:
@@ -242,7 +322,13 @@ def make_verify_node(deps: Deps):
                     # Vượt giới hạn tự sửa -> đường thoát xác định, không bao giờ gửi lời báo thành công giả
                     fallback_used = True
                     answer_grounded = True
-                    if not rooms:
+                    if is_advisory_step:
+                        next_decision = "stop_and_report"
+                        update["final_text"] = (
+                            "Rất tiếc, hiện hệ thống chưa thể xác thực đầy đủ thông tin tư vấn cho câu hỏi này. "
+                            "Bạn vui lòng thử hỏi lại cụ thể hơn nhé."
+                        )
+                    elif not rooms:
                         next_decision = "stop_and_report"
                         session = None
                         if deps.sessions is not None and state.get("session_id"):

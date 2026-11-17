@@ -1,4 +1,9 @@
-import type { AgentTraceEvent, AgentTraceVersions, VerifierFailureItem } from "@/types/dto/agent";
+import type {
+  AgentTraceEvent,
+  AgentTraceVersions,
+  LocationRetryAttempt,
+  VerifierFailureItem,
+} from "@/types/dto/agent";
 
 export interface NodeMeta {
   label: string;
@@ -151,6 +156,17 @@ export interface SuspiciousListingTraceItem {
   rawEvents: AgentTraceEvent[];
 }
 
+export interface LocationRetryTraceItem {
+  kind: "location_retry";
+  uid: string;
+  node: string;
+  attempts: LocationRetryAttempt[];
+  finalKind?: string;
+  seq?: number;
+  ts?: number;
+  rawEvents: AgentTraceEvent[];
+}
+
 export interface GenericTraceItem {
   kind: "generic";
   uid: string;
@@ -167,6 +183,7 @@ export type TraceTimelineItem =
   | VerifierTraceItem
   | AdaptiveRadiusTraceItem
   | SuspiciousListingTraceItem
+  | LocationRetryTraceItem
   | GenericTraceItem;
 
 export interface TraceStepGroup {
@@ -404,6 +421,8 @@ function buildAutoStepSummary(group: TraceStepGroup): string {
       parts.push(`Mở rộng ${item.fromRadius ?? "?"}km → ${item.toRadius ?? "?"}km`);
     } else if (item.kind === "suspicious_listing") {
       parts.push(`Loại tin ${item.listingId || ""}`.trim());
+    } else if (item.kind === "location_retry") {
+      parts.push(`Retry định vị (${item.attempts.length} lần) → ${item.finalKind || "unknown"}`);
     } else if (item.kind === "model_call") {
       parts.push(summarizeModelOutput(item));
     }
@@ -429,7 +448,12 @@ function deriveGroupStatus(group: TraceStepGroup): "running" | "ok" | "warning" 
   }
   if (
     nodeStatus === "warning" ||
-    group.items.some((it) => it.kind === "adaptive_radius" || it.kind === "suspicious_listing")
+    group.items.some(
+      (it) =>
+        it.kind === "adaptive_radius" ||
+        it.kind === "suspicious_listing" ||
+        (it.kind === "location_retry" && it.finalKind !== "resolved"),
+    )
   ) {
     return "warning";
   }
@@ -696,6 +720,20 @@ export function buildTraceStepGroups(events: AgentTraceEvent[]): TraceStepGroup[
           toRadius: ev.to_radius,
           validRoomsBefore: ev.valid_rooms_before,
           reason: ev.reason,
+          seq: ev.seq,
+          ts: ev.ts ?? ev.timestamp,
+          rawEvents: [ev],
+        });
+        continue;
+      }
+
+      if (ev.type === "resolve_location_retry") {
+        items.push({
+          kind: "location_retry",
+          uid: baseUid,
+          node: bucket.node,
+          attempts: Array.isArray(ev.attempts) ? ev.attempts : [],
+          finalKind: ev.final_kind,
           seq: ev.seq,
           ts: ev.ts ?? ev.timestamp,
           rawEvents: [ev],

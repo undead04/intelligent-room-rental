@@ -91,6 +91,7 @@ class SessionData:
         self.focused_room_rank: Optional[int] = None
         self.pending_ambiguous_location: Optional[str] = None
         self.pending_ambiguous_candidates: list[dict[str, Any]] = []
+        self.consulted_skills: dict[str, dict[str, str]] = {}
 
     def clear_latest_location_snapshot(self) -> None:
         """Xoá location lỗi/chưa phân giải khỏi snapshot mới nhất (giữ nguyên giá/diện tích/loại phòng/tiện ích)."""

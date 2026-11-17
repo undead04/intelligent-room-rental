@@ -25,6 +25,8 @@ class HousingAgentState(TypedDict, total=False):
     needs_budget_clarification: bool
     direct_reply: bool
     matched_skill: Optional[str]
+    matched_skills: list[str]
+    reused_cached_skills: list[str]
     skill_context: Optional[dict[str, Any]]
     current_task: Optional[str]
     pending_tasks: list[str]

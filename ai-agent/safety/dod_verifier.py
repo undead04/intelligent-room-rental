@@ -139,8 +139,13 @@ def derive_dod_spec(
     *,
     user_message: str = "",
     matched_skill: Optional[str] = None,
+    matched_skills: Optional[Sequence[str]] = None,
     effective_radius_km: Optional[float] = None,
     include_answer_checks: bool = True,
+    require_market_stats_trace: bool = False,
+    allow_unrequested_search_check: bool = True,
+    forbid_detail_on_search_step: bool = False,
+    forbid_duplicate_detail_call: bool = False,
 ) -> DoDSpec:
     """Suy danh sách điều kiện DoD từ yêu cầu thực của tác vụ; không dùng dấu hiệu bề mặt."""
     pref = preferences or UserPreferenceState()
@@ -307,16 +312,77 @@ def derive_dod_spec(
             )
         )
 
-    if intent == "skill_advice" or matched_skill:
+    skills_list = tuple(
+        dict.fromkeys(
+            s for s in ([*(matched_skills or ()), matched_skill] if (matched_skills or matched_skill) else []) if s
+        )
+    )
+    if intent == "skill_advice" or skills_list:
+        skill_threshold: Any = (
+            skills_list if len(skills_list) > 1 else (skills_list[0] if skills_list else "consult_housing_skill")
+        )
+        skill_label = ", ".join(skills_list) if skills_list else "consult_housing_skill"
         conds.append(
             DoDCondition(
                 requirement_id="req_skill_consult",
-                requirement_desc=f"Tham vấn đúng tài liệu kỹ năng '{matched_skill or 'consult_housing_skill'}'",
+                requirement_desc=f"Tham vấn đúng tài liệu kỹ năng '{skill_label}'",
                 condition_id="cond_skill_trace",
                 description="Trace ghi nhận tool consult_housing_skill chạy thành công với status='ok'",
                 verifier_type="trace_code",
                 operator="tool_executed_ok",
-                threshold=matched_skill or "consult_housing_skill",
+                threshold=skill_threshold,
+                unit="call",
+            )
+        )
+    if require_market_stats_trace and "market-price-advisor" in skills_list:
+        conds.append(
+            DoDCondition(
+                requirement_id="req_market_stats_trace",
+                requirement_desc="Tra cứu số liệu thống kê giá thực tế từ tool get_market_price_stats",
+                condition_id="cond_market_stats_trace",
+                description="Trace ghi nhận tool get_market_price_stats chạy thành công với status='ok'",
+                verifier_type="trace_code",
+                operator="tool_executed_ok",
+                threshold="get_market_price_stats",
+                unit="call",
+            )
+        )
+    if intent == "skill_advice" and allow_unrequested_search_check:
+        conds.append(
+            DoDCondition(
+                requirement_id="req_no_unrequested_search",
+                requirement_desc="Lượt tư vấn kỹ năng thuần túy không tự ý gọi tìm kiếm phòng",
+                condition_id="cond_no_unrequested_search",
+                description="Trace không ghi nhận tool search_rooms khi chỉ tư vấn kỹ năng",
+                verifier_type="trace_code",
+                operator="tool_not_called",
+                threshold=0,
+                unit="call",
+            )
+        )
+    if forbid_detail_on_search_step:
+        conds.append(
+            DoDCondition(
+                requirement_id="req_no_premature_detail_on_search",
+                requirement_desc="Bước search trước khi chạy followup không gọi sớm get_listing_detail",
+                condition_id="cond_no_premature_detail_on_search",
+                description="Trace ở bước search không ghi nhận get_listing_detail trước khi bước followup thực thi",
+                verifier_type="trace_code",
+                operator="tool_not_called",
+                threshold=0,
+                unit="call",
+            )
+        )
+    if forbid_duplicate_detail_call:
+        conds.append(
+            DoDCondition(
+                requirement_id="req_no_duplicate_detail_call",
+                requirement_desc="Không gọi lặp get_listing_detail nhiều lần cho cùng một mã phòng",
+                condition_id="cond_no_duplicate_detail_call",
+                description="Mỗi listing_id chỉ được gọi get_listing_detail tối đa 1 lần trong lượt",
+                verifier_type="trace_code",
+                operator="<=",
+                threshold=1,
                 unit="call",
             )
         )
@@ -558,6 +624,19 @@ def verify_dod(
                 and sp.get("status") == "ok"
             ]
             expected_slug = cond.threshold
+            if isinstance(expected_slug, (tuple, list)):
+                called_slugs = {
+                    (sp.get("args") or sp.get("arguments") or {}).get("skill_name")
+                    for sp in skill_spans
+                }
+                missing = [s for s in expected_slug if s not in called_slugs]
+                if not missing:
+                    evaluated.append(replace(cond, actual_value=tuple(expected_slug), passed=True))
+                else:
+                    updated = replace(cond, actual_value=f"missing:{missing}", passed=False)
+                    evaluated.append(updated)
+                    _record_failure(updated, f"Chưa gọi tool consult_housing_skill cho {missing}")
+                continue
             if expected_slug and expected_slug != "consult_housing_skill":
                 matched_spans = [
                     sp for sp in skill_spans
@@ -571,6 +650,109 @@ def verify_dod(
                 updated = replace(cond, actual_value="not_called", passed=False)
                 evaluated.append(updated)
                 _record_failure(updated, f"Chưa gọi tool consult_housing_skill cho '{expected_slug}'")
+            continue
+
+        if cid == "cond_market_stats_trace":
+            if not enforce_trace:
+                evaluated.append(
+                    replace(
+                        cond,
+                        actual_value="trace_enforcement_disabled",
+                        passed=None,
+                        unverifiable_reason="Cờ enforce_trace=False trong chế độ kiểm thử đơn vị",
+                    )
+                )
+                continue
+            stats_spans = [
+                sp for sp in frozen_trace
+                if sp.get("type") == "tool_finished"
+                and (sp.get("tool") == "get_market_price_stats" or sp.get("tool_name") == "get_market_price_stats")
+                and sp.get("status") == "ok"
+            ]
+            if stats_spans:
+                evaluated.append(replace(cond, actual_value=f"called({len(stats_spans)}x, status=ok)", passed=True))
+            else:
+                updated = replace(cond, actual_value="not_called", passed=False)
+                evaluated.append(updated)
+                _record_failure(updated, "Chưa gọi tool get_market_price_stats để lấy số liệu giá thực tế")
+            continue
+
+        if cid == "cond_no_unrequested_search":
+            if not enforce_trace:
+                evaluated.append(
+                    replace(
+                        cond,
+                        actual_value="trace_enforcement_disabled",
+                        passed=None,
+                        unverifiable_reason="Cờ enforce_trace=False trong chế độ kiểm thử đơn vị",
+                    )
+                )
+                continue
+            search_spans = [
+                sp for sp in frozen_trace
+                if sp.get("type") == "tool_finished"
+                and (sp.get("tool") == "search_rooms" or sp.get("tool_name") == "search_rooms")
+            ]
+            if not search_spans:
+                evaluated.append(replace(cond, actual_value=0, passed=True))
+            else:
+                updated = replace(cond, actual_value=len(search_spans), passed=False)
+                evaluated.append(updated)
+                _record_failure(updated, "Lượt tư vấn kỹ năng thuần túy không được gọi tool search_rooms")
+            continue
+
+        if cid == "cond_no_premature_detail_on_search":
+            if not enforce_trace:
+                evaluated.append(
+                    replace(
+                        cond,
+                        actual_value="trace_enforcement_disabled",
+                        passed=None,
+                        unverifiable_reason="Cờ enforce_trace=False trong chế độ kiểm thử đơn vị",
+                    )
+                )
+                continue
+            detail_spans = [
+                sp for sp in frozen_trace
+                if sp.get("type") == "tool_finished"
+                and (sp.get("tool") == "get_listing_detail" or sp.get("tool_name") == "get_listing_detail")
+            ]
+            if not detail_spans:
+                evaluated.append(replace(cond, actual_value=0, passed=True))
+            else:
+                updated = replace(cond, actual_value=len(detail_spans), passed=False)
+                evaluated.append(updated)
+                _record_failure(updated, "Bước search đã gọi sớm get_listing_detail trước khi bước followup chạy")
+            continue
+
+        if cid == "cond_no_duplicate_detail_call":
+            if not enforce_trace:
+                evaluated.append(
+                    replace(
+                        cond,
+                        actual_value="trace_enforcement_disabled",
+                        passed=None,
+                        unverifiable_reason="Cờ enforce_trace=False trong chế độ kiểm thử đơn vị",
+                    )
+                )
+                continue
+            detail_spans = [
+                sp for sp in frozen_trace
+                if sp.get("type") == "tool_finished"
+                and (sp.get("tool") == "get_listing_detail" or sp.get("tool_name") == "get_listing_detail")
+            ]
+            counts: dict[str, int] = {}
+            for sp in detail_spans:
+                lid = str((sp.get("args") or sp.get("arguments") or {}).get("listing_id") or "")
+                if lid:
+                    counts[lid] = counts.get(lid, 0) + 1
+            dups = {k: v for k, v in counts.items() if v > int(cond.threshold)}
+            if not dups:
+                evaluated.append(replace(cond, actual_value=max(counts.values(), default=0), passed=True))
+            else:
+                updated = replace(cond, actual_value=dups, passed=False)
+                evaluated.append(updated)
+                _record_failure(updated, f"Gọi lặp get_listing_detail cho cùng phòng: {dups}")
             continue
 
         if cid == "cond_max_price":

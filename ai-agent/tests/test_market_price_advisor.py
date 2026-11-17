@@ -384,3 +384,150 @@ def test_persistent_session_and_trace_consistency(tmp_path):
     reloaded = store2.get_or_create_session("persist-1")
     assert reloaded.preferences.location_text == "Quận 7"
     assert reloaded.preferences.max_price == 4_000_000
+
+
+def test_multi_skill_market_price_and_contract_never_triggers_search():
+    """Hỏi gộp 2 skill (giá trung bình Quận 10 + điều khoản hợp đồng) chỉ chạy advisory, tuyệt đối không gọi search_rooms."""
+    db = _LocalAdminDB(districts=[
+        {"id": 764, "name": "Gò Vấp", "city_id": 79},
+        {"id": 771, "name": "Quận 10", "city_id": 79},
+    ])
+    analysis = TurnAnalysis(
+        intent="skill_advice",
+        skill_slug="market-price-advisor",
+        skill_slugs=["market-price-advisor", "rental-contract-advisor"],
+        is_multi_intent=True,  # kể cả khi NLU đánh nhầm is_multi_intent=True vì có 2 vế câu hỏi
+        patch=PreferencePatch(location_text="Quận 10", location_kind="admin"),
+    )
+    reply_ok = (
+        "Mặt bằng giá tại Quận 10 trung bình khoảng 3.6 triệu/tháng (85 tin). "
+        "Khi ký hợp đồng cần kiểm tra kỹ điều khoản tiền cọc, giá điện nước và thời hạn báo trước 30 ngày."
+    )
+    llm = FakeLLM().on("TurnAnalysis", analysis).on("text", reply_ok)
+    h = _MarketHarness(llm, db=db)
+
+    resp = h.turn("Giá phòng trọ ở Quận 10 trung bình khoảng bao nhiêu và khi ký hợp đồng thuê trọ cần kiểm tra kỹ những điều khoản nào?")
+
+    assert h.search_calls == []
+    assert h.stats_calls == [(79, 771, None)]
+    assert resp.searched is False
+    assert resp.rooms == []
+    assert resp.current_preferences.location_text is None
+    called_skills = [
+        (e.get("args") or {}).get("skill_name")
+        for e in resp.trace_events
+        if e.get("type") == "tool_finished" and e.get("tool") == "consult_housing_skill"
+    ]
+    assert called_skills == ["market-price-advisor", "rental-contract-advisor"]
+    text_calls = [m for n, m in llm.calls if n == "text"]
+    assert len(text_calls) == 1
+    assert '<skill_guide skill="market-price-advisor">' in text_calls[0][0][1]
+    assert '<skill_guide skill="rental-contract-advisor">' in text_calls[0][0][1]
+    assert "<market_stats>" in text_calls[0][-1][1]
+
+
+def test_nlu_single_market_skill_with_is_multi_intent_and_no_search_does_not_trigger_search():
+    """Hồi quy run_97439a5b04d4: NLU trả skill_advice + market-price-advisor + is_multi_intent=True + location_text -> không bật search."""
+    skills = sd.discover_housing_skills(force_reload=True)
+    model = FakeModel(
+        TurnAnalysis(
+            intent="skill_advice",
+            skill_slug="market-price-advisor",
+            is_multi_intent=True,
+            patch=PreferencePatch(location_text="Quận 10", location_kind="admin"),
+        )
+    )
+    res = analyze_turn(
+        model,
+        "Giá phòng trọ ở Quận 10 trung bình khoảng bao nhiêu và khi ký hợp đồng thuê trọ cần kiểm tra kỹ những điều khoản nào?",
+        UserPreferenceState(),
+        skills=skills,
+    )
+    assert res is not None
+    assert res.intent == "skill_advice"
+    assert res.is_multi_intent is False
+    assert res.task_order == []
+    assert res.skill_slug == "market-price-advisor"
+
+
+def test_advisory_autonomously_calls_market_tool_when_nlu_omits_location_and_runs_verify():
+    """Hồi quy run_1d84f29940e7: NLU bỏ trống patch.location_text -> advisory_node tự gọi get_market_price_stats rồi đi qua verify_node."""
+    from langchain_core.messages import AIMessage
+
+    class _ToolCapableFakeLLM(FakeLLM):
+        def bind_tools(self, tools):
+            parent = self
+
+            class _ToolBound:
+                def invoke(self, messages):
+                    parent.calls.append(("bind_tools", messages))
+                    return AIMessage(
+                        content="",
+                        tool_calls=[{
+                            "name": "get_market_price_stats",
+                            "args": {"location_text": "Quận 10"},
+                            "id": "call_q10",
+                            "type": "tool_call",
+                        }],
+                    )
+
+            return _ToolBound()
+
+    db = _LocalAdminDB(districts=[{"id": 771, "name": "Quận 10", "city_id": 79}])
+    analysis = TurnAnalysis(
+        intent="skill_advice",
+        skill_slug="market-price-advisor",
+        skill_slugs=["market-price-advisor", "rental-contract-advisor"],
+        patch=PreferencePatch(),  # NLU quên location_text
+    )
+    reply_ok = (
+        "Giá phòng trọ tại Quận 10 trung bình khoảng 3.6 triệu/tháng (85 tin đăng). "
+        "Khi ký hợp đồng cần kiểm tra rõ điều khoản tiền cọc và chi phí điện nước."
+    )
+    llm = _ToolCapableFakeLLM().on("TurnAnalysis", analysis).on("text", reply_ok)
+    h = _MarketHarness(llm, db=db)
+
+    resp = h.turn("Giá phòng trọ ở Quận 10 trung bình khoảng bao nhiêu và khi ký hợp đồng thuê trọ cần kiểm tra kỹ những điều khoản nào?")
+
+    assert h.search_calls == []
+    assert h.stats_calls == [(79, 771, None)]
+    assert resp.searched is False
+    assert "3.6 triệu" in resp.text_reply
+    verifier_spans = [e for e in resp.trace_events if e.get("type") == "verifier_decision"]
+    assert len(verifier_spans) == 1
+    assert verifier_spans[0]["passed"] is True
+    assert verifier_spans[0]["next_decision"] == "pass"
+
+
+def test_verify_blocks_advisory_when_market_price_advisor_skips_stats_tool():
+    """Nếu market-price-advisor không gọi get_market_price_stats (khi không cần clarify), verify_node phải đánh FAIL cond_market_stats_trace."""
+    from langchain_core.messages import AIMessage
+
+    class _NoToolCallLLM(FakeLLM):
+        def bind_tools(self, tools):
+            parent = self
+
+            class _ToolBound:
+                def invoke(self, messages):
+                    parent.calls.append(("bind_tools", messages))
+                    return AIMessage(content="Mình chưa có dữ liệu thống kê giá tại khu vực này nên bạn tự khảo sát nhé.")
+
+            return _ToolBound()
+
+    analysis = TurnAnalysis(
+        intent="skill_advice",
+        skill_slug="market-price-advisor",
+        skill_slugs=["market-price-advisor", "rental-contract-advisor"],
+        patch=PreferencePatch(),
+    )
+    llm = _NoToolCallLLM().on("TurnAnalysis", analysis)
+    h = _MarketHarness(llm)
+
+    resp = h.turn("Giá phòng trọ ở Quận 10 trung bình khoảng bao nhiêu và khi ký hợp đồng cần kiểm tra gì?")
+
+    assert h.stats_calls == []
+    verifier_spans = [e for e in resp.trace_events if e.get("type") == "verifier_decision"]
+    assert len(verifier_spans) == 1
+    assert verifier_spans[0]["passed"] is False
+    assert verifier_spans[0]["next_decision"] == "stop_and_report"
+    assert any(f["condition_id"] == "cond_market_stats_trace" for f in verifier_spans[0]["failures"])

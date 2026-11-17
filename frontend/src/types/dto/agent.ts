@@ -64,6 +64,14 @@ export interface VerifierFailureItem {
   tier?: string;
 }
 
+export interface LocationRetryAttempt {
+  stage?: string;
+  query?: string;
+  kind?: string | null;
+  region_hint?: string | null;
+  result_kind?: string;
+}
+
 export interface AgentTraceEvent {
   type:
     | "model_request"
@@ -75,6 +83,7 @@ export interface AgentTraceEvent {
     | "verifier_decision"
     | "adaptive_radius_expansion"
     | "suspicious_listing"
+    | "resolve_location_retry"
     | string;
   id?: string;
   run_id?: string;
@@ -141,6 +150,8 @@ export interface AgentTraceEvent {
   reason?: string;
   listing_id?: string;
   rules?: string[];
+  attempts?: LocationRetryAttempt[];
+  final_kind?: string;
 }
 
 export interface AgentResponse {

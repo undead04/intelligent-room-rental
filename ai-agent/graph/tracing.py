@@ -25,6 +25,7 @@ from typing import Any, Callable, Mapping, Optional, Union
 from langchain_core.callbacks import BaseCallbackHandler
 
 from core import paths
+from core.llm import invoke_with_retry
 from utils.freeze import deep_freeze
 
 PROMPT_VERSION = "homigo-prompt-v2.0"
@@ -644,7 +645,7 @@ def traced_call(
     err_str: Optional[str] = None
     out: Any = None
     try:
-        out = call()
+        out = invoke_with_retry(call, context=node)
         return out
     except Exception as exc:
         err_str = _redact_string(str(exc))

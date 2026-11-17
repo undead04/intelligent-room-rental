@@ -735,3 +735,42 @@ def test_verify_node_uses_last_search_args_max_distance_km_for_adaptive_radius()
     cids = {f["condition_id"] for f in res_fail["verifier_result"]["failures"]}
     assert res_fail["verifier_result"]["passed"] is False
     assert "cond_max_distance" in cids
+
+
+def test_verify_blocks_unrequested_search_on_pure_skill_advice_turn():
+    """Nếu lượt skill_advice thuần túy bị lọt vào search_rooms, DoD Verifier phải chặn fail và xóa rooms rò rỉ."""
+    trace_store = TraceStore(persist=False)
+    trace_store.append({
+        "type": "tool_finished",
+        "tool": "consult_housing_skill",
+        "status": "ok",
+        "args": {"skill_name": "market-price-advisor"},
+    })
+    trace_store.append({
+        "type": "tool_finished",
+        "tool": "search_rooms",
+        "status": "ok",
+        "args": {"query": "Phòng trọ, khu vực Quận 10"},
+    })
+    deps = _make_test_deps(trace_store=trace_store)
+    verify_node = make_verify_node(deps)
+
+    res = verify_node({
+        "session_id": "s_block_search",
+        "intent": "skill_advice",
+        "matched_skill": "market-price-advisor",
+        "matched_skills": ["market-price-advisor", "rental-contract-advisor"],
+        "user_message": "Giá phòng trọ ở Quận 10 trung bình khoảng bao nhiêu và khi ký hợp đồng thuê trọ cần kiểm tra kỹ những điều khoản nào?",
+        "preferences": UserPreferenceState(location_text="Quận 10"),
+        "retrieved_rooms": [_room(price_vnd=2_500_000)],
+        "final_text": "Phòng P101 giá 2.5 triệu/tháng.",
+        "answer_retry_count": 0,
+    })
+
+    cids = {f["condition_id"] for f in res["verifier_result"]["failures"]}
+    assert res["verifier_result"]["passed"] is False
+    assert "cond_no_unrequested_search" in cids
+    assert "cond_skill_trace" in cids
+    assert res["verifier_decision"] == "stop_and_report"
+    assert res["retrieved_rooms"] == []
+    assert res["searched"] is False

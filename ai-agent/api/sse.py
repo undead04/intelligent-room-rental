@@ -38,12 +38,21 @@ def _describe_node_update(node_name: str, update: dict[str, Any]) -> tuple[str, 
         return "Tư vấn kinh nghiệm & Kỹ năng", f"Áp dụng cẩm nang kỹ năng: {skill}", "ok"
 
     if node_name == "retrieval_node":
+        cands = update.get("ambiguous_candidates") or []
+        if cands:
+            return "Định vị địa điểm (Cần làm rõ)", f"Tìm thấy {len(cands)} địa danh trùng tên, cần bạn chọn cụ thể.", "warning"
+        if update.get("admin_not_found") or update.get("location_not_found"):
+            return "Định vị địa điểm (Không tìm thấy)", "Không phân giải được địa điểm, cần bạn bổ sung tên khu vực.", "warning"
+        if update.get("search_error"):
+            return "Truy vấn phòng (Vector Search)", "Gặp lỗi kết nối khi truy vấn tìm kiếm phòng.", "error"
         rooms = update.get("retrieved_rooms", [])
         return "Truy vấn phòng (Vector Search)", f"Tìm thấy {len(rooms)} phòng phù hợp từ cơ sở dữ liệu.", "ok"
 
     if node_name == "decision_node":
         insights = update.get("insights")
-        reason = insights.top_1_reason if insights else "Đã hoàn thành xếp hạng đa tiêu chí."
+        if not insights:
+            return "Phân tích & Phản hồi", "Đang tổng hợp câu trả lời theo ngữ cảnh thực tế.", "ok"
+        reason = insights.top_1_reason
         return "Đánh giá & Xếp hạng đa tiêu chí (MCDM)", reason[:120] + ("..." if len(reason) > 120 else ""), "ok"
 
     if node_name == "verify_node":
