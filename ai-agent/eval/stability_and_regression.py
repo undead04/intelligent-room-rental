@@ -18,6 +18,7 @@ import uuid
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping, Optional, Sequence
 
+from core.llm import get_llm
 from core.session_store import SessionStore
 from eval.datasets.agent_eval_set import (
     AGENT_EVAL_CASES,
@@ -125,6 +126,14 @@ def _to_turn_analysis(raw: Mapping[str, Any]) -> TurnAnalysis:
         skill_slug=raw.get("skill_slug"),
         referenced_room_rank=raw.get("referenced_room_rank"),
         is_multi_intent=bool(raw.get("is_multi_intent", False)),
+        task_order=list(raw.get("task_order") or ()),
+        page_action=raw.get("page_action"),
+        target_page=raw.get("target_page"),
+        revert_mode=raw.get("revert_mode"),
+        revert_turn=raw.get("revert_turn"),
+        is_location_pivot=bool(raw.get("is_location_pivot", False)),
+        followup_current_page_first=bool(raw.get("followup_current_page_first", False)),
+        needs_budget_clarification=bool(raw.get("needs_budget_clarification", False)),
         patch=patch,
         priorities=priorities,
         priority_reasons=list(raw.get("priority_reasons") or ()),
@@ -139,6 +148,7 @@ def _build_deps_for_case(
     run_index: int,
     deps_flags: Optional[Mapping[str, Any]] = None,
     versions_override: Optional[Mapping[str, str]] = None,
+    use_real_llm: bool = False,
 ) -> Deps:
     unreliable_n = case.fault_injection.unreliable_llm_every_n
     inject_unreliable = unreliable_n > 0 and ((run_index + 1) % unreliable_n == 0)
@@ -180,6 +190,9 @@ def _build_deps_for_case(
         if case.fault_injection.geocode_error:
             raise RuntimeError(case.fault_injection.geocode_error)
         if not case.initial_state.geocode_place_ok:
+            return None
+        accepted = getattr(case.initial_state, "geocode_accept_queries", ()) or ()
+        if accepted and not any(norm_key(q) == norm_key(acc) for acc in accepted):
             return None
         return {"lat": 10.87, "lng": 106.8}
 
@@ -228,7 +241,11 @@ def _build_deps_for_case(
 
     deps = Deps(
         sessions=sessions,
-        get_llm=(lambda role: llm) if llm is not None else (lambda role: None),
+        get_llm=(
+            get_llm
+            if use_real_llm
+            else ((lambda temperature=None: llm) if llm is not None else (lambda temperature=None: None))
+        ),
         base_prompt="BASE_HOMIGO_EVAL",
         decision_system_prompt="DECISION_HOMIGO_EVAL",
         search_rooms=search_rooms,
@@ -281,6 +298,7 @@ def evaluate_single_case_run(
     versions_override: Optional[Mapping[str, str]] = None,
     deps_flags: Optional[Mapping[str, Any]] = None,
     runner_hook: Optional[Callable[[EvalCase, int, TraceStore], tuple[Any, list[str]]]] = None,
+    use_real_llm: bool = False,
 ) -> dict[str, Any]:
     """Chạy 1 lượt trọn vẹn cho `case` với `run_id` độc lập và chấm Behavior + DoD + Trajectory."""
     run_id = f"run_{case.case_id}_{run_index + 1}_{uuid.uuid4().hex[:8]}"
@@ -306,6 +324,7 @@ def evaluate_single_case_run(
             run_index=run_index,
             deps_flags=deps_flags,
             versions_override=versions_override,
+            use_real_llm=use_real_llm,
         )
         graph = build_housing_graph(deps)
         sid = f"eval-{case.case_id}"
@@ -581,6 +600,7 @@ def run_repeated_eval(
     versions_override: Optional[Mapping[str, str]] = None,
     deps_flags: Optional[Mapping[str, Any]] = None,
     runner_hook: Optional[Callable[[EvalCase, int, TraceStore], tuple[Any, list[str]]]] = None,
+    use_real_llm: bool = False,
 ) -> dict[str, Any]:
     """Chạy toàn bộ `cases` mỗi case `k` lần; công bố `k` và ngưỡng đạt trước khi thực thi."""
     if k < 1:
@@ -619,6 +639,7 @@ def run_repeated_eval(
                 versions_override=versions_override,
                 deps_flags=deps_flags,
                 runner_hook=runner_hook,
+                use_real_llm=use_real_llm,
             )
             for idx in range(k)
         ]

@@ -261,3 +261,97 @@ def test_broad_area_defers_to_geocode_and_poi_dict_can_be_disabled(monkeypatch):
     assert find_poi_in_text("Tìm trọ gần KCN Amata Biên Hòa dưới 3tr") == "KCN Amata Biên Hòa"
     assert find_poi_in_text("Tìm phòng gần khu công nghiệp ở Bình Dương") is None
     assert find_poi_in_text("Tìm trọ gần trường đại học") is None
+
+
+# ---------------- resolve_location_with_retry ----------------
+def test_resolve_location_with_retry_happy_path_variant_and_llm_rewrite():
+    from tools.location_service import LocationRewrite, resolve_location_with_retry
+
+    # 1. Thành công ngay lần đầu -> chỉ 1 attempt, không gọi LLM
+    class _ForbiddenLLM:
+        def with_structured_output(self, *_a, **_kw):
+            raise AssertionError("Không được gọi LLM khi lần 0 đã phân giải thành công")
+
+    r_ok, att_ok = resolve_location_with_retry(
+        "Thủ Đức", "admin", FakeDB(), geo_ok, llm=_ForbiddenLLM()
+    )
+    assert r_ok.kind == "admin" and len(att_ok) == 1
+
+    # 2. Trượt lần 0 do tiền tố mô tả ("cổng sau ...") -> Retry 1 (variant) thành công không cần gọi LLM
+    geo_calls: list[tuple[str, str | None]] = []
+
+    def _geo_variant(q: str, hint: str | None):
+        geo_calls.append((q, hint))
+        if q == "Chợ Thủ Đức":
+            return {"lat": 10.85, "lng": 106.76}
+        return None
+
+    r_var, att_var = resolve_location_with_retry(
+        "cổng sau Chợ Thủ Đức", "place", FakeDB(), _geo_variant, llm=_ForbiddenLLM()
+    )
+    assert r_var.kind == "point" and r_var.lat == 10.85
+    assert len(att_var) == 2
+    assert att_var[1]["stage"].startswith("retry_1")
+
+    # 3. Trượt cả lần 0 và Retry 1 -> Retry 2 gọi LLM Rewrite và thành công qua geocode
+    class _RewriteLLM:
+        def with_structured_output(self, schema):
+            assert schema is LocationRewrite
+            return self
+
+        def invoke(self, _msgs):
+            return LocationRewrite(rewritten_query="Chợ Đầm, Nha Trang", location_kind="place")
+
+    def _geo_llm(q: str, hint: str | None):
+        if q == "Chợ Đầm, Nha Trang":
+            return {"lat": 12.25, "lng": 109.19}
+        return None
+
+    r_llm, att_llm = resolve_location_with_retry(
+        "chỗ gần chợ đầm ngoài nha trang", "place", FakeDB(), _geo_llm, llm=_RewriteLLM()
+    )
+    assert r_llm.kind == "point" and (r_llm.lat, r_llm.lng) == (12.25, 109.19)
+    assert att_llm[-1]["stage"].endswith("llm_rewrite")
+
+
+def test_resolve_location_with_retry_boundaries_and_fault_resilience():
+    from tools.location_service import LocationRewrite, resolve_location_with_retry
+
+    # 1. max_retries=0 -> không retry
+    r0, att0 = resolve_location_with_retry(
+        "cổng sau Chợ Lớn Xyz", "place", FakeDB(), lambda q, h: None, max_retries=0
+    )
+    assert r0.kind == "unresolved_point" and len(att0) == 1
+
+    # 2. LLM trả query trùng với chuỗi gốc hoặc ném exception -> không lặp vô hạn, không crash
+    class _BrokenOrDupLLM:
+        def __init__(self, mode: str):
+            self.mode = mode
+
+        def with_structured_output(self, _schema):
+            return self
+
+        def invoke(self, _msgs):
+            if self.mode == "boom":
+                raise RuntimeError("LLM timeout")
+            return LocationRewrite(rewritten_query="Địa Điểm Ảo", location_kind="place")
+
+    r_dup, att_dup = resolve_location_with_retry(
+        "Địa Điểm Ảo", "place", FakeDB(), lambda q, h: None, max_retries=2, llm=_BrokenOrDupLLM("dup")
+    )
+    assert r_dup.kind == "unresolved_point" and len(att_dup) == 1
+
+    r_err, att_err = resolve_location_with_retry(
+        "Địa Điểm Ảo", "place", FakeDB(), lambda q, h: None, max_retries=2, llm=_BrokenOrDupLLM("boom")
+    )
+    assert r_err.kind == "unresolved_point" and len(att_err) == 1
+
+    # 3. Chuỗi rỗng & admin tỉnh ngoài vùng (Quảng Ngãi) không gọi geocode bừa
+    geo_seen: list[str] = []
+    r_empty, att_empty = resolve_location_with_retry("   ", "place", FakeDB(), lambda q, h: geo_seen.append(q))
+    assert r_empty.kind == "unresolved_point" and geo_seen == [] and len(att_empty) == 1
+
+    r_adm, att_adm = resolve_location_with_retry(
+        "Quảng Ngãi", "admin", FakeDB(), lambda q, h: geo_seen.append(q) or {"lat": 1.0, "lng": 2.0}
+    )
+    assert r_adm.kind == "admin_not_found" and geo_seen == [] and len(att_adm) == 1

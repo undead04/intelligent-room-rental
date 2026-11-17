@@ -77,6 +77,45 @@ export const SAMPLE_ROOMS: RoomItem[] = [
   },
 ];
 
+export interface QuickPromptSuggestion {
+  id: string;
+  label: string;
+  tag: string;
+  icon: string;
+  prompt: string;
+}
+
+export const QUICK_PROMPT_SUGGESTIONS: QuickPromptSuggestion[] = [
+  {
+    id: "uit-budget",
+    label: "Gần UIT, dưới 4 triệu, có máy lạnh",
+    tag: "Sinh viên",
+    icon: "school",
+    prompt: "Tìm phòng gần UIT dưới 4 triệu có máy lạnh, giờ tự do",
+  },
+  {
+    id: "binh-thanh-duplex",
+    label: "Bình Thạnh dưới 5 triệu, có gác & ban công",
+    tag: "Tiện nghi",
+    icon: "apartment",
+    prompt: "Tìm phòng trọ Bình Thạnh dưới 5 triệu có gác lửng, ban công, an ninh",
+  },
+  {
+    id: "q7-studio",
+    label: "Quận 7 gần TDTU, 4 - 5.5 triệu, ở ghép 2 người",
+    tag: "Gần trường",
+    icon: "location_on",
+    prompt: "Tìm phòng Quận 7 gần TDTU giá từ 4 đến 5.5 triệu cho 2 người, giữ xe an toàn",
+  },
+  {
+    id: "rental-advice",
+    label: "Kinh nghiệm kiểm tra hợp đồng & phòng trọ an toàn",
+    tag: "Tư vấn AI",
+    icon: "verified_user",
+    prompt: "Tư vấn cho mình cách kiểm tra phòng trọ an toàn và những điều khoản cần lưu ý khi ký hợp đồng thuê trọ",
+  },
+];
+
 export const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: "msg-welcome",

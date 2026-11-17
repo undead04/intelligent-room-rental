@@ -263,7 +263,7 @@ def make_advisory_node(deps: Deps):
 
             market_ctx_block, market_fallback = _format_market_stats_context(stats_res)
 
-        model = deps.get_llm("main")
+        model = deps.get_llm()
         if not guide or model is None:
             return _finish_advisory_step(state, market_fallback or SORRY)
         skill = deps.skills().get(slug)

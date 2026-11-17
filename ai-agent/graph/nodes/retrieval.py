@@ -4,6 +4,15 @@ import logging
 import re
 from typing import Any, Optional
 
+from core.config import (
+    BROAD_AREA_ADAPTIVE_RADII_KM,
+    BROAD_AREA_RADIUS_KM,
+    DEFAULT_ADAPTIVE_RADII_KM,
+    DEFAULT_RADIUS_KM,
+    DEFAULT_SEARCH_LIMIT,
+    LLM_NLU_TEMPERATURE,
+    MAX_PAGED_ROOMS,
+)
 from domain.enums import amenity_label
 from domain.schemas import RoomItem, UserPreferenceState
 from graph.deps import Deps
@@ -12,17 +21,14 @@ from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import sanitize_user_text
 from safety.grounding import verify_context_grounding
 from safety.guardrails import scan_untrusted_text
-from tools.location_service import infer_region_from_location_text, infer_region_from_preference, resolve_location
+from tools.location_service import (
+    infer_region_from_location_text,
+    infer_region_from_preference,
+    resolve_location_with_retry,
+)
 from utils.text import norm_key
 
 logger = logging.getLogger(__name__)
-
-RESULT_LIMIT = 5
-OVERFETCH_LIMIT = 10        # có tiêu chí loại trừ -> lấy dư rồi lọc/cắt lại
-DEFAULT_RADIUS_KM = 2.5
-DEFAULT_ADAPTIVE_RADII_KM = (3.5, 5.0)
-BROAD_AREA_RADIUS_KM = 4.0
-BROAD_AREA_ADAPTIVE_RADII_KM = (5.0, 6.5)
 
 _BROAD_AREA_RE = re.compile(
     r"\b(?:lang\s+dai\s+hoc|dai\s+hoc\s+quoc\s+gia|dhqg|khu\s+do\s+thi|kdt|"
@@ -178,8 +184,18 @@ def make_retrieval_node(deps: Deps):
                     "ward_id": pref.ward_id,
                 }
 
+            retry_attempts: list[dict[str, Any]] = []
+
             def _resolve_and_apply():
-                r = resolve_location(pref.location_text, pref.location_kind, deps.admin_lookup, deps.geocode, region_hint)
+                nonlocal retry_attempts
+                r, retry_attempts = resolve_location_with_retry(
+                    pref.location_text,
+                    pref.location_kind,
+                    deps.admin_lookup,
+                    deps.geocode,
+                    region_hint,
+                    llm=deps.get_llm(temperature=LLM_NLU_TEMPERATURE) if callable(getattr(deps, "get_llm", None)) else None,
+                )
                 if r.kind == "admin":
                     pref.set_location(pref.location_text, kind="admin", **r.ids)
                 elif r.kind == "point":
@@ -191,11 +207,26 @@ def make_retrieval_node(deps: Deps):
                 "resolve_location",
                 args,
                 _resolve_and_apply,
-                lambda r: {"kind": r.kind, "ids": r.ids, "lat": r.lat, "lng": r.lng, "candidates": len(r.candidates)},
+                lambda r: {
+                    "kind": r.kind,
+                    "ids": r.ids,
+                    "lat": r.lat,
+                    "lng": r.lng,
+                    "candidates": len(r.candidates),
+                    "attempts": len(retry_attempts),
+                },
                 node="retrieval_node",
                 state_before=_loc_state,
                 state_after=_loc_state,
             )
+            if len(retry_attempts) > 1:
+                emit_trace(
+                    trace,
+                    "resolve_location_retry",
+                    node="retrieval_node",
+                    attempts=retry_attempts,
+                    final_kind=res.kind,
+                )
             if res.kind == "point":
                 weights = compute_normalized_weights(pref, multipliers)
             elif res.kind == "admin_not_found":
@@ -273,7 +304,8 @@ def make_retrieval_node(deps: Deps):
                 "max_distance_km": base_radius if pref.has_point else None,
                 "weights": weights or None,
                 "prefer_cheapest": float(multipliers.get("price", 1.0)) > 1.0,
-                "limit": OVERFETCH_LIMIT if (pref.excluded_room_types or pref.allowed_room_types) else RESULT_LIMIT,
+                "include_amenity_overall": float(multipliers.get("amenity", 1.0)) > 1.0,
+                "limit": MAX_PAGED_ROOMS,
             }
             for key in ("city_id", "district_id", "ward_id", "min_bedrooms"):
                 if getattr(pref, key) is not None:
@@ -343,6 +375,8 @@ def make_retrieval_node(deps: Deps):
         if search_error:
             return {
                 "retrieved_rooms": [],
+                "paged_rooms": [],
+                "current_page": 1,
                 "preferences": state_pref,
                 "computed_weights": weights,
                 "search_error": search_error,
@@ -357,9 +391,11 @@ def make_retrieval_node(deps: Deps):
 
         # 4) kết luận sau tìm kiếm và phân tích thị trường
         dropped_summary: list[str] = []
+        paged_rooms: list[RoomItem] = []
         if status == "ok" and ctx:
             dropped_summary = _summarize_dropped(rooms, ctx.dropped)
-            rooms = ctx.valid_rooms[:RESULT_LIMIT]
+            paged_rooms = ctx.valid_rooms[:MAX_PAGED_ROOMS]
+            rooms = paged_rooms[:DEFAULT_SEARCH_LIMIT]
             session.zero_result_streak = 0 if rooms else session.zero_result_streak + 1
             extra = {
                 "context_grounded": ctx.is_grounded,
@@ -370,6 +406,8 @@ def make_retrieval_node(deps: Deps):
 
         return {
             "retrieved_rooms": rooms,
+            "paged_rooms": paged_rooms,
+            "current_page": 1,
             "preferences": state_pref,
             "computed_weights": weights,
             "search_error": None,

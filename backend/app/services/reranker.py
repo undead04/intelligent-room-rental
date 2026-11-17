@@ -8,11 +8,12 @@
 5. Ngữ nghĩa (semantic): Điểm tương đồng ngữ nghĩa từ Dense pgvector Embedding.
 
 Public API:
-    rerank(candidates, user_pref, limit, offset, base_weights) -> [(breakdown, listing)]
-    explain_match(breakdown, top_n)                           -> dict giải thích cho AI
-    DEFAULT_WEIGHTS                                           -> dict trọng số cơ sở 5 tiêu chí
+    rerank(candidates, user_pref, limit, base_weights) -> [(breakdown, listing)]
+    explain_match(breakdown, top_n)                   -> dict giải thích cho AI
+    DEFAULT_WEIGHTS                                   -> dict trọng số cơ sở 5 tiêu chí
 """
-from math import asin, cos, radians, sin, sqrt
+from datetime import datetime, timezone
+from math import asin, cos, exp, log, radians, sin, sqrt
 from typing import Mapping, Optional, Sequence
 
 __all__ = ["rerank", "explain_match", "DEFAULT_WEIGHTS"]
@@ -20,6 +21,9 @@ __all__ = ["rerank", "explain_match", "DEFAULT_WEIGHTS"]
 # --- Constants ---
 UNKNOWN_SCORE: float = 0.0
 EARTH_RADIUS_KM: float = 6371.0
+DEFAULT_NEAR_KM: float = 0.8
+DEFAULT_HALF_LIFE_KM: float = 3.0
+_LN2: float = log(2.0)
 BASELINE_AMENITY_WEIGHT: float = 0.10
 DEFAULT_WEIGHTS: Mapping[str, float] = {
     "location": 0.25,
@@ -60,14 +64,21 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return EARTH_RADIUS_KM * 2 * asin(sqrt(a))
 
 
-def _location_fit(dist_km: float, near_km: float = 0.8, far_km: float = 5.0) -> float:
-    """<= near_km -> 1.0, >= far_km -> 0.0, ở giữa suy giảm phi tuyến (ratio ** 1.5)."""
+def _location_fit(
+    dist_km: float,
+    near_km: float = DEFAULT_NEAR_KM,
+    far_km: Optional[float] = 5.0,
+    half_life_km: float = DEFAULT_HALF_LIFE_KM,
+) -> float:
+    """<= near_km -> 1.0; > far_km (nếu có trần) -> 0.0;
+    trong bán kính hợp lệ áp dụng suy giảm mũ bán rã: exp(-ln(2) * (dist - near_km) / half_life_km).
+    """
     if dist_km <= near_km:
         return 1.0
-    if dist_km >= far_km:
+    if far_km is not None and dist_km > far_km:
         return 0.0
-    ratio = (dist_km - near_km) / (far_km - near_km)
-    return max(0.0, 1.0 - (ratio ** 1.5))
+    h = max(0.1, float(half_life_km))
+    return _clamp01(exp(-_LN2 * (dist_km - near_km) / h))
 
 
 def _normalize_amenity(code: object) -> str:
@@ -79,7 +90,6 @@ def _normalize_amenity(code: object) -> str:
 
 
 def _amenity_fit(
-    requested: Optional[Sequence[object]] = None,
     concept_scores: Optional[Mapping[str, float]] = None,
     amenity_overall: Optional[float] = None,
     preferred: Optional[Sequence[object]] = None,
@@ -107,17 +117,52 @@ def _amenity_fit(
     return overall_val
 
 
-def _has_explicit_amenity_intent(user_pref: object, base: Optional[Mapping[str, float]]) -> bool:
-    """Xác định caller/người dùng có chủ động yêu cầu ưu tiên tiện nghi mềm hay không."""
-    preferred_amenities = _get(user_pref, "preferred_amenities")
-    include_overall = bool(_get(user_pref, "include_amenity_overall", False))
-    explicit_amenity_weight = (
+_SAFETY_AMENITIES = frozenset({"safe_area", "camera", "guard", "fingerprint_lock"})
+
+
+def _has_caller_amenity_weight(base: Optional[Mapping[str, float]]) -> bool:
+    """True khi caller chủ động truyền vector base_weights tùy chỉnh có amenity > 0."""
+    return (
         base is not None
         and base is not DEFAULT_WEIGHTS
         and "amenity" in base
         and float(base.get("amenity", 0.0)) > 0
     )
-    return bool(preferred_amenities) or include_overall or explicit_amenity_weight
+
+
+def _has_caller_safety_weight(base: Optional[Mapping[str, float]]) -> bool:
+    """True khi caller chủ động truyền vector base_weights tùy chỉnh có safety > 0."""
+    return (
+        base is not None
+        and base is not DEFAULT_WEIGHTS
+        and "safety" in base
+        and float(base.get("safety", 0.0)) > 0
+    )
+
+
+def _has_explicit_safety_intent(user_pref: object, base: Optional[Mapping[str, float]]) -> bool:
+    """Chỉ bật trụ cột an ninh (safety) khi người dùng nhắc tới an ninh/an toàn hoặc caller yêu cầu."""
+    if _has_caller_safety_weight(base) or bool(_get(user_pref, "include_safety", False)):
+        return True
+    for field in ("amenities", "preferred_amenities"):
+        items = _get(user_pref, field)
+        if not items or isinstance(items, (str, bytes)):
+            continue
+        for item in items: # type: ignore
+            if _normalize_amenity(item) in _SAFETY_AMENITIES:
+                return True
+    return False
+
+
+def _has_explicit_amenity_intent(user_pref: object, base: Optional[Mapping[str, float]]) -> bool:
+    """Xác định người dùng có chủ động yêu cầu ưu tiên tiện nghi mềm hay không.
+
+    Không suy diễn từ `base['amenity'] > 0` vì AI Agent luôn truyền đủ trọng số
+    (kể cả khi nói chung chung với mức nền nhẹ).
+    """
+    preferred_amenities = _get(user_pref, "preferred_amenities")
+    include_overall = bool(_get(user_pref, "include_amenity_overall", False))
+    return bool(preferred_amenities) or include_overall
 
 
 # --- Weights ---
@@ -125,14 +170,15 @@ def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = No
     """Chỉ giữ tiêu chí đang bật, rồi chuẩn hóa L1 để tổng trọng số = 1.0.
     - Tiện ích bắt buộc (amenities) chỉ lọc cứng ở SQL & Grounding, KHÔNG kích hoạt trọng số đầy đủ.
     - Trọng số amenity bật ở mức đầy đủ khi có preferred_amenities, include_amenity_overall,
-      hoặc caller chủ động truyền trọng số 'amenity' > 0 trong base_weights.
-    - Khi người dùng nói chung chung (chưa rõ tiện ích ưu tiên), vẫn bật amenity ở mức nền nhẹ
-      (BASELINE_AMENITY_WEIGHT) theo amenity_overall để tránh phòng kém tiện nghi nhưng giá rẻ độc chiếm top.
+      hoặc caller chủ động truyền trọng số 'amenity' > 0 trong base_weights tùy chỉnh.
+    - Trụ cột safety chỉ bật khi người dùng nhắc tới an ninh/an toàn (tiện ích an ninh,
+      include_safety=True, hoặc caller chủ động truyền safety > 0 trong weights tùy chỉnh).
     """
     eff_base = base if base is not None else DEFAULT_WEIGHTS
     lat = _get(user_pref, "lat")
     lng = _get(user_pref, "lng")
     has_explicit_amenity = _has_explicit_amenity_intent(user_pref, base)
+    use_caller_amenity_weight = _has_caller_amenity_weight(base)
     caller_disabled_amenity = (
         base is not None
         and base is not DEFAULT_WEIGHTS
@@ -142,7 +188,7 @@ def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = No
 
     active = {
         "price": True,     # Bắt buộc: luôn đánh giá mức độ hợp lý của giá phòng (price_score từ ML)
-        "safety": True,    # Bắt buộc: luôn đánh giá điểm an ninh (safety_score)
+        "safety": _has_explicit_safety_intent(user_pref, base),  # Động: chỉ bật khi người dùng nhắc an ninh/an toàn
         "semantic": True,  # Bắt buộc: luôn đánh giá độ khớp ngữ nghĩa (similarity_score)
         "location": lat is not None and lng is not None,  # Động: chỉ bật khi có toạ độ mục tiêu
         "amenity": not caller_disabled_amenity,
@@ -151,7 +197,7 @@ def _dynamic_weights(user_pref: object, base: Optional[Mapping[str, float]] = No
     for k, on in active.items():
         if not on:
             continue
-        if k == "amenity" and not has_explicit_amenity:
+        if k == "amenity" and not has_explicit_amenity and not use_caller_amenity_weight:
             w[k] = BASELINE_AMENITY_WEIGHT
         else:
             w[k] = float(eff_base.get(k, DEFAULT_WEIGHTS.get(k, 0.2)))
@@ -175,8 +221,8 @@ def _location_part(listing: object, user_pref: object) -> float:
     try:
         dist = _haversine_km(float(lat), float(lng), float(pref_lat), float(pref_lng)) # type: ignore
         max_dist = _get(user_pref, "max_distance_km")
-        far_km = float(max_dist) if max_dist else 5.0
-        return _location_fit(dist, near_km=0.8, far_km=far_km)
+        far_km = float(max_dist) if max_dist else None
+        return _location_fit(dist, near_km=DEFAULT_NEAR_KM, far_km=far_km, half_life_km=DEFAULT_HALF_LIFE_KM)
     except (ValueError, TypeError):
         return UNKNOWN_SCORE
 
@@ -215,20 +261,98 @@ def _price_fit(orm: object, user_pref: object = None, weights: Optional[Mapping[
     return ml_score
 
 
+def _parse_posted_datetime(raw: object) -> Optional[datetime]:
+    """Chuẩn hóa posted_date (datetime naive/aware hoặc chuỗi ISO) về UTC."""
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw.replace(tzinfo=timezone.utc) if raw.tzinfo is None else raw.astimezone(timezone.utc)
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return None
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def _freshness_factor(orm: object, now_utc: Optional[datetime] = None) -> float:
+    """Hệ số ưu tiên tin mới đăng trong [0.92 .. 1.00]:
+    - <= 7 ngày: 1.00
+    - 7..30 ngày: giảm tuyến tính 1.00 -> 0.96
+    - 30..90 ngày: giảm tuyến tính 0.96 -> 0.92
+    - > 90 ngày: 0.92 | Thiếu ngày đăng: 0.97 (trung tính nhẹ).
+    """
+    posted = _parse_posted_datetime(_get(orm, "posted_date"))
+    if posted is None:
+        return 0.97
+    ref = now_utc or datetime.now(timezone.utc)
+    age_days = max(0.0, (ref - posted).total_seconds() / 86400.0)
+    if age_days <= 7.0:
+        return 1.0
+    if age_days <= 30.0:
+        return 1.0 - 0.04 * ((age_days - 7.0) / 23.0)
+    if age_days <= 90.0:
+        return 0.96 - 0.04 * ((age_days - 30.0) / 60.0)
+    return 0.92
+
+
+def _completeness_factor(orm: object) -> float:
+    """Phạt nhẹ tin đăng thiếu thông tin cốt lõi trong [0.92 .. 1.00]:
+    - Thiếu ảnh thật (images & main_image): -0.03
+    - Thiếu diện tích hợp lệ (area_m2 <= 0 hoặc None): -0.03
+    - Thiếu giá niêm yết (price_vnd <= 0 hoặc None): -0.02
+    """
+    penalty = 0.0
+    images = _get(orm, "images")
+    main_image = _get(orm, "main_image")
+    has_images_list = isinstance(images, (list, tuple)) and len(images) > 0
+    has_main_image = isinstance(main_image, str) and bool(main_image.strip()) and "placeholder" not in main_image.lower()
+    if not (has_images_list or has_main_image):
+        penalty += 0.03
+
+    area = _get(orm, "area_m2")
+    has_area = False
+    if area is not None:
+        try:
+            has_area = float(area) > 0
+        except (ValueError, TypeError):
+            has_area = False
+    if not has_area:
+        penalty += 0.03
+
+    price = _get(orm, "price_vnd")
+    has_price = False
+    if price is not None:
+        try:
+            has_price = float(price) > 0
+        except (ValueError, TypeError):
+            has_price = False
+    if not has_price:
+        penalty += 0.02
+
+    return max(0.92, 1.0 - penalty)
+
+
 def _match_breakdown(
     listing: object,
     user_pref: object,
     weights: dict[str, float],
     missing_amenity_default: float = 1.0,
+    now_utc: Optional[datetime] = None,
 ) -> dict[str, object]:
-    """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM."""
+    """Tính điểm từng thành phần dựa trên weights đã pre-computed theo mô hình MCDM,
+    sau đó nhân nhẹ hệ số độ mới (`posted_date`) & độ đầy đủ thông tin tin đăng.
+    """
     orm = _get(listing, "listing", listing)
     scorers = {
         "price": lambda: _price_fit(orm, user_pref, weights=weights),
         "safety": lambda: _score_or_unknown(orm, "safety_score"),
         "location": lambda: _location_part(listing, user_pref),
         "amenity": lambda: _amenity_fit(
-            _get(user_pref, "amenities"), # type: ignore
             _get(orm, "concept_scores"), # type: ignore
             _get(orm, "amenity_overall"), # type: ignore
             preferred=_get(user_pref, "preferred_amenities"), # type: ignore
@@ -238,8 +362,16 @@ def _match_breakdown(
     }
     parts: dict[str, float] = {k: scorers[k]() for k in weights}
     contributions: dict[str, float] = {k: weights[k] * parts[k] for k in parts}
+    base_score = sum(contributions.values())
+    freshness = _freshness_factor(orm, now_utc=now_utc)
+    completeness = _completeness_factor(orm)
+    quality_factor = round(freshness * completeness, 4)
     return {
-        "score": sum(contributions.values()),
+        "score": base_score * quality_factor,
+        "base_score": base_score,
+        "quality_factor": quality_factor,
+        "freshness_factor": round(freshness, 4),
+        "completeness_factor": round(completeness, 4),
         "parts": parts,
         "weights": weights,
         "contributions": contributions,
@@ -251,7 +383,6 @@ def rerank(
     candidates: list[object],
     user_pref: object,
     limit: int = 5,
-    offset: int = 0,
     base_weights: Optional[Mapping[str, float]] = None,
 ) -> list[tuple[dict[str, object], object]]:
     """Xếp hạng candidates (từ vector search). Trả về [(breakdown, listing)] đã sort giảm dần."""
@@ -260,9 +391,23 @@ def rerank(
 
     effective_weights = base_weights or DEFAULT_WEIGHTS
     computed_weights = _dynamic_weights(user_pref, effective_weights)
-    missing_amenity_default = 1.0 if _has_explicit_amenity_intent(user_pref, effective_weights) else UNKNOWN_SCORE
+    # Tin thiếu hoàn toàn amenity_overall/concept_scores luôn nhận UNKNOWN_SCORE (0.0) khi rerank
+    missing_amenity_default = UNKNOWN_SCORE
+    batch_now = datetime.now(timezone.utc)
 
-    scored = [(_match_breakdown(c, user_pref, computed_weights, missing_amenity_default=missing_amenity_default), c) for c in candidates]
+    scored = [
+        (
+            _match_breakdown(
+                c,
+                user_pref,
+                computed_weights,
+                missing_amenity_default=missing_amenity_default,
+                now_utc=batch_now,
+            ),
+            c,
+        )
+        for c in candidates
+    ]
     scored.sort(
         key=lambda x: (
             round(float(x[0]["score"]), 8), # type: ignore
@@ -270,7 +415,7 @@ def rerank(
         ),
         reverse=True,
     )
-    return scored[offset : offset + limit]
+    return scored[:limit]
 
 
 def explain_match(breakdown: dict[str, object], top_n: int = 5) -> dict[str, object]:

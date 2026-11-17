@@ -554,7 +554,7 @@ def _make_test_deps(*, trace_store: TraceStore, fast_llm: Any = None, enable_cri
 
     return Deps(
         sessions=SessionStore(),
-        get_llm=lambda role: fast_llm,
+        get_llm=lambda temperature=None: fast_llm,
         base_prompt="BASE",
         decision_system_prompt="DECISION",
         search_rooms=lambda args: {"ok": True, "data": []},
@@ -680,3 +680,58 @@ def test_run_turn_captures_isolated_trace_store_without_state_leak():
     assert [sp["seq"] for sp in spans] == list(range(1, len(spans) + 1))
     assert any(sp["type"] == "tool_finished" and sp["tool"] == "search_rooms" for sp in spans)
     assert any(sp["type"] == "verifier_decision" and sp["next_decision"] == "pass" for sp in spans)
+
+
+def test_verify_node_uses_last_search_args_max_distance_km_for_adaptive_radius():
+    """Verify node phải đọc đúng last_search_args['max_distance_km'] (vd 7.0 km sau Adaptive Radius)
+    thay vì rơi về fallback ngắn hơn làm đánh FAIL oan phòng ở 5.1..7.0 km.
+    """
+    trace_store = TraceStore(session_id="s_rad")
+    trace_store.append({"type": "tool_finished", "tool": "search_rooms", "status": "ok", "args": {"query": "phòng trọ UIT"}})
+    deps = _make_test_deps(trace_store=trace_store)
+    verify_node = make_verify_node(deps)
+
+    # Điểm mốc (10.8700, 106.8030) -> phòng cách ~6.1 km (10.9250, 106.8030)
+    far_room = RoomItem(
+        id="P_FAR",
+        title="Phòng cách ~6.1km",
+        price="3 triệu/tháng",
+        priceNum=3_000_000,
+        area="22 m²",
+        area_m2=22.0,
+        distance="6.1 km",
+        address="Dĩ An",
+        lat=10.9250,
+        lng=106.8030,
+        rank=1,
+    )
+    pref = UserPreferenceState(location_text="UIT", location_kind="place", lat=10.8700, lng=106.8030, max_distance_km=None)
+
+    # 1. Adaptive Radius đã mở lên 7.0 km -> phải PASS cond_max_distance
+    res_pass = verify_node({
+        "session_id": "s_rad",
+        "intent": "new_search",
+        "user_message": "Tìm phòng gần UIT",
+        "preferences": pref,
+        "retrieved_rooms": [far_room],
+        "last_search_args": {"max_distance_km": 7.0},
+        "final_text": "Phòng P_FAR cách khoảng 6.1 km, giá 3 triệu/tháng.",
+        "answer_retry_count": 0,
+    })
+    assert res_pass["verifier_result"]["passed"] is True, res_pass["verifier_result"]["failures"]
+    assert res_pass["verifier_decision"] == "pass"
+
+    # 2. Nếu chỉ tìm ở bán kính 3.0 km mà phòng lại cách ~6.1 km -> phải FAIL cond_max_distance
+    res_fail = verify_node({
+        "session_id": "s_rad",
+        "intent": "new_search",
+        "user_message": "Tìm phòng gần UIT",
+        "preferences": pref,
+        "retrieved_rooms": [far_room],
+        "last_search_args": {"max_distance_km": 3.0},
+        "final_text": "Phòng P_FAR cách khoảng 6.1 km, giá 3 triệu/tháng.",
+        "answer_retry_count": 0,
+    })
+    cids = {f["condition_id"] for f in res_fail["verifier_result"]["failures"]}
+    assert res_fail["verifier_result"]["passed"] is False
+    assert "cond_max_distance" in cids

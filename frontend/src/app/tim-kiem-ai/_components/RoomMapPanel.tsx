@@ -73,8 +73,12 @@ export default function RoomMapPanel({
             extractedStreets.push(cleanStreet);
           }
         } else if (/(phường|p\.|linh trung|linh xuân|linh chiểu|bình thọ|đông hòa|hiệp bình|tân phú|bến nghé|phường \d+)/i.test(p)) {
-          if (!extractedWards.includes(p)) {
-            extractedWards.push(p);
+          const cleanWard = p
+            .replace(/\s*\([^)]*\)/g, "")
+            .replace(/^Phường\s+/i, "P. ")
+            .trim();
+          if (cleanWard && !extractedWards.includes(cleanWard)) {
+            extractedWards.push(cleanWard);
           }
         }
       }
@@ -233,9 +237,9 @@ export default function RoomMapPanel({
       const xSvg = 300 + item.rSvg * Math.cos(angle);
       const ySvg = 160 + item.rSvg * Math.sin(angle);
 
-      // Clamp inside SVG viewport
-      const clampedX = Math.min(560, Math.max(40, xSvg));
-      const clampedY = Math.min(285, Math.max(35, ySvg));
+      // Clamp inside SVG viewport (top needs >=76 SVG units so 40px teardrop pin never clips top border)
+      const clampedX = Math.min(540, Math.max(58, xSvg));
+      const clampedY = Math.min(272, Math.max(76, ySvg));
 
       const leftPercent = (clampedX / 600) * 100;
       const topPercent = (clampedY / 320) * 100;
@@ -280,46 +284,50 @@ export default function RoomMapPanel({
   }, [selectedRoom, locationText]);
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-full overflow-hidden">
-      {/* Header with Mode Switcher & Radius */}
-      <div className="px-4 py-2 border-b border-[#E8E4DC] flex items-center justify-between bg-white shrink-0">
-        <h2 className="text-sm font-bold text-[#0F5F4A] flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#0F5F4A]"></span>
+    <div className="bg-white rounded-2xl border border-[#D8E4DF] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-full overflow-hidden">
+      {/* Header đồng nhất 44px — chống rớt dòng & bỏ lặp chữ Google Maps */}
+      <div className="h-11 px-3.5 border-b border-[#E8E4DC] flex items-center justify-between gap-2 bg-white shrink-0">
+        <h2 className="text-[13.5px] font-bold text-[#0F5F4A] flex items-center gap-2 whitespace-nowrap shrink-0">
+          <span className="w-2 h-2 rounded-full bg-[#0F5F4A] shrink-0"></span>
           <span>3. Bản đồ vị trí</span>
         </h2>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-[#F1F5F9] rounded-lg p-0.5 text-[10px]">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center bg-[#F5F2EB] rounded-lg p-0.5 text-[11px] border border-[#E8E4DC]/80">
             <button
+              type="button"
               onClick={() => setViewMode("visual")}
-              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 ${viewMode === "visual"
-                ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
-                : "text-[#64748B] hover:text-[#121E1A]"
-                }`}
+              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 whitespace-nowrap ${
+                viewMode === "visual"
+                  ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
+                  : "text-[#4A5550] hover:text-[#121E1A]"
+              }`}
             >
-              <span className="material-symbols-outlined text-[12px]">radar</span>
+              <span className="material-symbols-outlined text-[13px]">radar</span>
               <span>Trực quan</span>
             </button>
             <button
+              type="button"
               onClick={() => setViewMode("google")}
-              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 ${viewMode === "google"
-                ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
-                : "text-[#64748B] hover:text-[#121E1A]"
-                }`}
+              className={`px-2 py-0.5 rounded-md font-medium transition cursor-pointer flex items-center gap-1 whitespace-nowrap ${
+                viewMode === "google"
+                  ? "bg-white text-[#0F5F4A] shadow-2xs font-bold"
+                  : "text-[#4A5550] hover:text-[#121E1A]"
+              }`}
             >
-              <span className="material-symbols-outlined text-[12px]">map</span>
-              <span>Google Maps</span>
+              <span className="material-symbols-outlined text-[13px]">map</span>
+              <span>Google Map</span>
             </button>
           </div>
           <a
             href={googleUrls.external}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[10px] font-bold text-[#0F5F4A] hover:text-white bg-white hover:bg-[#0F5F4A] border border-[#E8E4DC] hover:border-[#0F5F4A] px-2 py-0.5 rounded-full shadow-2xs transition flex items-center gap-1 shrink-0"
-            title="Mở trên trang Google Maps"
+            className="w-7 h-7 rounded-lg text-[#0F5F4A] hover:text-white bg-[#FAF8F4] hover:bg-[#0F5F4A] border border-[#D8E4DF] hover:border-[#0F5F4A] transition flex items-center justify-center shrink-0"
+            title="Mở vị trí trên Google Maps"
+            aria-label="Mở vị trí trên Google Maps"
           >
-            <span>Google Maps</span>
-            <span className="material-symbols-outlined text-[11px]">open_in_new</span>
+            <span className="material-symbols-outlined text-[14px]">open_in_new</span>
           </a>
         </div>
       </div>
@@ -403,34 +411,36 @@ export default function RoomMapPanel({
             {/* Ward / Area Background Labels */}
             {mapRoadLabels.wards[0] && (
               <text
-                x="85"
-                y="48"
+                x="45"
+                y="40"
                 fill="#64748B"
-                fontSize="9.5"
+                fontSize="9"
                 fontWeight="700"
                 letterSpacing="0.8"
-                opacity="0.75"
+                opacity="0.7"
               >
                 {mapRoadLabels.wards[0].toUpperCase()}
               </text>
             )}
             {mapRoadLabels.wards[1] && (
               <text
-                x="445"
-                y="52"
+                x="530"
+                y="62"
+                textAnchor="end"
                 fill="#0F5F4A"
-                fontSize="9.5"
+                fontSize="9"
                 fontWeight="700"
                 letterSpacing="0.8"
-                opacity="0.75"
+                opacity="0.7"
               >
                 {mapRoadLabels.wards[1].toUpperCase()}
               </text>
             )}
             {mapRoadLabels.wards[2] && (
               <text
-                x="440"
-                y="272"
+                x="530"
+                y="278"
+                textAnchor="end"
                 fill="#64748B"
                 fontSize="9"
                 fontWeight="700"
@@ -440,8 +450,6 @@ export default function RoomMapPanel({
                 {mapRoadLabels.wards[2].toUpperCase()}
               </text>
             )}
-
-
 
             {/* Concentric Radar Distance Rings */}
             {/* Ring 1: Inner (< 1km or < 500m) */}
@@ -456,13 +464,13 @@ export default function RoomMapPanel({
               opacity="0.55"
             />
             <text
-              x="300"
-              y={Math.max(22, 160 - radarScale.ring1.r - 4)}
-              textAnchor="middle"
+              x={300 + radarScale.ring1.r * 0.72}
+              y={160 - radarScale.ring1.r * 0.68}
+              textAnchor="start"
               fill="#0F5F4A"
               fontSize="8"
               fontWeight="700"
-              opacity="0.8"
+              opacity="0.75"
             >
               {`< ${radarScale.ring1.label}`}
             </text>
@@ -479,9 +487,9 @@ export default function RoomMapPanel({
               opacity="0.4"
             />
             <text
-              x="300"
-              y={Math.max(18, 160 - radarScale.ring2.r - 4)}
-              textAnchor="middle"
+              x={300 + radarScale.ring2.r * 0.72}
+              y={160 - radarScale.ring2.r * 0.68}
+              textAnchor="start"
               fill="#0F5F4A"
               fontSize="8"
               fontWeight="700"
@@ -501,9 +509,9 @@ export default function RoomMapPanel({
               opacity="0.25"
             />
             <text
-              x="300"
-              y={Math.max(14, 160 - radarScale.ring3.r - 4)}
-              textAnchor="middle"
+              x={300 + radarScale.ring3.r * 0.72}
+              y={Math.max(20, 160 - radarScale.ring3.r * 0.68)}
+              textAnchor="start"
               fill="#0F5F4A"
               fontSize="8"
               fontWeight="700"
@@ -531,17 +539,19 @@ export default function RoomMapPanel({
                   r="14"
                   fill="rgba(255, 107, 74, 0.18)"
                 />
-                {/* Midpoint route distance indicator badge */}
-                {(activePin.pinDistText || activePin.distance) && (
+                {/* Route distance indicator badge placed past center landmark pill */}
+                {(activePin.pinDistText || activePin.distance) && activePin.rSvg >= 52 && (
                   <g
-                    transform={`translate(${(300 + (activePin.leftPercent / 100) * 600) / 2
-                      }, ${(160 + (activePin.topPercent / 100) * 320) / 2
-                      })`}
+                    transform={`translate(${
+                      300 + ((activePin.leftPercent / 100) * 600 - 300) * 0.62
+                    }, ${
+                      160 + ((activePin.topPercent / 100) * 320 - 160) * 0.62
+                    })`}
                   >
                     <rect
-                      x="-24"
+                      x="-26"
                       y="-9"
-                      width="48"
+                      width="52"
                       height="16"
                       rx="8"
                       fill="#FF6B4A"

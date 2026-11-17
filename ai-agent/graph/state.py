@@ -22,6 +22,7 @@ class HousingAgentState(TypedDict, total=False):
     weight_explanations: list[str]
     semantic_query: Optional[str]
     needs_clarification: bool
+    needs_budget_clarification: bool
     direct_reply: bool
     matched_skill: Optional[str]
     skill_context: Optional[dict[str, Any]]
@@ -35,6 +36,9 @@ class HousingAgentState(TypedDict, total=False):
 
     # truy xuất
     retrieved_rooms: list[RoomItem]
+    paged_rooms: list[RoomItem]
+    current_page: int
+    page_switched: bool
     searched: bool                           # lượt này có chạy tìm kiếm không (quyết định ghi đè last_rooms)
     search_error: Optional[str]
     admin_not_found: bool

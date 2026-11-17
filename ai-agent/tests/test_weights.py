@@ -32,21 +32,56 @@ def test_sum_is_one_and_non_negative_for_random_multipliers(has_point, has_amen)
 
 def test_active_keys_follow_preferences():
     ones = {k: 1.0 for k in CRITERIA}
+    # Không có tọa độ và không nhắc an ninh -> chỉ bật price, semantic, amenity (mức nền)
     w_basic = compute_normalized_weights(_pref(False, False), ones)
-    assert set(w_basic) == {"price", "safety", "semantic", "amenity"}
+    assert set(w_basic) == {"price", "semantic", "amenity"}
+    assert "safety" not in w_basic
     assert w_basic["amenity"] < w_basic["price"]
+    assert w_basic["semantic"] == pytest.approx(w_basic["amenity"])
 
+    # Có tọa độ -> bật thêm location; không nhắc an ninh -> safety vẫn tắt
     w_loc = compute_normalized_weights(_pref(True, False), ones)
-    assert set(w_loc) == set(CRITERIA)
+    assert set(w_loc) == {"price", "location", "semantic", "amenity"}
     assert w_loc["amenity"] < w_loc["location"]
+    assert w_loc["semantic"] == pytest.approx(w_loc["amenity"])
 
+    # Có tiện ích mềm -> amenity nâng mức đầy đủ (0.20 trước chuẩn hóa)
     w_amen = compute_normalized_weights(_pref(False, True), ones)
-    assert set(w_amen) == {"price", "safety", "semantic", "amenity"}
-    assert w_amen["amenity"] == pytest.approx(w_amen["price"])
+    assert set(w_amen) == {"price", "semantic", "amenity"}
+    assert w_amen["amenity"] < w_amen["price"]
+    assert w_amen["semantic"] < w_amen["amenity"]
 
-    w_full = compute_normalized_weights(_pref(True, True), ones)
+    # Nhắc ưu tiên an ninh (safety > 1.0) + có tọa độ + tiện ích mềm -> đủ cả 5 trụ cột
+    mult_safety = {**ones, "safety": 1.5}
+    w_with_safety = compute_normalized_weights(_pref(True, True), mult_safety)
+    assert set(w_with_safety) == set(CRITERIA)
+
+    # Khi chỉ bật safety qua tiện ích an ninh (không phóng đại multiplier) -> khớp bộ cơ sở 5 trụ cột
+    p_safe_full = UserPreferenceState(
+        lat=10.87,
+        lng=106.80,
+        preferred_amenities=["ml", "safe_area"],
+    )
+    w_full = compute_normalized_weights(p_safe_full, ones)
     assert set(w_full) == set(CRITERIA)
-    assert w_full["amenity"] == pytest.approx(w_full["location"])
+    assert w_full == pytest.approx({"location": 0.25, "price": 0.25, "safety": 0.20, "amenity": 0.20, "semantic": 0.10})
+
+
+def test_safety_enabled_only_when_mentioned():
+    """Trụ cột safety chỉ bật khi người dùng nhắc an ninh/an toàn hoặc chọn tiện ích an ninh."""
+    ones = {k: 1.0 for k in CRITERIA}
+    # Không nhắc -> tắt hoàn toàn
+    w_plain = compute_normalized_weights(UserPreferenceState(lat=10.87, lng=106.80, amenities=["aircon"]), ones)
+    assert "safety" not in w_plain
+
+    # Nhắc qua mức ưu tiên (NLU priorities.safety = 'high' -> multiplier > 1) -> bật
+    w_mult = compute_normalized_weights(UserPreferenceState(lat=10.87, lng=106.80), {**ones, "safety": 2.0})
+    assert "safety" in w_mult and w_mult["safety"] > 0.20
+
+    # Nhắc qua tiện ích an ninh bắt buộc hoặc mềm -> bật
+    for am in ("safe_area", "camera", "guard", "fingerprint_lock"):
+        w_am = compute_normalized_weights(UserPreferenceState(amenities=[am]), ones)
+        assert "safety" in w_am and w_am["safety"] > 0.0, am
 
 
 def test_mandatory_amenities_alone_do_not_boost_amenity_weight():
@@ -79,8 +114,11 @@ def test_boost_raises_share():
 def test_all_zero_falls_back_to_equal_and_negative_is_clamped():
     p = _pref(True, True)
     w = compute_normalized_weights(p, {k: 0.0 for k in CRITERIA})
-    assert set(w) == set(CRITERIA) and abs(sum(w.values()) - 1.0) < 1e-9
+    assert set(w) == {"price", "location", "amenity", "semantic"} and abs(sum(w.values()) - 1.0) < 1e-9
     assert max(w.values()) - min(w.values()) <= 0.0001
+    p_safe = UserPreferenceState(lat=10.87, lng=106.80, preferred_amenities=["ml", "safe_area"])
+    w_safe = compute_normalized_weights(p_safe, {k: 0.0 for k in CRITERIA})
+    assert set(w_safe) == set(CRITERIA) and abs(sum(w_safe.values()) - 1.0) < 1e-9
     w2 = compute_normalized_weights(p, {**{k: 1.0 for k in CRITERIA}, "price": -5.0})
     assert w2["price"] == 0.0 and abs(sum(w2.values()) - 1.0) < 1e-9
 

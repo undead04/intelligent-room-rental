@@ -4,12 +4,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Optional
 
+from pydantic import BaseModel, Field
+
+from core.config import RESOLVE_LOCATION_MAX_RETRIES
 from utils.text import norm_key
+
+logger = logging.getLogger(__name__)
 
 Kind = Literal["admin", "point", "admin_not_found", "unresolved_point", "ambiguous"]
 
@@ -473,3 +479,139 @@ def resolve_location(
     if geo and geo.get("lat") is not None and geo.get("lng") is not None:
         return LocationResolution("point", lat=float(geo["lat"]), lng=float(geo["lng"]))
     return LocationResolution("unresolved_point")
+
+
+class LocationRewrite(BaseModel):
+    """Schema structured output cho bước viết lại địa danh khi resolve_location lần đầu thất bại."""
+
+    rewritten_query: Optional[str] = Field(
+        None,
+        description="Tên địa danh chính thức ngắn gọn hơn (bỏ từ phụ như 'cổng sau', 'khu vực', sửa lỗi chính tả nếu có); null nếu không thể rút gọn",
+    )
+    location_kind: Optional[Literal["admin", "place"]] = Field(
+        None,
+        description="'admin' nếu là đơn vị hành chính (Tỉnh/Quận/Phường), 'place' nếu là địa điểm cụ thể/trường học/KCN",
+    )
+
+
+def _location_retry_variants(
+    text: str,
+    kind: Optional[str],
+    failed_kind: Kind,
+    region_hint: Optional[str],
+) -> list[tuple[str, Optional[str], Optional[str]]]:
+    """Sinh các biến thể cấu trúc nhẹ (không tốn LLM) khi lần phân giải đầu trả not_found."""
+    variants: list[tuple[str, Optional[str], Optional[str]]] = []
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+
+    if failed_kind == "admin_not_found":
+        # Địa chỉ hành chính >= 3 phần ("Phường X, TP Thủ Đức, TP HCM") -> rút về (phần đầu, phần cuối) hoặc phần đầu + hint
+        if len(parts) >= 3:
+            variants.append((f"{parts[0]}, {parts[-1]}", kind, region_hint))
+        if len(parts) >= 2:
+            variants.append((parts[0], kind, region_hint or parts[-1]))
+        return variants
+
+    # Trường hợp unresolved_point: tách lõi trước dấu phẩy + dùng tail làm region_hint; hoặc rút ngắn prefix thừa
+    if len(parts) >= 2:
+        tail_hint = region_hint or infer_region_from_location_text(parts[-1]) or parts[-1]
+        variants.append((parts[0], kind, tail_hint))
+
+    # Gọt tiền tố mô tả vị trí thường gặp khi geocode thất bại ("cổng sau ...", "đối diện ...", "khu vực ...")
+    stripped = re.sub(
+        r"^(?:(?:cổng|cong)\s+(?:trước|truoc|sau|chính|chinh|phụ|phu)|khu\s+(?:vực|vuc)|gần|gan|quanh|đối\s+diện|doi\s+dien|bên\s+cạnh|ben\s+canh|cạnh|canh|sát|sat)\s+",
+        "",
+        text.strip(),
+        flags=re.IGNORECASE,
+    ).strip(" ,.-")
+    if stripped and norm_key(stripped) != norm_key(text):
+        variants.append((stripped, kind, region_hint))
+    return variants
+
+
+def _rewrite_location_with_llm(
+    text: str,
+    region_hint: Optional[str],
+    failed_kind: Kind,
+    llm: Any,
+) -> Optional[LocationRewrite]:
+    """Nhờ Cloud LLM rút gọn / chuẩn hóa lại tên địa danh chính thức để thử phân giải lại."""
+    if llm is None:
+        return None
+    prompt = (
+        f"Địa danh '{text}' (khu vực gợi ý: '{region_hint or 'không rõ'}', trạng thái lỗi: {failed_kind}) "
+        "vừa tra cứu bản đồ/hành chính không ra kết quả. "
+        "Hãy viết lại 1 tên địa danh chính thức, ngắn gọn và chuẩn xác nhất ở Việt Nam để tìm kiếm lại (sửa lỗi chính tả, bỏ từ thừa như 'cổng sau', 'khu vực gần', tách rõ tên riêng). "
+        "Nếu địa danh thực chất không xác định được hoặc là tỉnh ngoài vùng hỗ trợ thì giữ nguyên hoặc trả null."
+    )
+    try:
+        raw = llm.with_structured_output(LocationRewrite).invoke([("human", prompt)])
+        if raw is None:
+            return None
+        return raw if isinstance(raw, LocationRewrite) else LocationRewrite.model_validate(raw)
+    except Exception:
+        logger.warning("resolve_location_with_retry: LLM rewrite lỗi cho '%s'", text, exc_info=True)
+        return None
+
+
+def resolve_location_with_retry(
+    text: str,
+    kind: Optional[str],
+    admin_lookup: AdminLookup,
+    geocode: Geocode,
+    region_hint: Optional[str] = None,
+    *,
+    max_retries: int = RESOLVE_LOCATION_MAX_RETRIES,
+    llm: Any = None,
+) -> tuple[LocationResolution, list[dict[str, Any]]]:
+    """Phân giải địa danh có cơ chế retry tối đa `max_retries` lần khi gặp `admin_not_found` / `unresolved_point`.
+
+    - Lần 0: gọi `resolve_location` với nguyên bản.
+    - Retry 1: thử các biến thể cấu trúc chuỗi (tối đa 1 lần gọi thực tế khác query).
+    - Retry 2 (nếu vẫn not_found và có `llm`): gọi Cloud LLM viết lại tên địa danh chuẩn xác hơn rồi thử lại.
+    """
+    attempts: list[dict[str, Any]] = []
+    tried_keys: set[tuple[str, Optional[str], Optional[str]]] = set()
+
+    def _run_once(q: str, k: Optional[str], h: Optional[str], stage: str) -> LocationResolution:
+        tried_keys.add((norm_key(q), k, norm_key(h or "")))
+        res = resolve_location(q, k, admin_lookup, geocode, h)
+        attempts.append({
+            "stage": stage,
+            "query": q,
+            "kind": k,
+            "region_hint": h,
+            "result_kind": res.kind,
+        })
+        return res
+
+    res = _run_once(text, kind, region_hint, "primary")
+    if res.kind in ("admin", "point", "ambiguous") or max_retries <= 0:
+        return res, attempts
+
+    retries_used = 0
+
+    # Retry 1: biến thể cấu trúc chuỗi (không tốn LLM)
+    for var_q, var_k, var_h in _location_retry_variants(text, kind, res.kind, region_hint):
+        if retries_used >= max_retries:
+            break
+        key = (norm_key(var_q), var_k, norm_key(var_h or ""))
+        if not var_q or key in tried_keys:
+            continue
+        retries_used += 1
+        res = _run_once(var_q, var_k, var_h, f"retry_{retries_used}_variant")
+        if res.kind in ("admin", "point", "ambiguous"):
+            return res, attempts
+
+    # Retry 2: Cloud LLM chuẩn hóa/rút gọn tên địa danh
+    if retries_used < max_retries and llm is not None and (text or "").strip():
+        rw = _rewrite_location_with_llm(text, region_hint, res.kind, llm)
+        if rw and rw.rewritten_query:
+            rw_q = rw.rewritten_query.strip()
+            rw_k = rw.location_kind or kind
+            key = (norm_key(rw_q), rw_k, norm_key(region_hint or ""))
+            if rw_q and key not in tried_keys and norm_key(rw_q) != norm_key(text):
+                retries_used += 1
+                res = _run_once(rw_q, rw_k, region_hint, f"retry_{retries_used}_llm_rewrite")
+
+    return res, attempts

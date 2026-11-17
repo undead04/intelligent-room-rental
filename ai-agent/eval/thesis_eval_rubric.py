@@ -486,8 +486,8 @@ def _c_mcdm() -> SubCriterionResult:
         if not pref.has_point and "location" in weights:
             problems.append("không có toạ độ nhưng vẫn bật trọng số location")
         for f in boosted:
-            w, b = weights.get(f), base.get(f)
-            if w is None or b is None:
+            w, b = weights.get(f), base.get(f, 0.0)
+            if w is None:
                 problems.append(f"thiếu yếu tố '{f}' trong trọng số")
             elif w <= b * MCDM_MIN_RELATIVE_BOOST:
                 problems.append(f"'{f}' không tăng so với baseline ({b:.3f} → {w:.3f})")
@@ -1124,7 +1124,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     model = None
     if args.with_model:
         try:
-            model = get_llm("fast")
+            model = get_llm(temperature=0.0)
         except Exception as e:
             print(f"Cảnh báo: không thể khởi tạo LLM ({e}), chạy fallback.")
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import type { AgentTraceEvent, ChatMessage } from "@/app/tim-kiem-ai/types";
+import { type ReactNode } from "react";
+import AgentTracePanel from "@/app/tim-kiem-ai/_components/AgentTracePanel";
+import type { ChatMessage } from "@/app/tim-kiem-ai/types";
 import { USER_AVATAR } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 
 interface ChatMessageItemProps {
@@ -466,24 +467,6 @@ function renderFormattedMarkdown(text: string, isStreaming?: boolean): ReactNode
   );
 }
 
-function formatUsageText(ev: AgentTraceEvent): string {
-  const parts: string[] = [];
-  if (ev.usage) {
-    const inTok = ev.usage.input_tokens ?? 0;
-    const outTok = ev.usage.output_tokens ?? 0;
-    const reasoning = ev.usage.output_token_details?.reasoning;
-    let tokStr = `${inTok} in / ${outTok} out tokens`;
-    if (reasoning) {
-      tokStr += ` (suy nghĩ: ${reasoning} tokens)`;
-    }
-    parts.push(tokStr);
-  }
-  if (ev.elapsed_ms !== undefined && ev.elapsed_ms !== null) {
-    parts.push(`${ev.elapsed_ms} ms`);
-  }
-  return parts.length > 0 ? ` — ${parts.join(" · ")}` : "";
-}
-
 function cleanCriteriaText(text: string, prefixRegex: RegExp): string {
   if (!text) return "";
   const cleaned = text.replace(prefixRegex, "").trim();
@@ -496,7 +479,9 @@ export default function ChatMessageItem({
   isTyping = false,
   onSelectQuestion,
 }: ChatMessageItemProps) {
-  const [manualToggle, setManualToggle] = useState<boolean | null>(null);
+  void isLatest;
+  void isTyping;
+  void onSelectQuestion;
 
   if (message.sender === "user") {
     return (
@@ -516,20 +501,6 @@ export default function ChatMessageItem({
   }
 
   const traceEvents = message.traceEvents || [];
-  const hasTrace = traceEvents.length > 0 || Boolean(message.isStreaming);
-  const nodeStepCount = traceEvents.filter((e) => e.type === "node_step").length;
-  const modelCallCount = traceEvents.filter((e) => e.type === "model_request").length;
-  const toolCallCount = traceEvents.filter((e) => e.type === "tool_started").length;
-
-  const finishedToolsMap = new Map<string, AgentTraceEvent>();
-  for (const ev of traceEvents) {
-    if (ev.type === "tool_finished" && ev.tool_call_id) {
-      finishedToolsMap.set(ev.tool_call_id, ev);
-    }
-  }
-
-  // Mặc định mở khi đang stream và tự thu gọn khi hoàn tất (trừ khi người dùng chủ động bấm)
-  const isTraceExpanded = manualToggle !== null ? manualToggle : Boolean(message.isStreaming);
 
   return (
     <div className="flex items-start gap-2.5">
@@ -537,202 +508,12 @@ export default function ChatMessageItem({
         <span className="material-symbols-outlined text-[17px]">auto_awesome</span>
       </div>
       <div className="bg-white border border-[#E8E4DC] rounded-2xl rounded-tl-xs p-4 shadow-sm flex-1 space-y-3.5 min-w-0">
-        {/* Khung hiển thị quá trình suy nghĩ & các bước thực hiện giống Streamlit */}
-        {hasTrace && (
-          <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden text-[11px]">
-            <button
-              type="button"
-              onClick={() => setManualToggle(!isTraceExpanded)}
-              className="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-[#F1F5F9] transition cursor-pointer"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {message.isStreaming ? (
-                  <span className="w-2 h-2 rounded-full bg-[#0F5F4A] animate-ping shrink-0" />
-                ) : (
-                  <span className="material-symbols-outlined text-[15px] text-[#0F5F4A] shrink-0">
-                    route
-                  </span>
-                )}
-                <span className="font-semibold text-[#1E293B] truncate">
-                  {message.isStreaming
-                    ? message.statusText || "Đang xử lý..."
-                    : nodeStepCount > 0
-                    ? `Tiến trình LangGraph (${nodeStepCount} node, ${modelCallCount} model call, ${toolCallCount} tool call)`
-                    : `Các bước thực hiện (${modelCallCount} model call, ${toolCallCount} tool call)`}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {message.isStreaming && (
-                  <span className="text-[10px] text-[#64748B] font-medium">
-                    {modelCallCount} model · {toolCallCount} tool
-                  </span>
-                )}
-                <span className="material-symbols-outlined text-[16px] text-[#64748B]">
-                  {isTraceExpanded ? "expand_less" : "expand_more"}
-                </span>
-              </div>
-            </button>
-
-            {isTraceExpanded && (
-              <div className="px-3 pb-3 pt-1.5 border-t border-[#E2E8F0] space-y-2 max-h-72 overflow-y-auto">
-                {traceEvents.length === 0 ? (
-                  <p className="text-[11px] text-[#64748B] italic">
-                    Đang khởi tạo kết nối tới mô hình AI...
-                  </p>
-                ) : (
-                  traceEvents.map((ev, idx) => {
-                    if (ev.type === "node_step") {
-                      const isOk = ev.status === "ok";
-                      const isWarn = ev.status === "warning";
-                      const statusIcon = isOk ? "check_circle" : isWarn ? "warning" : "error";
-                      const statusColor = isOk ? "text-emerald-600" : isWarn ? "text-amber-600" : "text-rose-600";
-                      return (
-                        <div key={idx} className="flex items-start gap-1.5 text-[#334155] py-1 border-b border-[#F1F5F9] last:border-b-0">
-                          <span className={`material-symbols-outlined text-[14px] ${statusColor} shrink-0 mt-0.5`}>
-                            {statusIcon}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-[#0F172A]">{ev.label || ev.node}</span>
-                              <code className="text-[9.5px] px-1 py-0.2 bg-[#F1F5F9] text-[#0F5F4A] rounded font-mono">
-                                {ev.node}
-                              </code>
-                            </div>
-                            {ev.details && (
-                              <p className="text-[10px] text-[#64748B] truncate mt-0.5">{ev.details}</p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (ev.type === "model_error") {
-                      return (
-                        <div key={idx} className="flex items-center gap-1.5 text-rose-600 text-[10.5px]">
-                          <span className="material-symbols-outlined text-[14px]">error</span>
-                          <span>Lỗi mô hình: {ev.error}</span>
-                        </div>
-                      );
-                    }
-
-                    if (ev.type === "model_request") {
-                      return (
-                        <div key={idx} className="flex items-center gap-1.5 text-[#334155] pt-0.5">
-                          <span className="material-symbols-outlined text-[14px] text-[#0F5F4A]">
-                            smart_toy
-                          </span>
-                          <span className="font-bold">Model call #{ev.model_call_index}</span>
-                          <span className="text-[#64748B]">
-                            | {ev.message_count ?? 0} messages | {ev.tool_count ?? 0} tools
-                          </span>
-                        </div>
-                      );
-                    }
-
-                    if (ev.type === "model_response") {
-                      const reqTools =
-                        ev.requested_tools && ev.requested_tools.length > 0
-                          ? ev.requested_tools
-                          : (ev.tool_calls_requested || [])
-                              .map((t) => t.name)
-                              .filter(Boolean) as string[];
-                      return (
-                        <div key={idx} className="pl-4 text-[10.5px] text-[#475569]">
-                          {reqTools.length > 0 ? (
-                            <span>
-                              ↳ yêu cầu {reqTools.length} tool call:{" "}
-                              <code className="px-1 py-0.5 bg-[#E2E8F0] rounded text-[#0F5F4A] font-mono">
-                                {reqTools.join(", ")}
-                              </code>
-                              {formatUsageText(ev)}
-                            </span>
-                          ) : (
-                            <span>
-                              ↳ trả câu trả lời, không yêu cầu tool
-                              {formatUsageText(ev)}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    }
-
-                    if (ev.type === "tool_started") {
-                      const done = ev.tool_call_id
-                        ? finishedToolsMap.get(ev.tool_call_id)
-                        : undefined;
-                      const resObj = done?.result;
-                      const isFailed =
-                        done &&
-                        (done.status === "error" ||
-                          done.status === "exception" ||
-                          (resObj && typeof resObj === "object" && (resObj as Record<string, unknown>).ok === false));
-
-                      const argsObj = ev.arguments || ev.args || {};
-
-                      return (
-                        <div
-                          key={idx}
-                          className="rounded-lg border border-[#CBD5E1] bg-white p-2.5 space-y-1.5 shadow-2xs"
-                        >
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <div className="flex items-center gap-1.5">
-                              <span className="material-symbols-outlined text-[14px] text-[#0F5F4A]">
-                                build
-                              </span>
-                              <span className="font-bold text-[#0F172A] font-mono">
-                                {ev.tool_name}
-                              </span>
-                              {!done ? (
-                                <span className="px-1.5 py-0.5 text-[9.5px] font-bold rounded bg-[#FEF3C7] text-[#D97706]">
-                                  đang chạy
-                                </span>
-                              ) : isFailed ? (
-                                <span className="px-1.5 py-0.5 text-[9.5px] font-bold rounded bg-[#FEE2E2] text-[#DC2626]">
-                                  lỗi
-                                </span>
-                              ) : (
-                                <span className="px-1.5 py-0.5 text-[9.5px] font-bold rounded bg-[#DCFCE7] text-[#15803D]">
-                                  ok
-                                </span>
-                              )}
-                            </div>
-                            {done?.elapsed_ms !== undefined && (
-                              <span className="text-[10px] text-[#64748B] font-mono">
-                                {done.elapsed_ms} ms
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="text-[10px] text-[#64748B] font-mono">
-                            Args:
-                            <pre className="mt-0.5 p-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded text-[10px] text-[#1E293B] overflow-x-auto whitespace-pre-wrap">
-                              {JSON.stringify(argsObj, null, 2)}
-                            </pre>
-                          </div>
-
-                          {done && done.result !== undefined && (
-                            <details className="text-[10px] text-[#475569]">
-                              <summary className="cursor-pointer font-semibold text-[#0F5F4A] hover:underline select-none">
-                                Xem kết quả (Result)
-                              </summary>
-                              <pre className="mt-1 p-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded text-[10px] text-[#1E293B] max-h-40 overflow-auto whitespace-pre-wrap font-mono">
-                                {typeof done.result === "string"
-                                  ? done.result
-                                  : JSON.stringify(done.result, null, 2)}
-                              </pre>
-                            </details>
-                          )}
-                        </div>
-                      );
-                    }
-
-                    return null;
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Khung hiển thị quá trình suy nghĩ & từng bước LangGraph */}
+        <AgentTracePanel
+          traceEvents={traceEvents}
+          isStreaming={message.isStreaming}
+          statusText={message.statusText}
+        />
 
         {/* Nội dung văn bản trả lời (stream từng từ theo thời gian thực + định dạng Markdown) */}
         {message.text ? (

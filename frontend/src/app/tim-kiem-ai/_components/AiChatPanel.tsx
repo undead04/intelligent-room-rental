@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import ChatMessageItem from "@/app/tim-kiem-ai/_components/ChatMessageItem";
+import { QUICK_PROMPT_SUGGESTIONS } from "@/app/tim-kiem-ai/_constants/aiWorkspace";
 import type { ChatMessage } from "@/app/tim-kiem-ai/types";
 
 interface AiChatPanelProps {
@@ -50,21 +51,23 @@ export default function AiChatPanel({
     }
   };
 
+  const showQuickPrompts = messages.length <= 1 && !isTyping && Boolean(onSelectQuestion);
+
   return (
-    <section className="lg:col-span-4 bg-white rounded-2xl border border-[#E8E4DC] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-[520px] lg:h-full min-h-0 overflow-hidden">
-      {/* Section Header */}
-      <div className="p-3 px-4 border-b border-[#E8E4DC] flex items-center justify-between bg-white shrink-0">
-        <h2 className="text-sm font-bold text-[#0F5F4A] flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#0F5F4A]"></span>
-          <span>1. Chat / Nhập yêu cầu</span>
+    <section className="lg:col-span-4 bg-white rounded-2xl border border-[#D8E4DF] shadow-[0_2px_12px_rgba(15,95,74,0.04)] flex flex-col h-[520px] lg:h-full min-h-0 overflow-hidden">
+      {/* Section Header — chuẩn chiều cao đồng nhất 44px */}
+      <div className="h-11 px-4 border-b border-[#E8E4DC] flex items-center justify-between gap-2 bg-white shrink-0">
+        <h2 className="text-[13.5px] font-bold text-[#0F5F4A] flex items-center gap-2 whitespace-nowrap">
+          <span className="w-2 h-2 rounded-full bg-[#0F5F4A] shrink-0"></span>
+          <span>1. Chat &amp; Nhập yêu cầu</span>
         </h2>
-        <span className="text-[11px] font-semibold text-[#0F5F4A] bg-[#E6F4EE] px-2 py-0.5 rounded-full">
+        <span className="text-[11px] font-semibold text-[#0F5F4A] bg-[#E6F4EE] border border-[#0F5F4A]/15 px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0">
           AI Assistant
         </span>
       </div>
 
       {/* Chat Conversation Messages Container */}
-      <div className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto space-y-4 text-[13px] leading-relaxed bg-[#FAFBF9]">
+      <div className="flex-1 min-h-0 p-3.5 sm:p-4 overflow-y-auto space-y-4 text-[13px] leading-relaxed bg-[#FAF8F4]/55">
         {messages.map((message, idx) => {
           const isLatest =
             idx === messages.length - 1 ||
@@ -81,12 +84,47 @@ export default function AiChatPanel({
           );
         })}
 
+        {showQuickPrompts && (
+          <div className="pl-10 space-y-2 pt-1 animate-fade-in">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#6F7974] flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[14px] text-[#0F5F4A]">
+                auto_awesome
+              </span>
+              <span>Gợi ý tìm nhanh</span>
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {QUICK_PROMPT_SUGGESTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelectQuestion?.(item.prompt)}
+                  className="group w-full text-left p-2.5 rounded-xl bg-white border border-[#D8E4DF] hover:border-[#0F5F4A] hover:bg-[#E6F4EE]/45 transition-all cursor-pointer shadow-2xs flex items-start gap-2.5"
+                >
+                  <span className="w-7 h-7 rounded-lg bg-[#E6F4EE] text-[#0F5F4A] flex items-center justify-center shrink-0 group-hover:bg-[#0F5F4A] group-hover:text-white transition-colors">
+                    <span className="material-symbols-outlined text-[15px]">{item.icon}</span>
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] font-semibold text-[#121E1A] group-hover:text-[#0F5F4A] leading-snug">
+                        {item.label}
+                      </span>
+                      <span className="text-[10px] font-bold text-[#0F5F4A] bg-[#F5F2EB] px-1.5 py-0.5 rounded-md shrink-0">
+                        {item.tag}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {isTyping && !messages.some((m) => m.isStreaming) && (
-          <div className="flex items-center gap-2 text-xs text-gray-500 pl-10">
+          <div className="flex items-center gap-2 text-xs text-[#4A5550] pl-10">
             <span className="w-2 h-2 rounded-full bg-[#0F5F4A] animate-bounce"></span>
             <span className="w-2 h-2 rounded-full bg-[#0F5F4A] animate-bounce delay-100"></span>
             <span className="w-2 h-2 rounded-full bg-[#0F5F4A] animate-bounce delay-200"></span>
-            <span className="italic text-[11px]">AI đang phân tích yêu cầu mới...</span>
+            <span className="italic text-[11.5px]">AI đang phân tích yêu cầu mới...</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -98,7 +136,7 @@ export default function AiChatPanel({
         onSubmit={onSubmit}
         className="p-2.5 sm:p-3 border-t border-[#E8E4DC] bg-white shrink-0"
       >
-        <div className="flex items-end gap-2 bg-[#FAFBF9] border border-[#E8E4DC] rounded-2xl pl-3.5 pr-2 py-2 focus-within:ring-2 focus-within:ring-[#0F5F4A]/20 focus-within:border-[#0F5F4A] transition">
+        <div className="flex items-end gap-2 bg-[#FAF8F4] border border-[#D8E4DF] rounded-2xl pl-3.5 pr-2 py-2 focus-within:ring-2 focus-within:ring-[#0F5F4A]/20 focus-within:border-[#0F5F4A] focus-within:bg-white transition">
           <textarea
             ref={textareaRef}
             rows={1}
@@ -107,7 +145,7 @@ export default function AiChatPanel({
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Nhập yêu cầu (vd: 'gần UIT dưới 4tr có máy lạnh')..."
-            className="w-full resize-none bg-transparent py-1 text-[13px] leading-[1.5] text-[#121E1A] focus:outline-none placeholder-[#6F7974] max-h-[132px] break-words"
+            className="w-full resize-none bg-transparent py-1 text-[13.5px] leading-[1.45] text-[#121E1A] focus:outline-none placeholder-[#6F7974] max-h-[132px] break-words"
           />
           <button
             type="submit"
@@ -118,7 +156,7 @@ export default function AiChatPanel({
             <span className="material-symbols-outlined text-[17px]">send</span>
           </button>
         </div>
-        <p className="mt-1 px-1 text-[10px] text-[#6F7974] flex items-center justify-between">
+        <p className="mt-1.5 px-1 text-[10.5px] text-[#6F7974] flex items-center justify-between">
           <span>Enter để gửi · Shift + Enter để xuống dòng</span>
         </p>
       </form>

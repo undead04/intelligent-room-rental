@@ -142,7 +142,7 @@ class _MarketHarness:
         sd.clear_cache()
         self.deps = Deps(
             sessions=self.sessions,
-            get_llm=lambda role: self.llm,
+            get_llm=lambda temperature=None: self.llm,
             base_prompt="BASE",
             decision_system_prompt="DECISION",
             search_rooms=search,

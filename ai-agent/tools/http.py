@@ -1,25 +1,39 @@
-"""HTTP dùng chung cho các tool: MỘT httpx.Client tái sử dụng (kết nối giữ sống), không tạo client mới mỗi lần gọi."""
+"""HTTP dùng chung cho các tool: MỘT httpx.Client tái sử dụng (kết nối giữ sống), kèm retry nhẹ cho lỗi transient."""
 
 from __future__ import annotations
 
-import os
+import logging
 import threading
+import time
 from typing import Any, Optional
 
 import httpx
 
-API_BASE = os.environ.get("SEARCH_ROOM_API_BASE", "http://localhost:8000/api/v1").rstrip("/")
-TIMEOUT = float(os.environ.get("SEARCH_ROOM_TIMEOUT", "20.0"))
+from core.config import (
+    HTTP_MAX_RETRIES,
+    HTTP_RETRY_BACKOFF_SECONDS,
+    get_runtime_settings,
+)
+
+logger = logging.getLogger(__name__)
+
+_RETRYABLE_STATUSES = frozenset({502, 503, 504})
 
 _client: Optional[httpx.Client] = None
 _lock = threading.Lock()
+
+
+def _api_config() -> tuple[str, float]:
+    s = get_runtime_settings()
+    return s.search_room_api_base, s.search_room_timeout
 
 
 def get_client() -> httpx.Client:
     global _client
     with _lock:
         if _client is None or _client.is_closed:
-            _client = httpx.Client(base_url=API_BASE, timeout=TIMEOUT, follow_redirects=True)
+            api_base, timeout = _api_config()
+            _client = httpx.Client(base_url=api_base, timeout=timeout, follow_redirects=True)
         return _client
 
 
@@ -38,11 +52,11 @@ def unwrap_response(resp: httpx.Response) -> dict[str, Any]:
         data = resp.json()
     except Exception:
         preview = resp.text[:200].strip() if resp.text else f"status {resp.status_code}"
-        return {"ok": False, "error": f"Phản hồi không phải JSON ({preview})"}
+        return {"ok": False, "error": f"Phản hồi không phải JSON ({preview})", "status": resp.status_code}
     if resp.is_error:
         msg = data.get("message") if isinstance(data, dict) else None
         return {"ok": False, "error": msg or f"HTTP {resp.status_code}", "status": resp.status_code}
-    if isinstance(data, dict) and "success" in data:          # phong bì {"success", "data"?, "message"?}; bản cũ đòi có cả "data" nên lỗi không kèm data bị coi là thành công
+    if isinstance(data, dict) and "success" in data:
         if not data.get("success", False):
             return {"ok": False, "error": data.get("message") or "API trả về lỗi"}
         return {"ok": True, "data": data.get("data")}
@@ -50,9 +64,26 @@ def unwrap_response(resp: httpx.Response) -> dict[str, Any]:
 
 
 def request(method: str, path: str, *, params: Optional[dict] = None, json: Optional[dict] = None) -> dict[str, Any]:
-    """Gọi API, KHÔNG BAO GIỜ ném lỗi: lỗi mạng -> {"ok": False, "error": ...}."""
-    try:
-        resp = get_client().request(method, path, params=params, json=json)
-    except httpx.HTTPError as e:
-        return {"ok": False, "error": f"Không thể kết nối đến {API_BASE}{path}: {e}"}
-    return unwrap_response(resp)
+    """Gọi API có retry cho lỗi mạng/timeout/5xx (tối đa HTTP_MAX_RETRIES lần), KHÔNG BAO GIỜ ném lỗi."""
+    max_retries = max(0, int(HTTP_MAX_RETRIES))
+    for attempt in range(max_retries + 1):
+        try:
+            resp = get_client().request(method, path, params=params, json=json)
+        except httpx.HTTPError as e:
+            if attempt < max_retries and isinstance(e, (httpx.TimeoutException, httpx.TransportError)):
+                logger.warning("HTTP %s %s lỗi kết nối (lần %d), thử lại...", method, path, attempt + 1)
+                time.sleep(HTTP_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                continue
+            api_base, _ = _api_config()
+            return {"ok": False, "error": f"Không thể kết nối đến {api_base}{path}: {e}", "network_error": True}
+
+        if resp.status_code in _RETRYABLE_STATUSES and attempt < max_retries:
+            logger.warning("HTTP %s %s trả %s (lần %d), thử lại...", method, path, resp.status_code, attempt + 1)
+            time.sleep(HTTP_RETRY_BACKOFF_SECONDS * (attempt + 1))
+            continue
+        res = unwrap_response(resp)
+        if resp.status_code in _RETRYABLE_STATUSES:
+            res["network_error"] = True
+        return res
+
+    return {"ok": False, "error": f"Không thể kết nối đến {path}", "network_error": True}

@@ -5,11 +5,15 @@ import Breadcrumbs from "@/components/Breadcrumbs";
 interface AiWorkspaceHeaderProps {
   onResetConversation?: () => void;
   hasActiveSession?: boolean;
+  isTyping?: boolean;
+  hasError?: boolean;
 }
 
 export default function AiWorkspaceHeader({
   onResetConversation,
   hasActiveSession,
+  isTyping = false,
+  hasError = false,
 }: AiWorkspaceHeaderProps) {
   return (
     <div className="w-full max-w-[1600px] mx-auto px-4 lg:px-6 pt-2 pb-1 shrink-0">
@@ -32,9 +36,31 @@ export default function AiWorkspaceHeader({
             </button>
           )}
 
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#E6F4EE] border border-[#0F5F4A]/20 text-[#0F5F4A] text-[11px] font-bold shadow-2xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0F5F4A] animate-pulse"></span>
-            <span>AI Agent đang kết nối</span>
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-colors ${
+              hasError
+                ? "bg-amber-50 border-amber-200 text-amber-800"
+                : isTyping
+                  ? "bg-[#E6F4EE] border-[#0F5F4A]/25 text-[#0F5F4A]"
+                  : "bg-[#E6F4EE]/80 border-[#D8E4DF] text-[#0F5F4A]"
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                hasError
+                  ? "bg-amber-500"
+                  : isTyping
+                    ? "bg-[#0F5F4A] animate-ping"
+                    : "bg-[#0F5F4A]"
+              }`}
+            ></span>
+            <span>
+              {hasError
+                ? "Mất kết nối Agent"
+                : isTyping
+                  ? "AI đang phân tích..."
+                  : "AI Agent sẵn sàng"}
+            </span>
           </span>
         </div>
       </div>

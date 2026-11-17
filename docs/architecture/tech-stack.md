@@ -56,8 +56,9 @@ flowchart TD
   * SQLite (`sessions.db` - lưu vết hội thoại đa phiên)
   * HTTPX (`AsyncClient` có connection pool)
   * Pydantic v2, PyYAML
-* **Khởi tạo LLM:**
-  * Tập trung duy nhất qua `core/llm.py`: `get_llm("main")` và `get_llm("fast")`.
+* **Khởi tạo LLM & Cấu hình:**
+  * Cấu hình tập trung duy nhất tại `core/config.py` (search limits, bán kính, session limits, temperatures, retry limits, env settings).
+  * Khởi tạo 1 Cloud LLM duy nhất qua `core/llm.py`: `get_llm()` (mặc định `temperature = 0.3` cho sinh văn bản; riêng NLU/Critic dùng `temperature = 0.0` và nâng `0.3` khi NLU retry).
 
 ---
 

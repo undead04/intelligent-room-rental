@@ -49,8 +49,41 @@ export interface RoomItem {
   explain_match?: Record<string, unknown>;
 }
 
+export interface AgentTraceVersions {
+  prompt?: string;
+  skill?: string;
+  model?: string;
+}
+
+export interface VerifierFailureItem {
+  condition_id?: string;
+  actual?: unknown;
+  expected?: unknown;
+  verifier_type?: string;
+  message?: string;
+  tier?: string;
+}
+
 export interface AgentTraceEvent {
-  type: "model_request" | "model_response" | "tool_started" | "tool_finished" | "node_step" | "model_error" | string;
+  type:
+    | "model_request"
+    | "model_response"
+    | "model_error"
+    | "tool_started"
+    | "tool_finished"
+    | "node_step"
+    | "verifier_decision"
+    | "adaptive_radius_expansion"
+    | "suspicious_listing"
+    | string;
+  id?: string;
+  run_id?: string;
+  session_id?: string;
+  case_id?: string;
+  seq?: number;
+  ts?: number;
+  timestamp?: number;
+  versions?: AgentTraceVersions;
   step?: number;
   model_call_index?: number;
   model_name?: string;
@@ -58,10 +91,18 @@ export interface AgentTraceEvent {
   tool_count?: number;
   system_prompt_chars?: number;
   message_chars?: number;
+  duration_ms?: number;
   elapsed_ms?: number;
   node?: string;
   label?: string;
   details?: string;
+  input?: unknown;
+  output?: unknown;
+  tokens_in?: number;
+  tokens_out?: number;
+  prompt_tokens?: number;
+  cached_tokens?: number;
+  tokens_estimated?: boolean;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -72,19 +113,44 @@ export interface AgentTraceEvent {
   } | null;
   tool_calls_requested?: Array<{ id?: string; name?: string }>;
   requested_tools?: string[];
+  tool?: string;
   tool_call_id?: string;
   tool_name?: string;
   arguments?: Record<string, unknown>;
   args?: Record<string, unknown>;
   status?: string;
   result?: unknown;
-  error?: string;
+  result_summary?: Record<string, unknown> | unknown;
+  state_before?: Record<string, unknown> | unknown;
+  state_after?: Record<string, unknown> | unknown;
+  error?: string | null;
+  passed?: boolean;
+  failures?: Array<VerifierFailureItem | string>;
+  next_decision?: string;
+  failed_tier?: string | null;
+  answer_retry?: number;
+  dod_summary?: string;
+  verifier_output?: {
+    passed?: boolean;
+    failures?: Array<VerifierFailureItem | string>;
+    [key: string]: unknown;
+  };
+  from_radius?: number | null;
+  to_radius?: number;
+  valid_rooms_before?: number;
+  reason?: string;
+  listing_id?: string;
+  rules?: string[];
 }
 
 export interface AgentResponse {
   session_id?: string;
   text_reply: string;
   rooms: RoomItem[];
+  page?: number;
+  page_size?: number;
+  total_rooms?: number;
+  total_pages?: number;
   insights?: DecisionInsight | null;
   current_preferences?: UserPreferenceState | null;
   need_clarification?: boolean;
@@ -92,6 +158,17 @@ export interface AgentResponse {
   grounding_report?: Record<string, unknown> | null;
   trace_events?: AgentTraceEvent[];
   searched?: boolean;
+}
+
+export interface SessionRoomsPageResponse {
+  session_id: string;
+  rooms: RoomItem[];
+  page: number;
+  page_size: number;
+  total_rooms: number;
+  total_pages: number;
+  has_prev: boolean;
+  has_next: boolean;
 }
 
 export interface AgentChatRequest {

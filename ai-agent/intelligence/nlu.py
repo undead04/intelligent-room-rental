@@ -29,7 +29,7 @@ from prompts.nlu_prompt import (
     build_nlu_system_prompt,
 )
 from skills.skills_discovery import discover_housing_skills, skills_catalog_for_prompt
-from utils.text import norm_key, strip_accents
+from utils.text import norm_key
 
 logger = logging.getLogger(__name__)
 
@@ -191,13 +191,44 @@ class PreferencePatch(BaseModel):
         return not self.model_dump(exclude_defaults=True, exclude_none=True)
 
 
+TaskName = Literal["search", "followup", "advisory"]
+PageActionT = Literal["next", "prev", "first", "last", "goto"]
+RevertModeT = Literal["initial", "previous", "turn"]
+
+
 class TurnAnalysis(BaseModel):
     intent: IntentT
     skill_slug: Optional[str] = Field(None, description="Điền mã kỹ năng khi người dùng hỏi kiến thức thuộc danh mục kỹ năng")
-    referenced_room_rank: Optional[int] = Field(None, description="Thứ hạng phòng được nhắc tới (1-5)")
+    referenced_room_rank: Optional[int] = Field(None, description="Thứ hạng phòng được nhắc tới (1-50)")
     is_multi_intent: bool = Field(
         False,
         description="True nếu người dùng gộp nhiều mệnh lệnh khác nhánh trong cùng 1 câu (VD: vừa tìm phòng vừa hỏi kỹ năng hợp đồng, hoặc vừa hỏi chi tiết phòng cũ vừa đổi tiêu chí tìm phòng mới)",
+    )
+    task_order: list[TaskName] = Field(
+        default_factory=list,
+        description="Thứ tự thực thi các nhánh khi is_multi_intent=True, sắp đúng theo trình tự trong câu người dùng",
+    )
+    page_action: Optional[PageActionT] = Field(
+        None,
+        description="Yêu cầu chuyển trang trên danh sách phòng đã tìm ('next', 'prev', 'first', 'last', 'goto'); để null nếu có tiêu chí tìm kiếm mới",
+    )
+    target_page: Optional[int] = Field(None, description="Số trang cụ thể (1-based) khi page_action='goto'")
+    revert_mode: Optional[RevertModeT] = Field(
+        None,
+        description="Chế độ quay lại tiêu chí tìm kiếm trước đó ('initial', 'previous', 'turn'); mặc định null",
+    )
+    revert_turn: Optional[int] = Field(None, description="Số thứ tự lượt (1-based) khi revert_mode='turn'")
+    is_location_pivot: bool = Field(
+        False,
+        description="True nếu hệ thống đang làm rõ địa điểm trùng tên/mơ hồ nhưng người dùng đổi ý chuyển sang khu vực khác",
+    )
+    followup_current_page_first: bool = Field(
+        False,
+        description="True nếu người dùng hỏi phòng đầu tiên của trang hiện tại đang xem mà không nêu số Top cụ thể",
+    )
+    needs_budget_clarification: bool = Field(
+        False,
+        description="True khi người dùng yêu cầu tăng/giảm/nới ngân sách nhưng CHƯA nêu mức giá cụ thể bằng số (vd: 'nới giá lên nữa đi')",
     )
     patch: PreferencePatch = Field(default_factory=PreferencePatch)
     priorities: Priorities = Field(default_factory=Priorities)
@@ -330,6 +361,8 @@ def _build_context(
     multipliers: Optional[dict],
     recent_dialog_turns: Optional[list[tuple[str, str]]] = None,
     recent_user_turns: Optional[list[str]] = None,
+    page_info: str = "",
+    pending_location: str = "",
 ) -> str:
     if recent_dialog_turns:
         history_lines = []
@@ -343,16 +376,22 @@ def _build_context(
         )
     else:
         history_str = "chưa có"
+    extra_lines = []
+    if page_info:
+        extra_lines.append(f"Phân trang hiện tại: {page_info}")
+    if pending_location:
+        extra_lines.append(f"Địa điểm đang chờ người dùng làm rõ: {pending_location}")
+    extra_block = ("\n" + "\n".join(extra_lines)) if extra_lines else ""
     return (
         f"Tiêu chí hiện tại:\n{pref.to_context_string()}\n"
         f"Mức ưu tiên hiện tại: {multipliers_to_levels(multipliers)}\n"
         f"Lịch sử đối thoại gần nhất (dùng để hiểu đại từ 'nó', câu trả lời cho Trợ lý, hoặc khi người dùng nói 'như lúc nãy'):\n{history_str}\n"
-        f"Phòng vừa đề xuất ở lượt trước: {rooms_brief or 'chưa có'}"
+        f"Phòng vừa đề xuất ở lượt trước: {rooms_brief or 'chưa có'}{extra_block}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Kiểm định bất biến cấu trúc đầu ra NLU (Schema & State Invariants)
+# Kiểm định bất biến cấu trúc đầu ra NLU (Schema & State Invariants — 0 Regex ngữ nghĩa)
 # ---------------------------------------------------------------------------
 def _postprocess(
     a: TurnAnalysis,
@@ -361,44 +400,14 @@ def _postprocess(
     n_rooms: int = 0,
     valid_slugs: Optional[set[str]] = None,
 ) -> TurnAnalysis:
-    """Kiểm định tính hợp lệ của dữ liệu cấu trúc (Schema & State Invariants):
+    """Kiểm định tính hợp lệ cấu trúc đầu ra LLM (tôn trọng hoàn toàn quyết định ngữ nghĩa của LLM):
     1. Chuẩn hoá nếu LLM đặt mã Amenity chuẩn vào `special_requirements_add` thì nâng lên `amenities_add`.
-    2. Bảo vệ tiêu chí tích lũy: Chặn LLM tự ý điền `clear: ['location']` nếu người dùng không có từ khóa hủy bỏ.
-    3. Kiểm định `skill_slug` thuộc danh mục kỹ năng hiện có và `referenced_room_rank` trong khoảng `1..n_rooms`.
-    4. Phát hiện đa mệnh lệnh (`is_multi_intent`) khi người dùng gộp nhiều tác vụ khác nhánh trong cùng một lượt.
-    5. Xoá `semantic_query` đối với các intent không thực hiện tìm kiếm.
+    2. Bất biến khoảng giá min >= max -> giữ trần max_price.
+    3. Kiểm định `skill_slug` thuộc danh mục kỹ năng hiện có và `referenced_room_rank` trong khoảng `1..max_valid_rank`.
+    4. Xác định đa mệnh lệnh (`is_multi_intent`) dựa trên dữ liệu cấu trúc & lọc `task_order` hợp lệ.
+    5. Xoá `semantic_query` đối với các intent phi tìm kiếm.
     """
     valid = valid_slugs or set()
-
-    # Bảo vệ tiêu chí tích luỹ chống Hallucination của LLM trong patch.clear:
-    # LLM (đặc biệt là model local) hay tự ý điền clear: ['location', 'price', ...] dù người dùng chỉ nói "thêm máy lạnh".
-    # CHỈ chấp nhận clear từng nhóm khi văn bản người dùng thực sự có từ khóa mang nghĩa xoá bỏ/hủy/phủ định.
-    if a.patch.clear and user_text:
-        clean_msg = strip_accents(user_text).lower()
-        has_general_reset = bool(re.search(r"\b(?:reset|bo het|xoa het|huy het|tim lai tu dau|nhu moi)\b", clean_msg))
-        is_new_location_search = bool(a.patch.location_text and (a.intent == "new_search" or a.reset_priorities))
-        if not has_general_reset:
-            validated_clear = []
-            for group in a.patch.clear:
-                if group == "location":
-                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:vi tri|khu vuc|dia diem|o do|uit|quan|truong)\b", clean_msg) or re.search(r"\b(?:dau cung duoc|khap noi|bat ky dau|toan thanh pho)\b", clean_msg):
-                        validated_clear.append(group)
-                elif group == "price":
-                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:gia|ngan sach|tien)\b", clean_msg) or re.search(r"\b(?:gia nao cung duoc|bao nhieu cung duoc)\b", clean_msg):
-                        validated_clear.append(group)
-                elif group == "area":
-                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:dien tich|m2|rong)\b", clean_msg):
-                        validated_clear.append(group)
-                elif group == "room_type":
-                    if re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:loai phong|phong tro|ktx|can ho)\b", clean_msg):
-                        validated_clear.append(group)
-                elif group == "amenities":
-                    if is_new_location_search or re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:tien ich|do dac|noi that)\b", clean_msg) or bool(a.patch.amenities_remove):
-                        validated_clear.append(group)
-                elif group == "special_requirements":
-                    if is_new_location_search or re.search(r"\b(?:bo|xoa|huy|khong can|ko can)\b.*\b(?:yeu cau|dac diem)\b", clean_msg) or bool(a.patch.special_requirements_remove):
-                        validated_clear.append(group)
-            a.patch.clear = validated_clear
 
     # Bất biến ngân sách: nếu LLM điền min_price == max_price (do người dùng nói "khoảng 3 triệu"),
     # chỉ giữ trần ngân sách max_price, đặt min_price = None để không lọc cứng price == X.
@@ -425,17 +434,6 @@ def _postprocess(
     else:
         valid_slug = None
 
-    # Nếu intent chính là skill_advice và không có tiêu chí tìm kiếm cốt lõi (địa điểm cụ thể, giá trần, loại phòng)
-    # thì xoá các trường phụ bị rò rỉ trong patch (tránh chặn nhầm câu hỏi hợp đồng dài thành đa mệnh lệnh).
-    # Riêng skill 'market-price-advisor' khi chỉ hỏi mặt bằng giá theo khu vực (không nêu giá trần/tiện ích/tìm phòng)
-    # thì giữ lại location_text/allowed_room_types trong patch để advisory_node tra cứu, không bật đa mệnh lệnh.
-    clean_for_intent = strip_accents(user_text or "").lower()
-    has_explicit_room_search = bool(
-        re.search(
-            r"\b(?:tim|kiem|goi y|de xuat|liet ke|xem danh sach)\s+(?:giup\s+|cho\s+)?(?:phong|can ho|nha|ktx|sleepbox)\b",
-            clean_for_intent,
-        )
-    )
     has_non_market_filter = bool(
         a.patch.max_price is not None
         or a.patch.min_price is not None
@@ -452,7 +450,6 @@ def _postprocess(
         a.intent == "skill_advice"
         and valid_slug == "market-price-advisor"
         and not a.is_multi_intent
-        and not has_explicit_room_search
         and not has_non_market_filter
     )
 
@@ -462,7 +459,9 @@ def _postprocess(
         or bool(a.patch.allowed_room_types)
     )
     has_vague_search = bool(a.patch.location_is_vague or a.patch.vague_category) and (
-        has_explicit_room_search or a.intent in ("new_search", "refine_search")
+        a.intent in ("new_search", "refine_search")
+        or a.is_multi_intent
+        or ("search" in (a.task_order or []))
     )
     if a.intent == "skill_advice" and not has_concrete_search_target and not is_pure_market_price_query and not has_vague_search:
         a.patch = PreferencePatch()
@@ -487,10 +486,6 @@ def _postprocess(
     has_skill = valid_slug is not None
     has_followup = (valid_rank is not None) or (a.intent == "room_followup" and n_rooms > 0)
 
-    # Đa mệnh lệnh khi kết hợp >= 2 nhánh độc lập:
-    # - Tìm phòng (có tiêu chí tìm phòng thực sự) + Hỏi kỹ năng (valid_slug)
-    # - Hỏi phòng cũ (valid_rank / followup) + Hỏi kỹ năng (valid_slug)
-    # - Tìm phòng (có patch) + Hỏi phòng cũ (khi intent là tìm kiếm nhưng kèm valid_rank, hoặc LLM bật is_multi_intent)
     is_compound = (
         (has_search_patch and has_skill)
         or (has_followup and has_skill)
@@ -502,9 +497,11 @@ def _postprocess(
         a.is_multi_intent = True
         a.skill_slug = valid_slug
         a.referenced_room_rank = valid_rank
+        a.task_order = list(dict.fromkeys(a.task_order or []))
         return a
 
     a.is_multi_intent = False
+    a.task_order = []
     if a.intent == "skill_advice":
         if valid_slug:
             a.skill_slug = valid_slug
@@ -519,58 +516,16 @@ def _postprocess(
             a.patch = PreferencePatch()
     else:
         a.referenced_room_rank = None
+        a.followup_current_page_first = False
 
     if a.intent not in ("new_search", "refine_search"):
         a.semantic_query = None
-    elif a.semantic_query:
-        a.semantic_query = sanitize_user_text(a.semantic_query).strip() or None
-
-    # Guardrail chặn SLEEPBOX (suất giường cá nhân) vs Không gian phòng độc lập
-    user_lower = (user_text or "").lower()
-    clean_u = strip_accents(user_lower)
-
-    # 1. Người dùng chủ động chấp nhận mô hình giường ngủ tập thể (shared bed)
-    accepts_shared_bed = bool(
-        RoomType.SLEEPBOX in a.patch.allowed_room_types
-        or any(kw in clean_u for kw in (
-            "ktx", "ky tuc xa", "sleepbox", "hop ngu", "giuong tang", "bao giuong", "1 giuong", "o ghep ktx"
-        ))
-    )
-
-    # 2. Người dùng yêu cầu không gian phòng ở độc lập (private space)
-    private_room_types = {RoomType.ROOM, RoomType.STUDIO, RoomType.APARTMENT, RoomType.WHOLE_HOUSE}
-    is_private_room_type = bool(a.patch.allowed_room_types) and all(
-        rt in private_room_types for rt in a.patch.allowed_room_types
-    )
-    has_room_area = a.patch.min_area is not None and a.patch.min_area >= 15
-    private_amenities = (Amenity.PRIVATE_WC, Amenity.PET_ALLOWED, Amenity.MEZZANINE, Amenity.WINDOW_BALCONY)
-    has_private_amenity = any(
-        am in (a.patch.amenities_add + a.patch.preferred_amenities_add)
-        for am in private_amenities
-    )
-    has_multi_person = bool(
-        re.search(r"\b([2-9]|\d{2,})\s*(?:nguoi|ban|anh em|chi em|vo chong|gia dinh)\b", clean_u)
-        or any(kw in clean_u for kw in ("nhom ban", "cap doi", "o chung nhom", "vo chong", "gia dinh"))
-    )
-    has_private_space_keyword = any(
-        kw in clean_u
-        for kw in (
-            "phong rieng", "khep kin", "o rieng", "phong tro", "can ho",
-            "studio", "nguyen can", "phong nu", "phong nam",
-            "wc rieng", "ve sinh rieng", "toilet rieng", "khong chung chu", "khong chung phong"
-        )
-    )
-    requires_private_space = bool(
-        is_private_room_type
-        or has_room_area
-        or has_private_amenity
-        or has_multi_person
-        or has_private_space_keyword
-    )
-
-    if requires_private_space and not accepts_shared_bed:
-        if RoomType.SLEEPBOX not in a.patch.excluded_room_types:
-            a.patch.excluded_room_types.append(RoomType.SLEEPBOX)
+        a.needs_budget_clarification = False
+    else:
+        if a.semantic_query:
+            a.semantic_query = sanitize_user_text(a.semantic_query).strip() or None
+        if a.patch.max_price is not None or a.patch.min_price is not None or "price" in a.patch.clear:
+            a.needs_budget_clarification = False
 
     return a
 
@@ -601,14 +556,17 @@ def analyze_turn(
     user_text: str,
     pref: UserPreferenceState,
     *,
+    retry_model: Any = None,
     rooms_brief: str = "",
     multipliers: Optional[dict[str, float]] = None,
     n_rooms: int = 0,
     skills: Optional[dict[str, Any]] = None,
     recent_dialog_turns: Optional[list[tuple[str, str]]] = None,
     recent_user_turns: Optional[list[str]] = None,
+    page_info: str = "",
+    pending_location: str = "",
 ) -> Optional[TurnAnalysis]:
-    """Gọi LLM 1 lần để phân tích lượt hội thoại. Trả None khi không có model hoặc lỗi kết nối."""
+    """Gọi LLM 1 lần để phân tích lượt hội thoại (mặc định temp 0.0, retry nâng lên 0.3). Trả None khi không có model hoặc lỗi kết nối."""
     text = sanitize_user_text(user_text)
     if model is None or not text:
         return None
@@ -617,7 +575,7 @@ def analyze_turn(
 
     messages = [
         ("system", build_nlu_system_prompt(skills_catalog_for_prompt(skills))),
-        ("human", f"{_build_context(pref, rooms_brief, multipliers, recent_dialog_turns=recent_dialog_turns, recent_user_turns=recent_user_turns)}\n\n<user_message>\n{text}\n</user_message>"),
+        ("human", f"{_build_context(pref, rooms_brief, multipliers, recent_dialog_turns=recent_dialog_turns, recent_user_turns=recent_user_turns, page_info=page_info, pending_location=pending_location)}\n\n<user_message>\n{text}\n</user_message>"),
     ]
     kwargs: dict[str, Any] = {}
     method = os.environ.get("NLU_STRUCTURED_METHOD")
@@ -626,9 +584,12 @@ def analyze_turn(
 
     analysis: Optional[TurnAnalysis] = None
     for attempt in range(3):
+        active_model = model if attempt == 0 else (retry_model or model)
         try:
-            raw = model.with_structured_output(TurnAnalysis, **kwargs).invoke(messages)
+            raw = active_model.with_structured_output(TurnAnalysis, **kwargs).invoke(messages)
             if raw is None:
+                if attempt < 2 and retry_model is not None:
+                    continue
                 return None
             analysis = raw if isinstance(raw, TurnAnalysis) else TurnAnalysis.model_validate(raw)
             break
@@ -647,9 +608,9 @@ def analyze_turn(
                 logger.warning("analyze_turn chạm rate limit (429 RPM), chờ %.1fs rồi thử lại lần %d...", wait_sec, attempt + 1)
                 _time.sleep(wait_sec)
                 continue
-            is_transient = any(t in err_msg for t in ("model unloaded", "model reloaded", "failed to load model", "connection", "timeout"))
+            is_transient = any(t in err_msg for t in ("connection", "timeout", "validation"))
             if is_transient and attempt < 2:
-                _time.sleep(1.0)
+                _time.sleep(0.5)
                 continue
             logger.exception("analyze_turn gặp lỗi khi gọi LLM")
             return None

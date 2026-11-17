@@ -28,6 +28,7 @@ def test_multi_intent_followup_then_search_runs_followup_before_overwriting_room
     compound = TurnAnalysis(
         intent="new_search",
         referenced_room_rank=1,
+        task_order=["followup", "search"],
         patch=PreferencePatch(location_text="Dĩ An", location_kind="admin", max_price=3_500_000),
         semantic_query="phòng trọ Dĩ An dưới 3.5 triệu",
     )
@@ -95,6 +96,7 @@ def test_multi_intent_triple_followup_search_advisory_in_one_turn():
         intent="new_search",
         referenced_room_rank=1,
         skill_slug=SKILL.slug,
+        task_order=["followup", "search", "advisory"],
         patch=PreferencePatch(location_text="Thủ Đức", location_kind="admin", max_price=3_500_000),
         semantic_query="phòng trọ Thủ Đức dưới 3.5 triệu",
     )
@@ -182,6 +184,7 @@ def test_multi_intent_followup_with_empty_last_rooms_does_not_crash_and_runs_sea
     compound = TurnAnalysis(
         intent="new_search",
         referenced_room_rank=1,
+        task_order=["followup", "search"],
         patch=PreferencePatch(location_text="Quận 7", location_kind="admin", max_price=3_500_000),
         semantic_query="phòng trọ Quận 7 dưới 3.5 triệu",
     )
@@ -207,6 +210,7 @@ def test_multi_intent_search_updates_last_rooms_after_followup_step():
     compound = TurnAnalysis(
         intent="new_search",
         referenced_room_rank=1,
+        task_order=["followup", "search"],
         patch=PreferencePatch(location_text="Dĩ An", location_kind="admin", max_price=3_500_000),
         semantic_query="phòng trọ Dĩ An dưới 3.5 triệu",
     )
@@ -272,6 +276,7 @@ def test_multi_intent_search_then_followup_on_turn_1_with_empty_last_rooms():
     compound = TurnAnalysis(
         intent="new_search",
         referenced_room_rank=1,
+        task_order=["search", "followup"],
         patch=PreferencePatch(location_text="Dĩ An", location_kind="admin", max_price=3_500_000),
         semantic_query="phòng trọ Dĩ An dưới 3.5 triệu",
     )
@@ -346,6 +351,7 @@ def test_multi_intent_search_then_followup_then_advisory_in_one_turn():
         intent="new_search",
         referenced_room_rank=1,
         skill_slug=SKILL.slug,
+        task_order=["search", "followup", "advisory"],
         patch=PreferencePatch(location_text="Thủ Đức", location_kind="admin", max_price=3_500_000),
         semantic_query="phòng trọ Thủ Đức dưới 3.5 triệu",
     )
@@ -477,6 +483,7 @@ def test_multi_intent_search_then_advisory_then_followup_preserves_new_rooms():
         intent="new_search",
         referenced_room_rank=1,
         skill_slug=SKILL.slug,
+        task_order=["search", "advisory", "followup"],
         patch=PreferencePatch(location_text="Thủ Đức", location_kind="admin", max_price=3_500_000),
         semantic_query="phòng trọ Thủ Đức dưới 3.5 triệu",
     )
@@ -521,6 +528,8 @@ def test_multi_intent_advisory_then_vague_search_preserves_clarification():
     compound = TurnAnalysis(
         intent="skill_advice",
         skill_slug=SKILL.slug,
+        is_multi_intent=True,
+        task_order=["advisory", "search"],
         patch=PreferencePatch(location_is_vague=True, vague_category="trường đại học"),
     )
     llm = (

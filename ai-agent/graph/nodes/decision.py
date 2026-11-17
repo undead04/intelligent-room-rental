@@ -67,7 +67,10 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
         else ((getattr(session, "focused_room_rank", None) or 1) if is_followup else None)
     )
     target_room = (
-        (rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None))
+        next(
+            (r for r in rooms if getattr(r, "rank", None) == focus_rank),
+            rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None),
+        )
         if focus_rank is not None
         else None
     )
@@ -120,7 +123,7 @@ def _followup_via_agent(deps: Deps, session: Any, state: dict[str, Any], rooms: 
     except Exception:
         logger.warning("_followup_via_agent: agent invoke gặp lỗi", exc_info=True)
 
-    model = deps.get_llm("main")
+    model = deps.get_llm()
     if is_followup and model is not None and target_room and compact_detail:
         try:
             dep_val = compact_detail.get("deposit_million")
@@ -166,7 +169,7 @@ def make_decision_node(deps: Deps):
         if not rooms:
             text = ""
             evidence_blocks: list[str] = []
-            model = deps.get_llm("main")
+            model = deps.get_llm()
             if model is not None and not state.get("search_error") and not state.get("admin_not_found") and not state.get("location_not_found") and not state.get("ambiguous_candidates"):
                 try:
                     market = state.get("market_context")
@@ -256,7 +259,7 @@ def make_decision_node(deps: Deps):
             if state.get("is_followup") or (not deps.constrained_generation and deps.decision_agent):
                 text, evidence = _followup_via_agent(deps, session, state, rooms, pref, trace)
             else:
-                model = deps.get_llm("main")
+                model = deps.get_llm()
                 advice_sys_prompt = getattr(deps, "advice_system_prompt", None) or deps.decision_system_prompt
                 advice = traced_call(
                     trace,
@@ -282,7 +285,10 @@ def make_decision_node(deps: Deps):
             logger.warning("decision_node: lỗi khi tạo câu tư vấn", exc_info=True)
 
         focus_rank = state.get("focus_rank") or getattr(session, "focused_room_rank", None) or 1
-        target_room = rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None)
+        target_room = next(
+            (r for r in rooms if getattr(r, "rank", None) == focus_rank),
+            rooms[focus_rank - 1] if 1 <= focus_rank <= len(rooms) else (rooms[0] if rooms else None),
+        )
         if not text:
             if state.get("is_followup") and deps.decision_agent is not None:
                 text = followup_fallback_reply(target_room)

@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Mapping, Optional, Sequence
 
+from core.config import DEFAULT_RADIUS_KM
 from domain.enums import Amenity, RoomType
 from domain.schemas import RoomItem, UserPreferenceState, format_vnd_million
 from safety.grounding import (
@@ -232,7 +233,7 @@ def derive_dod_spec(
         )
 
     if pref.has_point:
-        rad_km = float(pref.max_distance_km or effective_radius_km or 5.0)
+        rad_km = float(pref.max_distance_km or effective_radius_km or DEFAULT_RADIUS_KM)
         conds.append(
             DoDCondition(
                 requirement_id="req_max_distance",

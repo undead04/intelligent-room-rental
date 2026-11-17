@@ -16,8 +16,13 @@ export default function AIChatWorkspacePage() {
     inputValue,
     setInputValue,
     isTyping,
+    isPaging,
     sendMessage,
     rooms,
+    currentPage,
+    totalPages,
+    totalRooms,
+    goToPage,
     insights,
     preferences,
     selectedRoomId,
@@ -32,12 +37,14 @@ export default function AIChatWorkspacePage() {
   return (
     <SiteLayout
       hideFooter
-      className="bg-[#F8FAF8] text-[#121E1A] font-sans antialiased h-screen flex flex-col overflow-hidden"
+      className="bg-[#FAF8F4] text-[#121E1A] font-sans antialiased h-screen flex flex-col overflow-hidden"
     >
       {/* BREADCRUMB & CONTEXT HEADER */}
       <AiWorkspaceHeader
         onResetConversation={resetConversation}
         hasActiveSession={hasActiveSession}
+        isTyping={isTyping}
+        hasError={Boolean(connectionError)}
       />
 
 
@@ -84,12 +91,17 @@ export default function AIChatWorkspacePage() {
             rooms={rooms}
             selectedRoomId={selectedRoomId}
             onSelectRoom={setSelectedRoomId}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalRooms={totalRooms}
+            isPaging={isPaging}
+            onPageChange={goToPage}
           />
 
           {/* COLUMN 3: BẢN ĐỒ VỊ TRÍ & PHÂN TÍCH AGENT (Col span 4) */}
-          <section className="lg:col-span-4 flex flex-col gap-3 h-[600px] lg:h-full min-h-0 overflow-hidden">
-            {/* TOP CARD: 3. Bản đồ vị trí (42% height on desktop) */}
-            <div className="h-[220px] lg:h-[42%] shrink-0">
+          <section className="lg:col-span-4 flex flex-col gap-3.5 h-[620px] lg:h-full min-h-0 overflow-hidden">
+            {/* TOP CARD: 3. Bản đồ vị trí (38% height on desktop để nhường không gian cho Insight) */}
+            <div className="h-[220px] lg:h-[38%] shrink-0">
               <RoomMapPanel
                 rooms={rooms}
                 selectedRoom={selectedRoom}

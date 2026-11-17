@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.config import NEARBY_FALLBACK_LIMIT
 from domain.enums import amenity_label
 from domain.schemas import UserPreferenceState, format_vnd_million
 
@@ -39,7 +40,7 @@ def _format_nearby_bullets(pref: UserPreferenceState, search_args: dict[str, Any
             ward_id=ward_id,
             city_id=city_id,
             radius_km=12.0,
-            limit=3,
+            limit=NEARBY_FALLBACK_LIMIT,
             min_price=min_price,
             max_price=max_price,
             room_type=room_type,

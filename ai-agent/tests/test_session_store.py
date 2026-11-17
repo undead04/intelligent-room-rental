@@ -1,6 +1,7 @@
 import pytest
 
-from core.session_store import MAX_SESSION_MESSAGES, SessionStore, new_session_id
+from core.config import MAX_SESSION_MESSAGES
+from core.session_store import SessionStore, new_session_id
 from tests.helpers import room
 
 

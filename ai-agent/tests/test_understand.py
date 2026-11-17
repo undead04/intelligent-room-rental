@@ -207,3 +207,26 @@ def test_pending_ambiguous_candidate_selection_resolves_directly_without_loop():
     assert plan_chip.needs_clarification is False
     assert plan_chip.preferences.lat == 10.7726
     assert plan_chip.preferences.lng == 106.6578
+
+
+def test_budget_clarification_flow_and_invariants():
+    from intelligence.nlu import _postprocess
+
+    # 1. NLU báo thiếu số ngân sách mới (dù session đã có lịch sử và max_price=3tr) -> bắt buộc clarify
+    s = make_session(pref=UserPreferenceState(location_text="UIT", max_price=3_000_000), messages=["tìm phòng gần UIT 3tr"])
+    a_vague_budget = TurnAnalysis(intent="refine_search", needs_budget_clarification=True)
+    plan, _ = run(a_vague_budget, session=s, text="tăng giá nữa đi")
+    assert plan.needs_clarification is True
+    assert plan.needs_budget_clarification is True
+    assert plan.preferences.max_price == 3_000_000
+    assert route_after_understand({"needs_clarification": plan.needs_clarification}) == "clarification_node"
+
+    # 2. Boundary: nếu LLM đã bóc tách được max_price hoặc clear=['price'] hoặc intent phi tìm kiếm -> tắt cờ clarify ngân sách
+    p_with_num = _postprocess(TurnAnalysis(intent="refine_search", patch=PreferencePatch(max_price=4_000_000), needs_budget_clarification=True))
+    assert p_with_num.needs_budget_clarification is False
+
+    p_with_clear = _postprocess(TurnAnalysis(intent="refine_search", patch=PreferencePatch(clear=["price"]), needs_budget_clarification=True))
+    assert p_with_clear.needs_budget_clarification is False
+
+    p_smalltalk = _postprocess(TurnAnalysis(intent="smalltalk", needs_budget_clarification=True))
+    assert p_smalltalk.needs_budget_clarification is False

@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 import logging
-import re
+import math
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from domain.enums import Amenity
+from core.config import DEFAULT_PAGE_SIZE, MAX_PAGED_ROOMS, MAX_PAGINATION_PAGES
 from domain.schemas import UserPreferenceState
 from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import (
@@ -23,7 +23,7 @@ from intelligence.nlu import (
     apply_priorities,
     sanitize_user_text,
 )
-from utils.text import norm_key, strip_accents
+from utils.text import norm_key
 from tools.location_service import (
     _PLACE_HINTS,
     find_poi_in_text,
@@ -56,6 +56,7 @@ class TurnPlan:
     computed_weights: dict[str, float]
     weight_explanations: list[str] = field(default_factory=list)
     needs_clarification: bool = False
+    needs_budget_clarification: bool = False
     matched_skill: Optional[str] = None
     is_followup: bool = False
     direct_reply: bool = False          # có final_text sẵn, bỏ qua LLM trả lời -> đi thẳng formatter
@@ -68,9 +69,70 @@ class TurnPlan:
     pending_tasks: list[str] = field(default_factory=list)
     commit: bool = False                # True => wrapper ghi preferences/multipliers vào session
     semantic_query: Optional[str] = None
+    page_switched: bool = False
+    target_page: Optional[int] = None
+    page_rooms: list[Any] = field(default_factory=list)
 
 
-def _build_skill_context(analysis: TurnAnalysis, user_text: str, pref: UserPreferenceState) -> Optional[dict[str, Any]]:
+def _has_priority_change(priorities: Any) -> bool:
+    return any(getattr(priorities, k, None) is not None for k in CRITERIA)
+
+
+def _parse_page_navigation(
+    analysis: TurnAnalysis,
+    current_page: int,
+    total_pages: int,
+) -> Optional[int]:
+    """Ánh xạ quyết định chuyển trang có cấu trúc từ LLM (`page_action`, `target_page`) sang số trang mục tiêu."""
+    if total_pages <= 0:
+        return None
+    if not analysis.patch.is_empty() or analysis.reset_priorities or _has_priority_change(analysis.priorities):
+        return None
+    if analysis.referenced_room_rank is not None or analysis.intent in ("room_followup", "skill_advice", "prompt_injection", "off_topic"):
+        return None
+
+    action = getattr(analysis, "page_action", None)
+    if not action:
+        return None
+    if action == "goto":
+        tp = getattr(analysis, "target_page", None)
+        return int(tp) if isinstance(tp, int) and tp >= 1 else None
+    if action == "first":
+        return 1
+    if action == "last":
+        return total_pages
+    if action == "next":
+        return current_page + 1
+    if action == "prev":
+        return current_page - 1
+    return None
+
+
+def _format_page_switch_reply(page_rooms: list[Any], page: int, total_pages: int, total_rooms: int) -> str:
+    """Dựng văn bản xác định từ dữ liệu thật của 5 phòng thuộc trang `page`."""
+    if not page_rooms:
+        return "Hiện không có dữ liệu phòng ở trang này."
+    start_rank = getattr(page_rooms[0], "rank", (page - 1) * DEFAULT_PAGE_SIZE + 1)
+    end_rank = getattr(page_rooms[-1], "rank", start_rank + len(page_rooms) - 1)
+    lines = [
+        f"Mình đã chuyển sang **Trang {page}/{total_pages}** (hiển thị phòng **Top {start_rank}–{end_rank}** trong tổng số **{total_rooms} phòng** phù hợp):",
+        "",
+    ]
+    for r in page_rooms:
+        meta = [f"Giá: {r.price}"]
+        if getattr(r, "area_m2", None):
+            meta.append(f"{r.area_m2:g} m²")
+        if getattr(r, "distance", ""):
+            meta.append(f"cách {r.distance}")
+        lines.append(f"- **Top {r.rank}. {r.title}** ({' | '.join(meta)})")
+    lines.extend([
+        "",
+        "Bạn có thể bấm trực tiếp số trang `1..10` ở danh sách bên cạnh, click vào phòng để xem phân tích chi tiết hoặc hỏi mình về bất kỳ **Top N** nào nhé!",
+    ])
+    return "\n".join(lines)
+
+
+def _build_skill_context(analysis: TurnAnalysis, pref: UserPreferenceState) -> Optional[dict[str, Any]]:
     """Tạo ngữ cảnh riêng cho skill cần tra cứu theo địa danh (không ghi đè session.preferences)."""
     if analysis.skill_slug != "market-price-advisor":
         return None
@@ -78,10 +140,8 @@ def _build_skill_context(analysis: TurnAnalysis, user_text: str, pref: UserPrefe
     loc_kind = analysis.patch.location_kind
     loc_region = (analysis.patch.location_region or "").strip() or None
     if not loc_text and pref.location_text:
-        clean_q = strip_accents(sanitize_user_text(user_text)).lower()
-        if re.search(r"\b(?:o day|o do|khu nay|khu do|khu vuc nay|khu vuc do|quan nay|cho nay|cho do)\b", clean_q):
-            loc_text = pref.location_text
-            loc_kind = pref.location_kind
+        loc_text = pref.location_text
+        loc_kind = pref.location_kind
     room_type = (
         analysis.patch.allowed_room_types[0].value
         if len(analysis.patch.allowed_room_types) == 1
@@ -99,50 +159,44 @@ def _rooms_brief(rooms: list) -> str:
     return "; ".join(f"Top {r.rank}: {r.title} ({r.price})" for r in rooms[:5])
 
 
-_SEARCH_ORDER_RE = re.compile(
-    r"\b(?:tim(?:\s+(?:phong|nha|can|giup|cho|them|moi|o|gan|khu|sang|ben))?|doi\s+sang|chuyen\s+sang|loc|kiem\s+(?:phong|cho)|tim\s+lai|goi\s+y|de\s+xuat)\b",
-    re.I,
-)
-_FOLLOWUP_ORDER_RE = re.compile(
-    r"\b(?:(?:phong|can)\s+(?:so|thu|dau(?:\s+tien)?|top|nay|do|kia|vua\s+tim|\d+)\b|top\s*\d+\b|(?:xem|check|coi|kiem\s+tra|hoi)\s+(?:chi\s+tiet|them\s+ve|giup)?\s*(?:phong|can)|dien\s+nuoc|tien\s+coc|chu\s+nha|chu\s+tro)",
-    re.I,
-)
-_ADVISORY_ORDER_RE = re.compile(
-    r"\b(?:tu\s+van|hop\s+dong|phap\s+ly|cam\s+nang|kinh\s+nghiem|quyen\s+loi|dat\s+coc|hoan\s+coc|luu\s+y(?:\s+gi|\s+khi)?|gia\s+(?:phong(?:\s+tro)?\s+)?trung\s+binh|mat\s+bang\s+gia|thong\s+ke\s+gia|gia\s+ca)\b",
-    re.I,
-)
-
-
 def _plan_multi_intent_order(
-    user_text: str,
-    intent: str,
+    analysis: TurnAnalysis,
     *,
     has_followup: bool,
     has_search: bool,
     has_advisory: bool,
     has_old_rooms: bool,
 ) -> list[str]:
-    """Sắp xếp danh sách tác vụ đa mệnh lệnh theo đúng thứ tự mệnh đề trong câu người dùng."""
-    clean = strip_accents(sanitize_user_text(user_text)).lower()
-    fallback_base = len(clean) + 10
-    m_search = _SEARCH_ORDER_RE.search(clean)
-    m_follow = _FOLLOWUP_ORDER_RE.search(clean)
-    m_adv = _ADVISORY_ORDER_RE.search(clean)
-
-    pos: dict[str, int] = {}
+    """Điều phối danh sách tác vụ đa mệnh lệnh theo `analysis.task_order` do LLM trả (có bảo toàn workflow)."""
+    active: list[str] = []
     if has_search:
-        pos["search"] = m_search.start() if m_search else (-1 if intent in ("new_search", "refine_search") else fallback_base + 1)
+        active.append("search")
     if has_followup:
-        pos["followup"] = m_follow.start() if m_follow else (-1 if intent == "room_followup" else fallback_base + 2)
+        active.append("followup")
     if has_advisory:
-        pos["advisory"] = m_adv.start() if m_adv else (-1 if intent == "skill_advice" else fallback_base + 3)
+        active.append("advisory")
 
-    if "followup" in pos:
-        search_before_followup = ("search" in pos) and (pos["search"] < pos["followup"])
+    raw_order = [t for t in (getattr(analysis, "task_order", None) or []) if t in active]
+    ordered = list(dict.fromkeys(raw_order))
+
+    if len(ordered) < len(active):
+        # Đặt nhánh chính (intent) lên trước các nhánh còn lại nếu LLM không liệt kê đủ task_order
+        primary = (
+            "followup" if analysis.intent == "room_followup"
+            else ("advisory" if analysis.intent == "skill_advice" else "search")
+        )
+        if primary in active and primary not in ordered:
+            ordered.append(primary)
+        for t in ("search", "followup", "advisory"):
+            if t in active and t not in ordered:
+                ordered.append(t)
+
+    if "followup" in ordered:
+        search_before_followup = ("search" in ordered) and (ordered.index("search") < ordered.index("followup"))
         if not has_old_rooms and not search_before_followup:
-            pos.pop("followup")
+            ordered.remove("followup")
 
-    return [task for task, _ in sorted(pos.items(), key=lambda kv: kv[1])]
+    return ordered
 
 
 def _build_multi_intent_reply(
@@ -177,51 +231,16 @@ def _build_multi_intent_reply(
     )
 
 
-def _has_unnegated_keyword(text: str, keywords: tuple[str, ...], negation_window: int = 15) -> bool:
-    """Kiểm tra từ khóa có xuất hiện trong văn bản mà không bị cụm từ phủ định đi kèm phía trước."""
-    negations = ("khong can", "ko can", "dung", "khong phai", "ko phai", "chua can", "khong muon", "ko muon")
-    for kw in keywords:
-        start = 0
-        while True:
-            idx = text.find(kw, start)
-            if idx == -1:
-                break
-            prefix = text[max(0, idx - negation_window):idx]
-            is_negated = any(neg in prefix for neg in negations)
-            if not is_negated:
-                return True
-            start = idx + len(kw)
-    return False
-
-
 def _build_revert_preferences(
     base_pref: UserPreferenceState,
     analysis: TurnAnalysis,
-    clean_user_text: str,
     current_pref: UserPreferenceState,
 ) -> UserPreferenceState:
-    """Tái tạo tiêu chí khi người dùng yêu cầu quay lại lượt chat trước hoặc ban đầu."""
+    """Tái tạo tiêu chí khi người dùng quay lại lượt chat trước hoặc ban đầu, áp thêm thay đổi mới từ patch của LLM."""
     incremental_patch = analysis.patch.model_copy(deep=True)
     incremental_patch.clear = []
-
-    # Nếu người dùng không nhắc đến ngân sách/giá trong lượt rollback thì không ghi đè giá mới
-    if not any(kw in clean_user_text for kw in ("trieu", "tr", "cu", "dong", "ngan sach", "gia")):
-        incremental_patch.min_price = None
-        incremental_patch.max_price = None
-
-    # Giữ lại các tiện ích mới thêm nếu thực sự được người dùng nhắc tới trong câu này (so sánh không dấu)
-    kept_amenities = []
-    for am in incremental_patch.amenities_add:
-        kw_candidates = {am.value.lower(), strip_accents(am.label_vi).lower()}
-        if am == Amenity.PET_ALLOWED:
-            kw_candidates.update({"pet", "thu cung", "cho", "meo", "boss"})
-        if any(w in clean_user_text for w in kw_candidates):
-            kept_amenities.append(am)
-    incremental_patch.amenities_add = kept_amenities
-
     pref = apply_patch(base_pref, incremental_patch)
 
-    # Dọn dẹp semantic_query nếu có địa danh của lượt hiện tại không còn nằm trong base
     if analysis.semantic_query and current_pref.location_text:
         cur_loc = current_pref.location_text.lower()
         base_loc = (base_pref.location_text or "").lower()
@@ -236,19 +255,16 @@ def _match_pending_ambiguous_candidate(
     patch_location: Optional[str],
     pending_cands: list[dict[str, Any]],
 ) -> Optional[dict[str, Any]]:
-    """Khớp lựa chọn của user với 1 ứng viên trong danh sách ambiguous vừa hỏi (theo STT hoặc tên riêng)."""
+    """Khớp lựa chọn của user với 1 ứng viên trong danh sách ambiguous vừa hỏi (theo số nút UI 1..5 hoặc tên riêng)."""
     if not pending_cands:
         return None
 
     clean_u = norm_key(sanitize_user_text(user_text))
-    # 1. Chọn theo số thứ tự / từ chỉ định vị trí ('1', 'số 2', 'cái đầu')
-    m_idx = re.fullmatch(r"(?:chon|lay|so|thu|cai(?:\s+thu)?|phuong\s+an|lua\s+chon)?\s*([1-5])", clean_u)
-    if m_idx:
-        idx = int(m_idx.group(1)) - 1
+    # 1. Chọn trực tiếp theo chỉ số phương án UI (vd: '1', '2', ...)
+    if clean_u.isdigit():
+        idx = int(clean_u) - 1
         if 0 <= idx < len(pending_cands):
             return pending_cands[idx]
-    if re.fullmatch(r"(?:cai|phuong\s+an)?\s*(?:dau|dau\s+tien|thu\s+nhat)", clean_u):
-        return pending_cands[0]
 
     # 2. Khớp theo tên ứng viên (vd bấm chip follow-up hoặc gõ đúng 1 ứng viên duy nhất)
     probes = [p for p in (norm_key(patch_location or ""), clean_u) if p and len(p) >= 2]
@@ -277,26 +293,38 @@ def interpret_turn(
     session: Any,
     model: Any,
     *,
+    retry_model: Any = None,
     skills: Optional[dict[str, Any]] = None,
 ) -> TurnPlan:
     pref0: UserPreferenceState = session.preferences
     mult0 = {k: float((session.multipliers or {}).get(k, 1.0)) for k in CRITERIA}
     rooms = list(session.last_rooms or [])
-    has_history = bool(rooms or session.messages)
+    paged_pool = list(getattr(session, "paged_rooms", None) or rooms)[:MAX_PAGED_ROOMS]
+    has_history = bool(rooms or paged_pool or session.messages)
 
     recent_dialog_turns = session.compact_history_tuples(window=4) if hasattr(session, "compact_history_tuples") else None
     recent_user_turns = [text for role, text in (getattr(session, "history", None) or []) if role == "user"][-3:]
+    page_info = ""
+    if paged_pool:
+        ps = max(1, int(getattr(session, "page_size", DEFAULT_PAGE_SIZE) or DEFAULT_PAGE_SIZE))
+        cp = max(1, int(getattr(session, "current_page", 1) or 1))
+        tp = min(MAX_PAGINATION_PAGES, max(1, math.ceil(len(paged_pool) / ps)))
+        page_info = f"Trang {cp}/{tp} (tổng {len(paged_pool)} phòng)"
+    pending_loc_ctx = str(getattr(session, "pending_ambiguous_location", None) or "")
     try:
         analysis = analyze_turn(
             model,
             user_text,
             pref0,
+            retry_model=retry_model,
             rooms_brief=_rooms_brief(rooms),
             multipliers=mult0,
-            n_rooms=len(rooms),
+            n_rooms=len(paged_pool) if paged_pool else len(rooms),
             skills=skills,
             recent_dialog_turns=recent_dialog_turns,
             recent_user_turns=recent_user_turns,
+            page_info=page_info,
+            pending_location=pending_loc_ctx,
         )
     except LLMQuotaExceededError:
         logger.warning("interpret_turn: LLM cạn Quota (429 RESOURCE_EXHAUSTED), kích hoạt phản hồi cảnh báo Quota trực tiếp.")
@@ -353,6 +381,41 @@ def interpret_turn(
         reason = "PROMPT_INJECTION_DETECTED" if intent == "prompt_injection" else "OFF_TOPIC_QUERY"
         return plan(blocked_reason=reason, final_text=SAFE_TEXT[reason])
 
+    # 1.2) Chuyển trang trên danh sách đã tìm (0 gọi Backend, 0 tốn LLM Decision)
+    if paged_pool:
+        page_size = max(1, int(getattr(session, "page_size", DEFAULT_PAGE_SIZE) or DEFAULT_PAGE_SIZE))
+        cur_page = max(1, int(getattr(session, "current_page", 1) or 1))
+        total_pages = min(MAX_PAGINATION_PAGES, max(1, math.ceil(len(paged_pool) / page_size)))
+        req_page = _parse_page_navigation(analysis, cur_page, total_pages)
+        if req_page is not None:
+            if 1 <= req_page <= total_pages:
+                start = (req_page - 1) * page_size
+                target_rooms = paged_pool[start : start + page_size]
+                return plan(
+                    direct_reply=True,
+                    page_switched=True,
+                    target_page=req_page,
+                    page_rooms=target_rooms,
+                    final_text=_format_page_switch_reply(target_rooms, req_page, total_pages, len(paged_pool)),
+                )
+            cur_start = (cur_page - 1) * page_size
+            cur_rooms = paged_pool[cur_start : cur_start + page_size]
+            if req_page > total_pages:
+                msg = (
+                    f"Hiện tại chỉ có tổng cộng **{len(paged_pool)} phòng** (**{total_pages} trang**) phù hợp với bộ lọc của bạn "
+                    f"(bạn đang xem đến hết Trang {cur_page}/{total_pages}). "
+                    "Nếu chưa chọn được phòng ưng ý, bạn có thể nhắn mình nới nhẹ ngân sách, bán kính hoặc bỏ bớt tiện ích bắt buộc để tìm thêm nhé!"
+                )
+            else:
+                msg = f"Bạn đang ở **Trang 1/{total_pages}** rồi, không thể lùi về trang trước đó nữa."
+            return plan(
+                direct_reply=True,
+                page_switched=False,
+                target_page=cur_page,
+                page_rooms=cur_rooms,
+                final_text=msg,
+            )
+
     # 1.5) Lập kế hoạch thực thi tuần tự cho Đa Mệnh Lệnh (Plan & Execute):
     # Sắp xếp tự do theo đúng thứ tự mệnh đề user yêu cầu (hỗ trợ mọi hoán vị followup / search / advisory).
     multi_tasks: list[str] = []
@@ -366,8 +429,7 @@ def interpret_turn(
             intent in ("new_search", "refine_search") and not followup_requested and not multi_has_advisory
         )
         multi_tasks = _plan_multi_intent_order(
-            user_text,
-            intent,
+            analysis,
             has_followup=followup_requested,
             has_search=multi_has_search,
             has_advisory=multi_has_advisory,
@@ -383,7 +445,7 @@ def interpret_turn(
             )
             return plan(
                 matched_skill=analysis.skill_slug if multi_has_advisory else None,
-                skill_context=_build_skill_context(analysis, user_text, pref0) if multi_has_advisory else None,
+                skill_context=_build_skill_context(analysis, pref0) if multi_has_advisory else None,
                 is_followup=(multi_tasks[0] == "followup"),
                 focus_rank=focus_rank if multi_has_followup else None,
                 current_task=multi_tasks[0],
@@ -392,19 +454,20 @@ def interpret_turn(
 
     # 2) Hỏi tiếp về phòng đã đề xuất
     if intent == "room_followup" and not multi_tasks:
-        if not rooms:
+        if not rooms and not paged_pool:
             # Chưa có phòng nào được đề xuất trong phiên -> chuyển sang hỏi làm rõ nhu cầu
             return plan(needs_clarification=True)
-        current_focus = (
-            analysis.referenced_room_rank
-            if analysis.referenced_room_rank is not None
-            else getattr(session, "focused_room_rank", None)
-        )
-        return plan(is_followup=True, focus_rank=current_focus or 1)
+        if analysis.referenced_room_rank is not None:
+            current_focus = analysis.referenced_room_rank
+        elif getattr(analysis, "followup_current_page_first", False) and rooms:
+            current_focus = getattr(rooms[0], "rank", 1)
+        else:
+            current_focus = getattr(session, "focused_room_rank", None) or (getattr(rooms[0], "rank", 1) if rooms else 1)
+        return plan(is_followup=True, focus_rank=current_focus)
 
     # 3) Tư vấn kỹ năng
     if intent == "skill_advice" and not multi_tasks:
-        return plan(matched_skill=analysis.skill_slug, skill_context=_build_skill_context(analysis, user_text, pref0))
+        return plan(matched_skill=analysis.skill_slug, skill_context=_build_skill_context(analysis, pref0))
 
     # 4) Chào hỏi / mơ hồ -> để clarification_node trả lời
     if intent == "smalltalk":
@@ -416,27 +479,17 @@ def interpret_turn(
     commit = True
 
     history_snapshots = getattr(session, "preference_history", []) or []
-    clean_user_text = strip_accents(sanitize_user_text(user_text)).lower()
-
-    turn_match = re.search(r"\b(?:luot|buoc|lan)\s*(?:chat\s*)?(?:thu\s*)?(\d+)\b", clean_user_text)
-    is_revert_explicit_turn = False
-    target_turn_num: Optional[int] = None
-    if turn_match and any(kw in clean_user_text for kw in ("quay lai", "tro ve", "nhu", "y chang", "giong", "tim lai")):
-        target_turn_num = int(turn_match.group(1))
-        is_revert_explicit_turn = True
-
-    is_revert_initial = (target_turn_num == 1) or any(
-        kw in clean_user_text for kw in ("nhu luc dau", "nhu ban dau", "quay lai luc dau", "quay lai ban dau")
-    )
-    is_revert_previous = any(
-        kw in clean_user_text for kw in ("nhu luc nay", "quay lai truoc do", "quay lai nhu cu", "nhu cu")
-    )
+    revert_mode = getattr(analysis, "revert_mode", None)
+    target_turn_num = getattr(analysis, "revert_turn", None)
+    is_revert_explicit_turn = (revert_mode == "turn") and isinstance(target_turn_num, int)
+    is_revert_initial = (revert_mode == "initial") or (is_revert_explicit_turn and target_turn_num == 1)
+    is_revert_previous = revert_mode == "previous"
 
     base_pref = pref0
     turn_snaps = getattr(session, "turn_snapshots", []) or []
     if is_revert_explicit_turn and target_turn_num and 1 <= target_turn_num <= len(turn_snaps):
         base_pref = turn_snaps[target_turn_num - 1].model_copy(deep=True)
-        pref = _build_revert_preferences(base_pref, analysis, clean_user_text, pref0)
+        pref = _build_revert_preferences(base_pref, analysis, pref0)
         mult = {k: 1.0 for k in CRITERIA}
         explanations.append(f"đã quay lại tiêu chí của lượt chat thứ {target_turn_num} theo yêu cầu")
     elif is_revert_explicit_turn and target_turn_num and target_turn_num > len(turn_snaps):
@@ -454,13 +507,13 @@ def interpret_turn(
             if getattr(session, "initial_preference", None)
             else history_snapshots[0].model_copy(deep=True)
         )
-        pref = _build_revert_preferences(base_pref, analysis, clean_user_text, pref0)
+        pref = _build_revert_preferences(base_pref, analysis, pref0)
         mult = {k: 1.0 for k in CRITERIA}
         explanations.append("đã quay lại tiêu chí ban đầu theo yêu cầu")
     elif is_revert_previous and history_snapshots:
         target = history_snapshots[-2] if len(history_snapshots) >= 2 else history_snapshots[0]
         base_pref = target.model_copy(deep=True)
-        pref = _build_revert_preferences(base_pref, analysis, clean_user_text, pref0)
+        pref = _build_revert_preferences(base_pref, analysis, pref0)
         explanations.append("đã quay lại tiêu chí trước đó theo yêu cầu")
     else:
         pref = apply_patch(base_pref, analysis.patch)
@@ -469,9 +522,7 @@ def interpret_turn(
         # Kết hợp lại với địa danh đang hỏi dở (ambiguous) nếu lượt này user chọn 1 ứng viên hoặc trả lời ngắn quận/tỉnh/cơ sở
         pending_loc = getattr(session, "pending_ambiguous_location", None)
         pending_cands = list(getattr(session, "pending_ambiguous_candidates", []) or [])
-        is_pivot = bool(
-            re.search(r"\b(?:thoi|doi\s+sang|khong\s+tim|tim\s+cho\s+khac|khu\s+khac|chuyen\s+sang|bo\s+qua)\b", clean_user_text)
-        )
+        is_pivot = bool(getattr(analysis, "is_location_pivot", False))
         matched_cand = (
             _match_pending_ambiguous_candidate(user_text, analysis.patch.location_text, pending_cands)
             if (pending_cands and not is_pivot)
@@ -497,14 +548,9 @@ def interpret_turn(
                 looks_modifier = (
                     analysis.patch.location_kind == "admin"
                     or bool(infer_region_from_location_text(new_loc))
-                    or bool(re.match(r"^(?:cơ\s*sở|cs|khu\s*vực|phía|bên|quận|q\.?\s*\d|huyện|phường|p\.?\s*\d|tp\.?|tỉnh)\b", new_loc, re.I))
                 )
                 if looks_modifier and not _PLACE_HINTS.search(new_loc):
-                    if re.match(r"^(?:cơ\s*sở|cs)\b", new_loc, re.I):
-                        combined = f"{pending_loc} {new_loc}"
-                    else:
-                        combined = f"{pending_loc}, {new_loc}"
-                    pref.set_location(combined, kind="place")
+                    pref.set_location(f"{pending_loc}, {new_loc}", kind="place")
                     explanations.append(f"ghép địa điểm đang làm rõ '{pending_loc}' với '{new_loc}'")
             elif not new_loc and loc_region:
                 pref.set_location(f"{pending_loc}, {loc_region}", kind="place")
@@ -548,7 +594,8 @@ def interpret_turn(
 
     has_loc = bool(pref.location_text or pref.has_point or pref.district_id or pref.city_id)
     has_budget = bool(pref.max_price or pref.min_price)
-    if is_vague_loc:
+    needs_budget_clarify = bool(getattr(analysis, "needs_budget_clarification", False))
+    if is_vague_loc or needs_budget_clarify:
         needs_clarify = True
     elif has_history:
         needs_clarify = False
@@ -575,9 +622,10 @@ def interpret_turn(
             multipliers=mult,
             weight_explanations=explanations,
             needs_clarification=needs_clarify,
+            needs_budget_clarification=needs_budget_clarify,
             vague_location_info=vague_info,
             matched_skill=analysis.skill_slug if multi_has_advisory else None,
-            skill_context=_build_skill_context(analysis, user_text, pref) if multi_has_advisory else None,
+            skill_context=_build_skill_context(analysis, pref) if multi_has_advisory else None,
             is_followup=(multi_tasks[0] == "followup"),
             focus_rank=focus_rank,
             current_task=multi_tasks[0],
@@ -590,6 +638,7 @@ def interpret_turn(
         multipliers=mult,
         weight_explanations=explanations,
         needs_clarification=needs_clarify,
+        needs_budget_clarification=needs_budget_clarify,
         vague_location_info=vague_info,
         commit=commit,
     )

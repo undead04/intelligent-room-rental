@@ -171,12 +171,15 @@ class VectorSearchBody(BaseModel):
         default=None,
         description="Bật True khi người dùng nhấn mạnh ưu tiên phòng giá rẻ nhất/tiết kiệm nhất",
     )
+    include_amenity_overall: Optional[bool] = Field(
+        default=None,
+        description="Bật True khi người dùng nhấn mạnh tiện nghi tổng thể dù chưa nêu tên tiện ích cụ thể",
+    )
     min_area: Optional[float] = Field(None, ge=0, description="Diện tích tối thiểu (m2)")
     max_area: Optional[float] = Field(None, ge=0, description="Diện tích tối đa (m2)")
     min_bedrooms: Optional[int] = Field(None, ge=1, description="Số phòng ngủ tối thiểu")
     min_bathrooms: Optional[int] = Field(None, ge=1, description="Số phòng vệ sinh tối thiểu")
     limit: int = Field(default=5, ge=1, le=100, description="Số lượng kết quả trả về")
-    offset: int = Field(default=0, ge=0, description="Số lượng kết quả bỏ qua")
 
     @field_validator("query")
     @classmethod

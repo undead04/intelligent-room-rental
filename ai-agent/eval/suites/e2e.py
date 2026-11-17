@@ -67,7 +67,7 @@ class CountingLLM:
 
 def count_llm_calls(deps: Deps, stats: CallStats) -> Deps:
     inner = deps.get_llm
-    deps.get_llm = lambda role: (CountingLLM(m, stats) if (m := inner(role)) is not None else None)
+    deps.get_llm = lambda temperature=None: (CountingLLM(m, stats) if (m := inner(temperature=temperature)) is not None else None)
     return deps
 
 

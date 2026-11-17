@@ -155,13 +155,13 @@ def vector_search_listings(
         min_price=body.min_price,
         max_price=body.max_price,
         prefer_cheapest=body.prefer_cheapest,
+        include_amenity_overall=body.include_amenity_overall,
         min_area=body.min_area,
         max_area=body.max_area,
         min_bedrooms=body.min_bedrooms,
         min_bathrooms=body.min_bathrooms,
         max_distance_km=body.max_distance_km,
         limit=body.limit,
-        offset=body.offset,
     )
     return ResponseDTO[list[VectorSearchResult]](data=results)
 

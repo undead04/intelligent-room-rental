@@ -33,7 +33,6 @@ from intelligence.nlu import (
 )
 from intelligence.understand import (
     _build_revert_preferences,
-    _has_unnegated_keyword,
     interpret_turn,
 )
 from safety.grounding import (
@@ -263,37 +262,25 @@ def test_location_service_resolve_admin_ward_fallback():
 # NHÓM 2: BOUNDARY & EDGE CASES (SLEEPBOX GENERALIZATION, CLAMPING & ACCENTS)
 # ==============================================================================
 
-def test_nlu_postprocess_domain_generalization_sleepbox():
-    """Nhóm 2: NLU _postprocess tổng quát hóa theo miền bài toán:
-    - Yêu cầu không gian riêng (diện tích >= 15m2, nhiều người ở, tiện ích riêng) -> tự loại trừ SLEEPBOX
-    - Người dùng chủ động tìm KTX/giường tầng -> KHÔNG loại trừ SLEEPBOX.
-    """
-    # 1. Yêu cầu diện tích phòng riêng (min_area = 25m2 >= 15m2)
+def test_nlu_postprocess_respects_llm_room_type_decisions():
+    """Nhóm 2: NLU _postprocess không dùng regex tự ý chèn/ép SLEEPBOX; tôn trọng quyết định của LLM."""
     a1 = TurnAnalysis(intent="new_search", patch=PreferencePatch(min_area=25.0))
     _postprocess(a1, user_text="tìm phòng rộng trên 25m2", n_rooms=0)
-    assert RoomType.SLEEPBOX in a1.patch.excluded_room_types
+    assert a1.patch.excluded_room_types == []
 
-    # 2. Yêu cầu cho nhóm người ở ("hai vợ chồng", "nhóm 3 người")
-    a2 = TurnAnalysis(intent="new_search", patch=PreferencePatch())
-    _postprocess(a2, user_text="hai vợ chồng cần thuê phòng ở lâu dài", n_rooms=0)
-    assert RoomType.SLEEPBOX in a2.patch.excluded_room_types
+    a2 = TurnAnalysis(
+        intent="new_search",
+        patch=PreferencePatch(min_area=25.0, excluded_room_types=[RoomType.SLEEPBOX]),
+    )
+    _postprocess(a2, user_text="tìm phòng rộng trên 25m2", n_rooms=0)
+    assert a2.patch.excluded_room_types == [RoomType.SLEEPBOX]
 
-    a3 = TurnAnalysis(intent="new_search", patch=PreferencePatch())
-    _postprocess(a3, user_text="nhóm 3 bạn sinh viên tìm chỗ ở gần trường", n_rooms=0)
-    assert RoomType.SLEEPBOX in a3.patch.excluded_room_types
-
-    # 3. Yêu cầu tiện ích không gian riêng biệt (nuôi thú cưng, ban công)
-    a4 = TurnAnalysis(intent="new_search", patch=PreferencePatch(amenities_add=[Amenity.PET_ALLOWED]))
-    _postprocess(a4, user_text="tìm phòng cho nuôi mèo thoải mái", n_rooms=0)
-    assert RoomType.SLEEPBOX in a4.patch.excluded_room_types
-
-    # 4. Người dùng CHỦ ĐỘNG tìm KTX / Sleepbox -> KHÔNG loại trừ SLEEPBOX
-    a5 = TurnAnalysis(
+    a3 = TurnAnalysis(
         intent="new_search",
         patch=PreferencePatch(allowed_room_types=[RoomType.SLEEPBOX, RoomType.ROOM]),
     )
-    _postprocess(a5, user_text="tìm ktx hoặc phòng trọ giá sinh viên", n_rooms=0)
-    assert RoomType.SLEEPBOX not in a5.patch.excluded_room_types
+    _postprocess(a3, user_text="tìm ktx hoặc phòng trọ giá sinh viên", n_rooms=0)
+    assert RoomType.SLEEPBOX not in a3.patch.excluded_room_types
 
 
 def test_search_rooms_api_edge_and_boundary_clamping():
@@ -328,29 +315,20 @@ def test_search_rooms_api_edge_and_boundary_clamping():
         assert captured_payloads[-1]["room_type"] == ["ROOM", "STUDIO"]
 
 
-def test_understand_rollback_accents_and_unnegated_keywords():
-    """Nhóm 2: understand.py rollback nhận diện đúng tiện ích tiếng Việt có dấu nhờ strip_accents hai vế,
-    và từ khóa phủ định 'không cần phòng xịn hơn đâu' không kích hoạt nhầm multiplier amenity=1.8.
-    """
-    # 1. Rollback giữ tiện ích tiếng Việt có dấu
-    base_pref = UserPreferenceState(max_price=3_000_000.0)
-    cur_pref = UserPreferenceState(max_price=4_000_000.0)
+def test_understand_rollback_applies_llm_patch_without_regex_filtering():
+    """Nhóm 2: _build_revert_preferences áp dụng patch của LLM lên snapshot gốc mà không lọc regex."""
+    base_pref = UserPreferenceState(location_text="Thủ Đức", max_price=3_000_000.0)
+    cur_pref = UserPreferenceState(location_text="Quận 7", max_price=4_000_000.0)
     analysis = TurnAnalysis(
         intent="refine_search",
+        revert_mode="initial",
         patch=PreferencePatch(amenities_add=[Amenity.PET_ALLOWED]),
     )
-    user_text_clean = strip_accents("quay lại như lúc đầu nhưng thêm thú cưng").lower()
 
-    reverted = _build_revert_preferences(base_pref, analysis, user_text_clean, cur_pref)
+    reverted = _build_revert_preferences(base_pref, analysis, cur_pref)
+    assert reverted.location_text == "Thủ Đức"
+    assert reverted.max_price == 3_000_000.0
     assert Amenity.PET_ALLOWED in reverted.amenities
-
-    # 2. Từ khóa phủ định không kích hoạt nhầm ưu tiên phòng xịn
-    negated_text = strip_accents("không cần phòng xịn hơn đâu").lower()
-    is_higher = _has_unnegated_keyword(negated_text, ("phong xin hon", "dat hon", "cao hon"))
-    assert is_higher is False, "Từ khóa 'phong xin hon' có tiền tố 'khong can' phải bị chặn phủ định"
-
-    unnegated_text = strip_accents("mình muốn tìm phòng xịn hơn").lower()
-    assert _has_unnegated_keyword(unnegated_text, ("phong xin hon", "dat hon")) is True
 
 
 # ==============================================================================
@@ -367,7 +345,7 @@ def test_retrieval_node_adaptive_radius_network_failure_preserves_last_args():
         nonlocal call_count
         call_count += 1
         rad = args.get("max_distance_km")
-        if rad == 2.5:
+        if rad == 3.0:
             # Lần 1 thành công: trả 1 phòng (< 3 phòng -> kích hoạt adaptive expansion)
             return {
                 "ok": True,
@@ -381,9 +359,9 @@ def test_retrieval_node_adaptive_radius_network_failure_preserves_last_args():
                     }
                 ],
             }
-        elif rad == 3.5:
+        elif rad == 5.0:
             # Lần 2 gặp lỗi mạng / backend timeout
-            return {"ok": False, "error": "Connection timeout khi mở rộng bán kính 3.5km"}
+            return {"ok": False, "error": "Connection timeout khi mở rộng bán kính 5.0km"}
         return {"ok": False, "error": "Unexpected radius"}
 
     mock_deps = MagicMock()
@@ -404,8 +382,8 @@ def test_retrieval_node_adaptive_radius_network_failure_preserves_last_args():
 
     result = retrieval_fn(state)
 
-    # Xác minh last_search_args bảo toàn bán kính 2.5km thành công, không bị ghi đè bẩn thành 3.5km
-    assert result["last_search_args"].get("max_distance_km") == 2.5
+    # Xác minh last_search_args bảo toàn bán kính 3.0km thành công, không bị ghi đè bẩn thành 5.0km
+    assert result["last_search_args"].get("max_distance_km") == 3.0
     assert len(result["retrieved_rooms"]) == 1
 
 

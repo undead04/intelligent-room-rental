@@ -12,6 +12,7 @@ import type {
   AgentChatRequest,
   AgentResponse,
   AgentTraceEvent,
+  SessionRoomsPageResponse,
 } from "@/types/dto";
 const DEFAULT_API_URL = "http://localhost:8000/api/v1";
 
@@ -234,6 +235,12 @@ export const agentApi = {
 
   health() {
     return agentRequest<{ status: string; service: string; version: string }>("/api/v1/health");
+  },
+
+  getSessionRooms(sessionId: string, page: number, pageSize = 5) {
+    return agentRequest<SessionRoomsPageResponse>(
+      `/api/v1/session/${encodeURIComponent(sessionId)}/rooms${buildQuery({ page, page_size: pageSize })}`
+    );
   },
 
   clearSession(sessionId: string) {
