@@ -25,8 +25,8 @@ def _route_pending_task(state: dict[str, Any]) -> str:
 
 def route_after_understand(state: dict[str, Any]) -> str:
     """Ngã 5 đường sau understand_node:
-    - Vi phạm guardrail hoặc direct_reply -> formatter_node
-    - Hỏi tiếp về phòng (is_followup) -> decision_node
+    - Vi phạm guardrail hoặc direct_reply (lỗi biên trang / ngoài phạm vi / rỗng trang) -> formatter_node
+    - Chuyển trang (page_switched / page_navigation) hoặc Hỏi tiếp về phòng (is_followup) -> decision_node
     - Nhiệm vụ hiện tại là tìm kiếm ('search') -> clarification_node (nếu mơ hồ) hoặc retrieval_node
     - Nhiệm vụ hiện tại hoặc đơn lẻ khớp kỹ năng -> advisory_node
     - Thiếu thông tin / mơ hồ (needs_clarification) -> clarification_node
@@ -37,6 +37,8 @@ def route_after_understand(state: dict[str, Any]) -> str:
         return "formatter_node"
     if state.get("direct_reply"):
         return "formatter_node"
+    if state.get("page_switched") or state.get("intent") == "page_navigation":
+        return "decision_node"
     if state.get("is_followup"):
         return "decision_node"
     if state.get("current_task") == "search":

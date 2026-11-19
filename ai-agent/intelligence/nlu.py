@@ -11,9 +11,10 @@ import logging
 import os
 import re
 import time as _time
+from collections.abc import Mapping
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 from core.llm import classify_llm_retry_delay, is_daily_quota_exhausted
 from domain.enums import (
@@ -41,6 +42,7 @@ IntentT = Literal[
     "new_search",
     "refine_search",
     "room_followup",
+    "page_navigation",
     "skill_advice",
     "smalltalk",
     "off_topic",
@@ -146,10 +148,7 @@ class PreferencePatch(BaseModel):
     def _clean_loc(cls, v: Optional[str]) -> Optional[str]:
         if not v:
             return None
-        v = re.sub(r"\s*\((?:ví dụ|vd|vd:)[^)]*\)", "", v, flags=re.IGNORECASE)
-        v = re.sub(r"^(?:khu vực\s+)?(?:lân cận|quanh)\s+", "", v.strip(), flags=re.IGNORECASE)
-        v = v.strip(" ,.-")
-        return v or None
+        return v.strip(" ,.-") or None
 
     @field_validator("min_price", "max_price")
     @classmethod
@@ -243,6 +242,7 @@ class TurnAnalysis(BaseModel):
         None,
         description="Câu truy vấn RAG tiếng Việt cô đọng tổng hợp nhu cầu hiện tại (bỏ hoàn toàn câu đệm giao tiếp/than phiền)",
     )
+    _raw_response: Any = PrivateAttr(default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +445,30 @@ def is_market_only_patch(a: TurnAnalysis, valid_skills: list[str] | set[str] | t
     return not has_non_market_filter
 
 
+def _has_real_search_filter(p: PreferencePatch) -> bool:
+    """True nếu `patch` chứa tiêu chí tìm kiếm thực sự (khác nhiễu mặc định ROOM/SLEEPBOX)."""
+    return bool(
+        p.location_text
+        or p.location_is_vague
+        or p.vague_category
+        or p.location_region
+        or p.max_distance_km is not None
+        or p.min_price is not None
+        or p.max_price is not None
+        or p.min_area is not None
+        or p.max_area is not None
+        or p.min_bedrooms is not None
+        or p.amenities_add
+        or p.preferred_amenities_add
+        or p.amenities_remove
+        or p.special_requirements_add
+        or p.special_requirements_remove
+        or p.clear
+        or any(rt != RoomType.ROOM for rt in p.allowed_room_types)
+        or any(rt != RoomType.SLEEPBOX for rt in p.excluded_room_types)
+    )
+
+
 def _postprocess(
     a: TurnAnalysis,
     *,
@@ -478,8 +502,51 @@ def _postprocess(
                 remained_specials.append(req)
         a.patch.special_requirements_add = remained_specials
 
+    if a.intent in ("off_topic", "prompt_injection"):
+        a.patch = PreferencePatch()
+        a.page_action = None
+        a.target_page = None
+        a.reset_priorities = False
+        a.semantic_query = None
+        a.needs_budget_clarification = False
+        a.is_multi_intent = False
+        a.task_order = []
+        a.skill_slug = None
+        a.skill_slugs = []
+        a.referenced_room_rank = None
+        a.followup_current_page_first = False
+        return a
+
     valid_skills = _normalize_valid_skills(a, valid)
     valid_slug: Optional[str] = valid_skills[0] if valid_skills else None
+    has_priority_delta = any(getattr(a.priorities, k, None) is not None for k in CRITERIA)
+
+    if (
+        a.intent == "page_navigation"
+        and a.page_action is None
+        and not a.is_multi_intent
+        and not valid_skills
+        and a.referenced_room_rank is None
+        and not a.followup_current_page_first
+        and not has_priority_delta
+        and not _has_real_search_filter(a.patch)
+    ):
+        a.page_action = "next"
+
+    if (
+        a.page_action is not None
+        and not a.is_multi_intent
+        and not valid_skills
+        and a.referenced_room_rank is None
+        and not a.followup_current_page_first
+        and not has_priority_delta
+        and not _has_real_search_filter(a.patch)
+    ):
+        a.intent = "page_navigation"
+        a.patch = PreferencePatch()
+        a.reset_priorities = False
+        a.semantic_query = None
+        a.needs_budget_clarification = False
 
     is_market_only = is_market_only_patch(a, valid_skills)
 
@@ -624,12 +691,30 @@ def analyze_turn(
     for attempt in range(3):
         active_model = model if attempt == 0 else (retry_model or model)
         try:
-            raw = active_model.with_structured_output(TurnAnalysis, **kwargs).invoke(messages)
+            call_kwargs = dict(kwargs)
+            if hasattr(active_model, "_generate") or getattr(active_model, "include_raw", False):
+                call_kwargs["include_raw"] = True
+            raw = active_model.with_structured_output(TurnAnalysis, **call_kwargs).invoke(messages)
             if raw is None:
                 if attempt < 2 and retry_model is not None:
                     continue
                 return None
-            analysis = raw if isinstance(raw, TurnAnalysis) else TurnAnalysis.model_validate(raw)
+            raw_msg = None
+            if isinstance(raw, Mapping) and ("raw" in raw or "parsed" in raw):
+                parsing_err = raw.get("parsing_error")
+                if parsing_err is not None:
+                    raise parsing_err if isinstance(parsing_err, Exception) else ValueError(str(parsing_err))
+                raw_msg = raw.get("raw")
+                parsed_obj = raw.get("parsed")
+                if parsed_obj is None:
+                    if attempt < 2 and retry_model is not None:
+                        continue
+                    return None
+                analysis = parsed_obj if isinstance(parsed_obj, TurnAnalysis) else TurnAnalysis.model_validate(parsed_obj)
+            else:
+                analysis = raw if isinstance(raw, TurnAnalysis) else TurnAnalysis.model_validate(raw)
+            if raw_msg is not None:
+                analysis._raw_response = raw_msg
             break
         except Exception as exc:
             err_msg = str(exc).lower()

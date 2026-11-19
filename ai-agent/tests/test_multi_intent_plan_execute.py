@@ -588,7 +588,9 @@ def test_search_then_followup_with_unconstrained_agent_calls_detail_only_once(mo
     assert "<focus>" not in step1_query
     step2_ctx = agent.inputs[1]["messages"][0].content
     step2_query = agent.inputs[1]["messages"][-1].content
-    assert "<prefetched_listing_detail>" in step2_ctx
+    assert "<prefetched_listing_detail>" not in step2_ctx
+    assert step1_ctx == step2_ctx
+    assert "<prefetched_listing_detail>" in step2_query
     assert "<focus>" in step2_query
     verifier_spans = [e for e in resp.trace_events if e.get("type") == "verifier_decision"]
     assert len(verifier_spans) == 2

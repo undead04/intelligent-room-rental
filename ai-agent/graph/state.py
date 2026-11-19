@@ -33,6 +33,7 @@ class HousingAgentState(TypedDict, total=False):
     partial_replies: list[str]
     is_followup: bool
     focus_rank: Optional[int]
+    followup_current_page_first: bool
     vague_location_info: Optional[dict[str, Any]]
     follow_up_questions: Optional[list[str]]
 

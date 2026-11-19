@@ -347,13 +347,18 @@ def derive_dod_spec(
                 unit="call",
             )
         )
-    if intent == "skill_advice" and allow_unrequested_search_check:
+    if intent in ("skill_advice", "page_navigation") and allow_unrequested_search_check:
+        is_paging = intent == "page_navigation"
         conds.append(
             DoDCondition(
                 requirement_id="req_no_unrequested_search",
-                requirement_desc="Lượt tư vấn kỹ năng thuần túy không tự ý gọi tìm kiếm phòng",
+                requirement_desc=(
+                    "Lượt điều hướng phân trang không gọi lại tool tìm kiếm phòng"
+                    if is_paging
+                    else "Lượt tư vấn kỹ năng thuần túy không tự ý gọi tìm kiếm phòng"
+                ),
                 condition_id="cond_no_unrequested_search",
-                description="Trace không ghi nhận tool search_rooms khi chỉ tư vấn kỹ năng",
+                description="Trace không ghi nhận tool search_rooms khi chỉ tư vấn kỹ năng hoặc chuyển trang",
                 verifier_type="trace_code",
                 operator="tool_not_called",
                 threshold=0,
@@ -698,7 +703,12 @@ def verify_dod(
             else:
                 updated = replace(cond, actual_value=len(search_spans), passed=False)
                 evaluated.append(updated)
-                _record_failure(updated, "Lượt tư vấn kỹ năng thuần túy không được gọi tool search_rooms")
+                fail_msg = (
+                    "Lượt điều hướng phân trang (page_navigation) không được gọi lại tool search_rooms"
+                    if spec.intent == "page_navigation"
+                    else "Lượt tư vấn kỹ năng thuần túy không được gọi tool search_rooms"
+                )
+                _record_failure(updated, fail_msg)
             continue
 
         if cid == "cond_no_premature_detail_on_search":

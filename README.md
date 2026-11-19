@@ -2,7 +2,7 @@
 ### Hệ Thống Hỗ Trợ Ra Quyết Định Tìm Kiếm Phòng Trọ Thông Minh
 > **Đồ Án Tốt Nghiệp** — Khoa Khoa học Máy tính / Kỹ thuật Phần mềm  
 > Trường Đại học Công nghệ Thông tin — ĐHQG TP.HCM (**UIT - VNU-HCM**)  
-> **Kiểm Chứng Hệ Thống:** **851 Python Unit/Integration Tests** (`AI Agent: 610 passed`, `Backend: 83 passed`, `Crawler & ML v2: 158 passed`) | **Thesis Rubric (`--with-model`):** **`100.0 / 100.0` (100% Coverage)** | **Grounding & Guardrail:** **`100.0%` (`480/480` & `83/83`)** | **E2E User Errors:** **`0.0%` (`0/7`)**
+> **Kiểm Chứng Hệ Thống:** **886 Python Unit/Integration Tests** (`AI Agent: 639 passed`, `Backend: 89 passed`, `Crawler & ML v2: 158 passed`) | **Thesis Rubric (`--with-model`):** **`100.0 / 100.0` (100% Coverage)** | **Grounding & Guardrail:** **`100.0%` (`480/480` & `83/83`)** | **E2E User Errors:** **`0.0%` (`0/7`)**
 
 ---
 
@@ -12,7 +12,7 @@
 
 1. **Tìm kiếm lai (Hybrid Search)**: Kết hợp tuyến tính giữa biểu diễn ngữ nghĩa dày đặc (**Dense pgvector Embedding** 768 chiều từ `intfloat/multilingual-e5-base`) và chỉ mục từ khóa thưa thớt (**Sparse PostgreSQL Full-Text Search**) theo tỷ lệ tối ưu $70\% : 30\%$.
 2. **Trọng số thích ứng theo ngữ cảnh (NLU-Driven Dynamic MCDM)**: NLU LLM (`intelligence/nlu.py`) tự phân tích ngữ cảnh hội thoại để gán mức ưu tiên `Priorities` (`lower: 0.5×`, `normal: 1.0×`, `high: 2.0×`, `very_high: 3.0×`) thay vì rule từ khóa cứng dễ hiểu nhầm, tự động bật/tắt tiêu chí động (`location`, `amenity`) và chuẩn hoá vector trọng số theo $L_1$-norm ($\sum w_i = 1.0$).
-3. **Máy trạng thái điều phối AI Agent 8 Node (LangGraph State Machine)**: Quản lý quy trình hội thoại khép kín gồm: Phòng thủ Guardrail an toàn, NLU toàn quyền Cloud LLM (0 Regex ngữ nghĩa) & Lập kế hoạch đa mệnh đề (`TurnPlan` cho phép thực thi tuần tự `followup` / `search` / `advisory` trong cùng một lượt), Tích lũy trạng thái đa lượt & Phân trang 50 phòng (`10` trang $\times$ `5` phòng), Hỏi làm rõ khi mơ hồ, Định tuyến Kỹ năng chuyên sâu (`rental-contract-advisor`, `market-price-advisor`), Truy xuất lai kèm Retry & Fail-Fast định vị (`resolve_location_with_retry`), Phản hồi Markdown tự do qua ReAct `decision_agent` hoặc phân tích nguyên nhân 0 phòng kèm đối chiếu giá thị trường, Tự kiểm chứng trung thực 3 tầng + DoD Verifier độc lập và Đóng gói phản hồi chuẩn hóa.
+3. **Máy trạng thái điều phối AI Agent 8 Node (LangGraph State Machine)**: Quản lý quy trình hội thoại khép kín gồm: Phòng thủ Guardrail an toàn, NLU toàn quyền Cloud LLM & Bộ chặn ngoài phạm vi (`OFF_TOPIC_QUERY` / `_detect_unsupported_or_off_topic`), Lập kế hoạch đa mệnh đề (`TurnPlan` cho phép thực thi tuần tự `followup` / `search` / `advisory` trong cùng một lượt), Tích lũy trạng thái đa lượt & Phân trang kép 50 phòng (`10` trang $\times$ `5` phòng kèm phân tích đánh đổi `DecisionInsight` động theo từng trang), Lưu sẵn chi tiết phòng (`description`, `deposit`, `contact_name`) vào State & SQLite `room_details_cache` để hỏi tiếp không cần gọi lại API, Hỏi làm rõ khi mơ hồ, Định tuyến Kỹ năng chuyên sâu (`rental-contract-advisor`, `market-price-advisor`), Truy xuất lai kèm Retry & Fail-Fast định vị (`resolve_location_with_retry`), Phản hồi Markdown tự do qua ReAct `decision_agent` hoặc phân tích nguyên nhân 0 phòng kèm đối chiếu giá thị trường, Tự kiểm chứng trung thực 3 tầng + DoD Verifier độc lập và Đóng gói phản hồi chuẩn hóa.
 4. **Cơ chế phân vùng công cụ (Tool Partitioning)**: Chia tách công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giảm hơn **65% token overhead** và ngăn ngừa triệt để hiện tượng Tool Hallucination.
 5. **Thẩm định giá thuê bằng Machine Learning & Conformal Prediction**: Kết hợp mô hình **LightGBM + XGBoost Blend**, **Inverse-Distance Weighted Spatial Target Encoding (`SpatialTE`)**, và **Mondrian Conformal Prediction** để ước lượng khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ trên 9.693 bản ghi sạch toàn quốc ($R^2 = 0.6689$, Log-$R^2 = 0.7235$, $\text{MAE} = 598.769\ \text{VNĐ}$, coverage thực tế $83.15\%$), lượng hóa thành điểm số `price_score` $\in [0.0, 1.0]$.
 6. **Chu trình ETL & Trích xuất thuộc tính có kiểm chứng (Evidence Verification)**: Thu thập dữ liệu đa nguồn (Nhà Tốt, PhongTrọ123), đệm SQLite WAL $O(1)$, bóc tách thuộc tính sâu bằng LLM Gemini có cơ chế so khớp nguyên văn chống bịa đặt bằng chứng.
@@ -84,7 +84,7 @@
 │   │   │   └── reranker.py        # MCDM Dynamic Reranking Engine (5 tiêu chí, explain_match)
 │   │   └── main.py                # FastAPI App Entrypoint & Lifespan handler
 │   ├── migrations/                # SQL Migrations (HNSW & GIN indexes) & runner
-│   ├── tests/                     # 83 unit & integration tests (Embedding, MCDM Rerank, Security Middleware)
+│   ├── tests/                     # 89 unit & integration tests (Embedding, MCDM Rerank, Security Middleware)
 │   ├── run.py                     # Script khởi chạy Backend nhanh qua Uvicorn
 │   ├── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
 │   └── requirements.txt           # Quản lý phụ thuộc pip
@@ -140,7 +140,7 @@
 │   ├── eval/                      # Bộ đánh giá định lượng (run.py, thesis_eval_rubric.py, stability_and_regression.py, answer_relevance.py)
 │   ├── eval_results/              # Báo cáo & JSON kết quả các kỳ đánh giá
 │   ├── utils/                     # Tiện ích chuẩn hóa text, khoảng cách geo & đóng băng bất biến (freeze.py)
-│   ├── tests/                     # 610 Unit & Integration Tests (100% Passed)
+│   ├── tests/                     # 639 Unit & Integration Tests (100% Passed)
 │   ├── main.py                    # Uvicorn entrypoint (Port 8001)
 │   └── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
 
@@ -225,11 +225,12 @@ flowchart TD
     START["START: Tin nhắn người dùng"] --> N1["1. Guardrail Node<br/>(0 Tools - Regex / Heuristics)"]
     
     N1 -->|Phát hiện vi phạm hoặc Jailbreak| N8["8. Formatter Node<br/>(0 Tools - Đóng gói phản hồi & gộp partial_replies)"]
-    N1 -->|An toàn| N2["2. Understand Node<br/>(NLU LLM + Multi-Intent TurnPlan + Dynamic MCDM)"]
+    N1 -->|An toàn| N2["2. Understand Node<br/>(NLU LLM + Bộ chặn Off-Topic + Multi-Intent TurnPlan + Dynamic MCDM)"]
     
+    N2 -->|"Chào hỏi / Ngoài phạm vi / Vượt biên trang (direct_reply)"| N8
     N2 -->|Tư vấn / Skill| N4["4. Advisory Node<br/>(Scope: ADVISORY_TOOLS)"]
-    N2 -->|Truy vấn quá mơ hồ / Đổi trang| N3["3. Clarification Node<br/>(0 Tools - Hỏi gợi mở thân thiện)"]
-    N2 -->|Yêu cầu soi phòng cụ thể| N6["6. Decision Support Node<br/>(Scope: DETAIL_TOOLS)"]
+    N2 -->|Truy vấn quá mơ hồ / Thiếu ngân sách| N3["3. Clarification Node<br/>(0 Tools - Hỏi gợi mở thân thiện)"]
+    N2 -->|"Soi, so sánh phòng cũ / Phân trang (page_navigation)"| N6["6. Decision Support Node<br/>(Scope: DETAIL_TOOLS + State Detail Cache + Phân tích trang)"]
     N2 -->|Đủ tiêu chí tìm kiếm| N5["5. Hybrid Retrieval Node<br/>(Scope: RETRIEVAL_TOOLS)"]
     
     N4 --> N7
@@ -252,6 +253,42 @@ flowchart TD
 - **`DETAIL_TOOLS`** (`get_listing_detail`): Chỉ cấp cho `decision_node`.
 - **`ADVISORY_TOOLS`** (`list_housing_skills`, `consult_housing_skill`, `get_market_price_stats`): Chỉ cấp cho `advisory_node`.
 - **Kết quả:** Giảm hơn 65% token overhead cho mỗi lượt gọi, loại bỏ hoàn toàn tình trạng gọi nhầm tool hoặc bịa đặt tham số (Tool Hallucination).
+
+#### Các Luồng Điều Hướng & Xử Lý Trường Hợp Thực Tế (Workflow Routing & Edge Cases):
+
+| Tình huống hội thoại / Tác vụ | Đường đi qua các Node | Công cụ gọi thực tế | Hành vi State & Chốt chặn an toàn |
+| :--- | :--- | :--- | :--- |
+| **Tìm phòng mới / Cập nhật bộ lọc** | `N1 -> N2 -> N5 -> N6 -> N7 -> N8` | `search_rooms` | Lưu tối đa `50` phòng vào `paged_rooms` (`10` trang); lưu sẵn `description`, `deposit`, `contact_name` trong `RoomItem`; tỉa cache cũ |
+| **Chuyển trang qua Chat** (`page_navigation`: *"trang thứ 5"*, *"trang tiếp"*) | `N1 -> N2 -> N6 -> N7 -> N8` | **`0` Search Tools** | Chuẩn hóa về `intent="page_navigation"`, bỏ qua `retrieval_node`; `N6` LLM trực tiếp phân tích sâu 5 phòng trang mới và `N7` kiểm chứng Grounding + `cond_no_unrequested_search` |
+| **Chuyển trang qua UI** (`GET /session/{id}/rooms`) | API `SESSION_STORE.switch_page` | **`0` LLM, `0` Search** | Cập nhật `current_page` & `rooms` trang mới; trả kèm `insights` (`build_decision_insights`) lên `AgentInsightPanel` |
+| **Hỏi tiếp / So sánh phòng cũ** (`room_followup`) | `N1 -> N2 -> N6 -> N7 -> N8` | **`0` HTTP call** *(fallback `get_listing_detail` nếu thiếu)* | Câu hỏi bề mặt/so sánh nhiều phòng đọc trực tiếp `<rooms_data>`; câu hỏi sâu (điện, nước, cọc, nội quy...) trích từ `RoomItem` qua `_detail_from_room_item()` và lưu `room_details_cache` trong SQLite |
+| **Hỏi ngoài phạm vi / Tác vụ chưa hỗ trợ** | `N1 -> N2 -> N8` (`direct_reply`) | **`0` Tool call** | Kích hoạt `OFF_TOPIC_QUERY`; không ghi đè `session.preferences`, không gọi `search_rooms` hay `resolve_location` |
+| **Thiếu khu vực hoặc thiếu ngân sách** | `N1 -> N2 -> N3 -> N8` | **`0` Tool call** | Hỏi gợi mở xác nhận khu vực/ngân sách (`needs_clarification`), giữ nguyên tiêu chí đã tích lũy |
+| **Hỏi giá thị trường / Hợp đồng thuê trọ** | `N1 -> N2 -> N4 -> N7 -> N8` | `ADVISORY_TOOLS` | Đọc kỹ năng `SKILL.md` (`rental-contract-advisor`, `market-price-advisor`); `is_market_only_patch` ngăn chạy nhầm `search_rooms` |
+| **Prompt Injection / Jailbreak** | `N1 -> N8` | **`0` Tool call** | Chuẩn hóa Homoglyph/ZWSP tại `guardrail_node`, chặn trước khi chạm vào LLM |
+
+1. **Phân Trang Kép (`10` trang $\times$ `5` phòng = `50` phòng) Với Intent Riêng `page_navigation` & Phân Tích AI Qua `decision_node -> verify_node`**:
+   - **Định tuyến LangGraph chuẩn xác (`N1 -> N2 -> N6 -> N7 -> N8`)**: Khi người dùng chuyển trang qua Chat (*"ok đi tới trang 4"*, *"trang thứ 5 đi"*, *"xem thêm phòng ở trang tiếp theo"*), hệ thống chuẩn hóa về intent riêng **`page_navigation`** (không đi nhầm vào `retrieval_node`, **`0` gọi `search_rooms`**), cắt 5 phòng trang mới từ `SessionData.paged_rooms` rồi đưa sang `decision_node` để LLM trực tiếp phân tích chuyên sâu (`build_page_navigation_system_prompt`) và đi qua `verify_node` kiểm chứng Grounding 3 tầng + DoD `cond_no_unrequested_search` trước khi trả về qua `formatter_node`. Trên UI, nút phân trang gọi REST API `GET /api/v1/session/{session_id}/rooms?page=N` phục vụ tức thì từ SQLite.
+   - **Chống nhiễu & tự khôi phục `page_action`** ([`ai-agent/intelligence/nlu.py`](ai-agent/intelligence/nlu.py), [`ai-agent/intelligence/understand.py`](ai-agent/intelligence/understand.py)): Hàm `infer_page_action_from_text()`, `_postprocess()` và `_is_effective_patch_empty_for_pagination()` tự động khôi phục `page_action`/`target_page` kể cả khi LLM NLU đoán nhầm `new_search`/`refine_search`/`room_followup`, dọn nhiễu mặc định `ROOM`/`SLEEPBOX` và `reset_priorities` (trong khi vẫn chặn âm tính với cụm địa danh *"Nha Trang"* hoặc câu hỏi phòng/tiêu chí mới). Nếu `paged_rooms` đang rỗng hoặc vượt số trang tối đa thì `direct_reply` báo rõ về `formatter_node`.
+   - **Phân tích đánh đổi động theo từng trang (`DecisionInsight`)**: Cả luồng LLM trong `decision_node` (kèm fallback xác định `format_page_switch_reply()` trong [`ai-agent/intelligence/insights.py`](ai-agent/intelligence/insights.py)) lẫn `build_decision_insights()` (API & `AgentInsightPanel`) đều tự động tính toán lại lý do nổi bật theo đúng thứ hạng trang thực tế (`Top 6`, `Top 7`... ở trang 2) và xuất đủ 3 khối phân tích (`### 🏆 Điểm nhấn nổi bật`, `### ⚖️ So sánh & Đánh đổi`, `### 📋 Gợi ý tiếp theo`).
+
+2. **Hỏi Tiếp & So Sánh Phòng (`room_followup`) Từ State & Cache (`0` Gọi Thừa `get_listing_detail`)**:
+   - **Lưu sẵn chi tiết vào State lúc `search_rooms` (tối ưu Token)**: Endpoint `POST /api/v1/listings/vector-search` ([`backend/app/schemas/listing.py`](backend/app/schemas/listing.py)) đính kèm sẵn `description`, `deposit`, `poster.name` vào `RoomItem` ([`ai-agent/domain/schemas.py`](ai-agent/domain/schemas.py)). Để tránh phình context window ở các lượt tìm kiếm thông thường, `compact_room()` ([`ai-agent/intelligence/payload_builder.py`](ai-agent/intelligence/payload_builder.py)) ẩn 3 trường nặng này khỏi `<rooms_data>`.
+   - **Phân loại câu hỏi thông minh & Cache SQLite** ([`ai-agent/graph/nodes/decision.py`](ai-agent/graph/nodes/decision.py), [`ai-agent/core/session_store.py`](ai-agent/core/session_store.py)):
+     - *Câu hỏi bề mặt hoặc so sánh nhiều phòng* (giá, diện tích, khoảng cách, địa chỉ, *"phòng nào rẻ nhất"*): `_needs_deep_listing_detail()` trả `False`, `decision_agent` đọc trực tiếp `<rooms_data>` mà **`0` gọi `get_listing_detail`**.
+     - *Câu hỏi sâu về 1 phòng cụ thể* (tiền cọc, giá điện nước, gửi xe, wifi, nội quy, người đăng): Hệ thống ưu tiên trích xuất ngay từ `RoomItem` trong State qua `_detail_from_room_item()` và/hoặc tái sử dụng `SessionData.room_details_cache` (được lưu bền vững trong `sessions.db` và tự động tỉa ID cũ mỗi khi tìm mới) để nạp vào `<prefetched_listing_detail>` với **`0` HTTP call** tới Backend; chỉ gọi `GET /api/v1/listings/{id}` làm fallback khi phòng trong State khuyết dữ liệu.
+   - **Định vị phòng chính xác ở mọi trang**: Cờ `followup_current_page_first` ưu tiên đối chiếu trang đang xem (`session.rooms`) khi hỏi số thứ tự tương đối (*"phòng đầu tiên"*, *"phòng số 2"* ở trang 2), còn khi nhắc thứ hạng tuyệt đối (*"phòng số 7"*, *"top 7"*) hay mã ID sẽ tra cứu toàn cục trên cả 50 phòng trong `paged_rooms`.
+
+3. **Chốt Chặn Toàn Diện Truy Vấn Ngoài Phạm Vi & Tác Vụ Chưa Hỗ Trợ (`OFF_TOPIC_QUERY`)**:
+   - Bên cạnh hướng dẫn phân loại `off_topic` trong `INTENT_GUIDE` ([`ai-agent/prompts/nlu_prompt.py`](ai-agent/prompts/nlu_prompt.py)), tầng `understand_node` áp dụng hàm chặn xác định `_detect_unsupported_or_off_topic()` ([`ai-agent/intelligence/understand.py`](ai-agent/intelligence/understand.py)) để chặn sớm và đi thẳng tới `formatter_node` (`direct_reply = True`, **`commit = False`**) đối với 4 nhóm nằm ngoài khả năng hiện tại của workflow:
+     - **Hỏi vị trí / thông tin địa danh thuần túy** (không có ý định tìm thuê phòng, ví dụ: *"đại học UIT ở đâu"*, *"trường Bách Khoa nằm ở quận mấy"*).
+     - **Hỏi chỉ đường, tuyến xe buýt, học phí, điểm chuẩn, thời tiết, lập trình / toán học**.
+     - **Giao dịch bất động sản ngoài thuê trọ** (mua bán nhà đất, chung cư, sang nhượng mặt bằng).
+     - **Tác vụ vận hành hệ thống chưa hỗ trợ** (đăng tin, sửa/xóa tin, đặt/giữ phòng hoặc chuyển cọc hộ như *"giữ phòng top 1 giúp mình"*, gọi điện/nhắn chủ trọ hộ, tìm bạn ở ghép hộ).
+   - Cơ chế bảo vệ kép này đảm bảo các câu ngoài phạm vi không bao giờ kích hoạt nhầm `search_rooms` / `resolve_location` hay làm nhiễm bẩn `session.preferences`.
+
+4. **Đa Mệnh Đề (`Multi-Intent TurnPlan`) & Tự Sửa Sai (`verify_node`)**:
+   - Khi một câu chứa nhiều ý định độc lập (VD: *"Kiểm tra tiền cọc phòng số 1 rồi tìm thêm phòng ở Thủ Đức, tư vấn giúp mình hợp đồng thuê trọ"*), `TurnPlan` xếp hàng đợi `pending_tasks` theo đúng thứ tự `task_order` và thực thi từng bước qua `verify_node` trước khi `formatter_node` hợp nhất thành một câu trả lời hoàn chỉnh.
 
 ---
 
@@ -433,15 +470,15 @@ cd frontend; npm run dev
 
 ## 🧪 6. Kiểm Thử Hệ Thống & Báo Cáo Đánh Giá Chất Lượng
 
-Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **851 Python unit & integration tests** (AI Agent: **610**, Backend: **83**, Crawler & ML v2: **158**):
+Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **886 Python unit & integration tests** (AI Agent: **639**, Backend: **89**, Crawler & ML v2: **158**):
 
 ### 6.1. Chạy Toàn Bộ Test Suite Tự Động
 
 ```powershell
-# 1. Kiểm thử AI Agent (610 tests)
+# 1. Kiểm thử AI Agent (639 tests)
 .\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 
-# 2. Kiểm thử Backend (83 tests)
+# 2. Kiểm thử Backend (89 tests)
 .\backend\.venv\Scripts\pytest.exe backend/tests -q
 
 # 3. Kiểm thử Crawler & ML v2 (158 tests)

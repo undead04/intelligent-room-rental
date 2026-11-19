@@ -43,6 +43,9 @@ def make_understand_node(deps: Deps):
                     "matched_skill": p.matched_skill,
                     "matched_skills": p.matched_skills,
                     "is_followup": p.is_followup,
+                    "page_action": p.analysis.page_action,
+                    "target_page": p.target_page if p.target_page is not None else p.analysis.target_page,
+                    "page_switched": p.page_switched,
                     "patch": p.analysis.patch,
                 },
             )
@@ -59,6 +62,8 @@ def make_understand_node(deps: Deps):
                 session.record_preference_snapshot(plan.preferences)
         if plan.focus_rank is not None:
             session.focused_room_rank = plan.focus_rank
+        elif plan.page_switched and plan.page_rooms:
+            session.focused_room_rank = getattr(plan.page_rooms[0], "rank", None)
         all_tasks = ([plan.current_task] if plan.current_task else []) + list(plan.pending_tasks)
         need_prior_rooms = plan.is_followup or (
             "followup" in all_tasks
@@ -100,12 +105,15 @@ def make_understand_node(deps: Deps):
             "is_followup": plan.is_followup,
             "direct_reply": plan.direct_reply,
             "focus_rank": plan.focus_rank,
+            "followup_current_page_first": plan.followup_current_page_first,
             "vague_location_info": plan.vague_location_info,
             "retrieved_rooms": prior_rooms,
             "page_switched": plan.page_switched,
             "current_page": plan.target_page if plan.target_page is not None else getattr(session, "current_page", 1),
             "searched": False,
         }
+        if plan.insights is not None:
+            out["insights"] = plan.insights
         if plan.final_text:
             out["final_text"] = plan.final_text
         if plan.blocked_reason:

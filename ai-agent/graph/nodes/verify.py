@@ -173,7 +173,7 @@ def make_verify_node(deps: Deps):
             and not is_advisory_sorry
         )
         allow_unrequested_search = (
-            intent == "skill_advice"
+            intent in ("skill_advice", "page_navigation")
             and cur_task != "search"
             and "search" not in pending_tasks
         )

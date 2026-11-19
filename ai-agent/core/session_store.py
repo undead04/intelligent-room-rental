@@ -92,6 +92,7 @@ class SessionData:
         self.pending_ambiguous_location: Optional[str] = None
         self.pending_ambiguous_candidates: list[dict[str, Any]] = []
         self.consulted_skills: dict[str, dict[str, str]] = {}
+        self.room_details_cache: dict[str, dict[str, Any]] = {}
 
     def clear_latest_location_snapshot(self) -> None:
         """Xoá location lỗi/chưa phân giải khỏi snapshot mới nhất (giữ nguyên giá/diện tích/loại phòng/tiện ích)."""
@@ -239,6 +240,10 @@ class SessionStore:
                 session.paged_rooms = pool[:MAX_PAGED_ROOMS]
                 session.current_page = 1
                 session.focused_room_rank = None
+                kept_ids = {r.id for r in session.paged_rooms} | {r.id for r in session.last_rooms}
+                session.room_details_cache = {
+                    rid: detail for rid, detail in session.room_details_cache.items() if rid in kept_ids
+                }
             elif page_switched:
                 session.last_rooms = list(rooms)
                 if current_page is not None:
@@ -301,6 +306,7 @@ def _dump(s: SessionData) -> str:
         "focused_room_rank": s.focused_room_rank,
         "pending_ambiguous_location": s.pending_ambiguous_location,
         "pending_ambiguous_candidates": s.pending_ambiguous_candidates,
+        "room_details_cache": s.room_details_cache,
     }, ensure_ascii=False)
 
 
@@ -335,6 +341,7 @@ def _load(session_id: str, payload: str, version: int, last_active: float, clock
     s.focused_room_rank = d.get("focused_room_rank")
     s.pending_ambiguous_location = d.get("pending_ambiguous_location")
     s.pending_ambiguous_candidates = list(d.get("pending_ambiguous_candidates") or [])
+    s.room_details_cache = dict(d.get("room_details_cache") or {})
     s.version, s.last_active = version, last_active
     return s
 

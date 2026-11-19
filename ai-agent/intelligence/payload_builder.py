@@ -13,7 +13,7 @@ from typing import Any, Optional, Sequence
 from domain.schemas import RoomItem, UserPreferenceState
 
 _SKIP_HINTS = ("image", "img", "photo", "thumb", "avatar", "url", "link", "phone", "contact")
-_SKIP_KEYS = {"lat", "lng", "rankText"}
+_SKIP_KEYS = {"lat", "lng", "rankText", "description", "deposit", "contact_name"}
 
 
 def _shrink(v: Any) -> Any:
@@ -61,10 +61,14 @@ def build_decision_query_message(
     *,
     focus_rank: Optional[int] = None,
     retry_issues: Optional[Sequence[str]] = None,
+    target_room_detail: Optional[str] = None,
 ) -> str:
-    """Tạo message chứa câu hỏi người dùng và feedback retry (phần đuôi động, đặt sau Context Prefix)."""
+    """Tạo message chứa dữ liệu chi tiết động theo phòng hỏi, câu hỏi người dùng và feedback retry (Suffix sau Context Prefix)."""
     q = (question or "").replace("</user_message>", "").replace("<user_message>", "")
-    parts = [f"<user_message>\n{q}\n</user_message>"]
+    parts: list[str] = []
+    if target_room_detail:
+        parts.append(f"<prefetched_listing_detail>\n{target_room_detail}\n</prefetched_listing_detail>")
+    parts.append(f"<user_message>\n{q}\n</user_message>")
     if focus_rank:
         parts.append(f"<focus>Người dùng đang hỏi về phòng Top {focus_rank}.</focus>")
     if retry_issues:
@@ -82,6 +86,11 @@ def build_decision_user_message(
     target_room_detail: Optional[str] = None,
 ) -> str:
     """Ghép Context Prefix cố định trước, Query Suffix động sau để kích hoạt KV-Cache khi retry hoặc hỏi tiếp."""
-    prefix = build_decision_context_message(pref, rooms, target_room_detail=target_room_detail)
-    suffix = build_decision_query_message(question, focus_rank=focus_rank, retry_issues=retry_issues)
+    prefix = build_decision_context_message(pref, rooms)
+    suffix = build_decision_query_message(
+        question,
+        focus_rank=focus_rank,
+        retry_issues=retry_issues,
+        target_room_detail=target_room_detail,
+    )
     return f"{prefix}\n{suffix}"

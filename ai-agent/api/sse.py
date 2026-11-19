@@ -22,6 +22,18 @@ def _describe_node_update(node_name: str, update: dict[str, Any]) -> tuple[str, 
         return "Kiểm tra an toàn (Guardrails)", "Truy vấn hợp lệ và an toàn.", "ok"
 
     if node_name == "understand_node":
+        if update.get("page_switched") or update.get("intent") == "page_navigation":
+            rooms = update.get("retrieved_rooms") or []
+            cur_p = update.get("current_page") or 1
+            if rooms:
+                start_r = getattr(rooms[0], "rank", None) or 1
+                end_r = getattr(rooms[-1], "rank", None) or (start_r + len(rooms) - 1)
+                return (
+                    "Điều hướng phân trang (Page Navigation)",
+                    f"Chuyển sang Trang {cur_p} (Top {start_r}–{end_r}), bỏ qua retrieval_node.",
+                    "ok",
+                )
+            return "Điều hướng phân trang (Page Navigation)", f"Xử lý điều hướng Trang {cur_p}.", "ok"
         pref = update.get("preferences")
         loc = pref.location_text if pref else ""
         budget = f"Ngân sách: {pref.max_price/1e6:.1f}tr" if pref and pref.max_price else ""
