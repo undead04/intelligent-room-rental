@@ -247,7 +247,7 @@ class TestMLEvaluationPersistence:
         assert EVALUATION_MD_PATH.exists(), "Chưa sinh evaluation_report.md"
 
         data = json.loads(EVALUATION_JSON_PATH.read_text(encoding="utf-8"))
-        assert data["eda"]["funnel"]["clean_total"] == 9693
+        assert data["eda"]["funnel"]["clean_total"] >= 9693
         blend_metrics = data["model_evaluation"]["model_comparison"]["Ensemble Blend (LGBM + XGB)"]
         assert blend_metrics["r2_vnd"] >= 0.65
         assert blend_metrics["r2_log"] >= 0.70

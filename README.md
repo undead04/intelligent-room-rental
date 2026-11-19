@@ -2,7 +2,7 @@
 ### Hệ Thống Hỗ Trợ Ra Quyết Định Tìm Kiếm Phòng Trọ Thông Minh
 > **Đồ Án Tốt Nghiệp** — Khoa Khoa học Máy tính / Kỹ thuật Phần mềm  
 > Trường Đại học Công nghệ Thông tin — ĐHQG TP.HCM (**UIT - VNU-HCM**)  
-> **Kiểm Chứng Hệ Thống:** **826 Python Unit/Integration Tests** (`AI Agent: 585 passed`, `Backend: 83 passed`, `Crawler & ML v2: 158 passed`) | **Thesis Rubric (`--with-model`):** **`100.0 / 100.0` (100% Coverage)** | **Agent `pass^3`:** **`100.0%` (`15/15`)**
+> **Kiểm Chứng Hệ Thống:** **851 Python Unit/Integration Tests** (`AI Agent: 610 passed`, `Backend: 83 passed`, `Crawler & ML v2: 158 passed`) | **Thesis Rubric (`--with-model`):** **`100.0 / 100.0` (100% Coverage)** | **Grounding & Guardrail:** **`100.0%` (`480/480` & `83/83`)** | **E2E User Errors:** **`0.0%` (`0/7`)**
 
 ---
 
@@ -12,7 +12,7 @@
 
 1. **Tìm kiếm lai (Hybrid Search)**: Kết hợp tuyến tính giữa biểu diễn ngữ nghĩa dày đặc (**Dense pgvector Embedding** 768 chiều từ `intfloat/multilingual-e5-base`) và chỉ mục từ khóa thưa thớt (**Sparse PostgreSQL Full-Text Search**) theo tỷ lệ tối ưu $70\% : 30\%$.
 2. **Trọng số thích ứng theo ngữ cảnh (NLU-Driven Dynamic MCDM)**: NLU LLM (`intelligence/nlu.py`) tự phân tích ngữ cảnh hội thoại để gán mức ưu tiên `Priorities` (`lower: 0.5×`, `normal: 1.0×`, `high: 2.0×`, `very_high: 3.0×`) thay vì rule từ khóa cứng dễ hiểu nhầm, tự động bật/tắt tiêu chí động (`location`, `amenity`) và chuẩn hoá vector trọng số theo $L_1$-norm ($\sum w_i = 1.0$).
-3. **Máy trạng thái điều phối AI Agent 8 Node (LangGraph State Machine)**: Quản lý quy trình hội thoại khép kín gồm: Phòng thủ Guardrail an toàn, Trích xuất NLU & Tích lũy trạng thái đa lượt (Multi-turn Memory), Hỏi làm rõ khi mơ hồ, Định tuyến Kỹ năng chuyên sâu (Advisory Skills), Truy xuất lai & Rerank động (giữ lọc cứng nghiêm ngặt, tóm tắt `dropped_summary` khi 0 phòng), Phản hồi Markdown tự do qua ReAct `decision_agent` (`HOMIGO_CONSTRAINED_GENERATION=false` mặc định) hoặc phân tích nguyên nhân 0 phòng kèm đối chiếu dữ liệu thị trường, Tự kiểm chứng trung thực (**Self-RAG Grounding Verification**) và Đóng gói phản hồi chuẩn hóa.
+3. **Máy trạng thái điều phối AI Agent 8 Node (LangGraph State Machine)**: Quản lý quy trình hội thoại khép kín gồm: Phòng thủ Guardrail an toàn, NLU toàn quyền Cloud LLM (0 Regex ngữ nghĩa) & Lập kế hoạch đa mệnh đề (`TurnPlan` cho phép thực thi tuần tự `followup` / `search` / `advisory` trong cùng một lượt), Tích lũy trạng thái đa lượt & Phân trang 50 phòng (`10` trang $\times$ `5` phòng), Hỏi làm rõ khi mơ hồ, Định tuyến Kỹ năng chuyên sâu (`rental-contract-advisor`, `market-price-advisor`), Truy xuất lai kèm Retry & Fail-Fast định vị (`resolve_location_with_retry`), Phản hồi Markdown tự do qua ReAct `decision_agent` hoặc phân tích nguyên nhân 0 phòng kèm đối chiếu giá thị trường, Tự kiểm chứng trung thực 3 tầng + DoD Verifier độc lập và Đóng gói phản hồi chuẩn hóa.
 4. **Cơ chế phân vùng công cụ (Tool Partitioning)**: Chia tách công cụ theo từng Node (`RETRIEVAL_TOOLS`, `DETAIL_TOOLS`, `ADVISORY_TOOLS`), giảm hơn **65% token overhead** và ngăn ngừa triệt để hiện tượng Tool Hallucination.
 5. **Thẩm định giá thuê bằng Machine Learning & Conformal Prediction**: Kết hợp mô hình **LightGBM + XGBoost Blend**, **Inverse-Distance Weighted Spatial Target Encoding (`SpatialTE`)**, và **Mondrian Conformal Prediction** để ước lượng khoảng giá hợp lý $[P_{\text{low}}, P_{\text{high}}]$ trên 9.693 bản ghi sạch toàn quốc ($R^2 = 0.6689$, Log-$R^2 = 0.7235$, $\text{MAE} = 598.769\ \text{VNĐ}$, coverage thực tế $83.15\%$), lượng hóa thành điểm số `price_score` $\in [0.0, 1.0]$.
 6. **Chu trình ETL & Trích xuất thuộc tính có kiểm chứng (Evidence Verification)**: Thu thập dữ liệu đa nguồn (Nhà Tốt, PhongTrọ123), đệm SQLite WAL $O(1)$, bóc tách thuộc tính sâu bằng LLM Gemini có cơ chế so khớp nguyên văn chống bịa đặt bằng chứng.
@@ -135,11 +135,12 @@
 │   │   └── http.py                # Pooled HTTPX Client tái sử dụng kết nối
 │   ├── skills/                    # Kỹ năng chuyên gia động (Dynamic Skill Discovery qua YAML frontmatter)
 │   │   ├── skills_discovery.py    # Tự động phát hiện Kỹ năng không cần sửa code graph
-│   │   └── rental-contract-advisor/ # Kỹ năng tư vấn hợp đồng thuê trọ, tiền cọc, rủi ro pháp lý
+│   │   ├── rental-contract-advisor/ # Kỹ năng tư vấn hợp đồng thuê trọ, tiền cọc, rủi ro pháp lý
+│   │   └── market-price-advisor/  # Kỹ năng tra cứu thống kê giá thị trường thực tế
 │   ├── eval/                      # Bộ đánh giá định lượng (run.py, thesis_eval_rubric.py, stability_and_regression.py, answer_relevance.py)
 │   ├── eval_results/              # Báo cáo & JSON kết quả các kỳ đánh giá
 │   ├── utils/                     # Tiện ích chuẩn hóa text, khoảng cách geo & đóng băng bất biến (freeze.py)
-│   ├── tests/                     # 585 Unit & Integration Tests (100% Passed)
+│   ├── tests/                     # 610 Unit & Integration Tests (100% Passed)
 │   ├── main.py                    # Uvicorn entrypoint (Port 8001)
 │   └── pyproject.toml / uv.lock   # Quản lý phụ thuộc uv
 
@@ -223,29 +224,33 @@ Hệ thống AI Agent không dùng cấu trúc prompt monolithic nguyên khối 
 flowchart TD
     START["START: Tin nhắn người dùng"] --> N1["1. Guardrail Node<br/>(0 Tools - Regex / Heuristics)"]
     
-    N1 -->|Phát hiện vi phạm hoặc Jailbreak| N8["8. Formatter Node<br/>(0 Tools - Đóng gói phản hồi an toàn)"]
-    N1 -->|An toàn| N2["2. Understand Node<br/>(NLU + Dynamic MCDM + Dynamic Skill Match)"]
+    N1 -->|Phát hiện vi phạm hoặc Jailbreak| N8["8. Formatter Node<br/>(0 Tools - Đóng gói phản hồi & gộp partial_replies)"]
+    N1 -->|An toàn| N2["2. Understand Node<br/>(NLU LLM + Multi-Intent TurnPlan + Dynamic MCDM)"]
     
-    N2 -->|Khớp trigger Kỹ năng chuyên sâu| N4["4. Advisory Node<br/>(Scope: ADVISORY_TOOLS)"]
-    N2 -->|Truy vấn quá mơ hồ| N3["3. Clarification Node<br/>(0 Tools - Hỏi gợi mở thân thiện)"]
+    N2 -->|Tư vấn / Skill| N4["4. Advisory Node<br/>(Scope: ADVISORY_TOOLS)"]
+    N2 -->|Truy vấn quá mơ hồ / Đổi trang| N3["3. Clarification Node<br/>(0 Tools - Hỏi gợi mở thân thiện)"]
     N2 -->|Yêu cầu soi phòng cụ thể| N6["6. Decision Support Node<br/>(Scope: DETAIL_TOOLS)"]
     N2 -->|Đủ tiêu chí tìm kiếm| N5["5. Hybrid Retrieval Node<br/>(Scope: RETRIEVAL_TOOLS)"]
     
-    N4 --> N8
+    N4 --> N7
     N3 --> N8
     N5 --> N6
+    N5 -->|ambiguous / not_found / search_error| N7
     
-    N6 --> N7["7. Verify Node (Self-RAG)<br/>(Kiểm chứng trung thực 100% ID, Giá, Toạ độ)"]
-    N7 -->|Phát hiện sai lệch và retry tối đa 2 lần| N6
-    N7 -->|Grounded 100%| N8
+    N6 --> N7["7. Verify Node (Self-RAG + DoD Verifier)<br/>(Kiểm chứng 3 tầng & kiểm định DoD độc lập)"]
+    N7 -->|Retry <= 2 hoặc pending followup| N6
+    N7 -->|Retry <= 2 hoặc pending advisory| N4
+    N7 -->|pending search| N5
+    N7 -->|pending search cần làm rõ| N3
+    N7 -->|Pass / Fallback / Stop| N8
     
     N8 --> END["END: Trả về AgentResponse"]
 ```
 
 #### Ưu thế của Phân Vùng Công Cụ (Tool Partitioning):
-- **`RETRIEVAL_TOOLS`** (`geocode_location`, `get_location_hierarchy`, `search_rooms`): Chỉ cấp cho `retrieval_node`.
+- **`RETRIEVAL_TOOLS`** (`search_rooms`): Chỉ cấp cho `retrieval_node`.
 - **`DETAIL_TOOLS`** (`get_listing_detail`): Chỉ cấp cho `decision_node`.
-- **`ADVISORY_TOOLS`** (`consult_housing_skill`): Chỉ cấp cho `advisory_node`.
+- **`ADVISORY_TOOLS`** (`list_housing_skills`, `consult_housing_skill`, `get_market_price_stats`): Chỉ cấp cho `advisory_node`.
 - **Kết quả:** Giảm hơn 65% token overhead cho mỗi lượt gọi, loại bỏ hoàn toàn tình trạng gọi nhầm tool hoặc bịa đặt tham số (Tool Hallucination).
 
 ---
@@ -428,12 +433,12 @@ cd frontend; npm run dev
 
 ## 🧪 6. Kiểm Thử Hệ Thống & Báo Cáo Đánh Giá Chất Lượng
 
-Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **826 Python unit & integration tests** (AI Agent: **585**, Backend: **83**, Crawler & ML v2: **158**):
+Toàn bộ hệ thống được bảo vệ bởi bộ kiểm thử tự động toàn diện với **851 Python unit & integration tests** (AI Agent: **610**, Backend: **83**, Crawler & ML v2: **158**):
 
 ### 6.1. Chạy Toàn Bộ Test Suite Tự Động
 
 ```powershell
-# 1. Kiểm thử AI Agent (585 tests)
+# 1. Kiểm thử AI Agent (610 tests)
 .\ai-agent\.venv\Scripts\pytest.exe ai-agent/tests -q
 
 # 2. Kiểm thử Backend (83 tests)
@@ -481,11 +486,12 @@ Khi chạy với cờ `--with-model`, hệ thống đánh giá đầy đủ **17
 | **5** | **An Toàn Hệ Thống & Hiệu Năng Vận Hành (Safety & SLA)** | 15.0 | **`15.00 / 15.00`** | 100.0% | ✅ `PASS` (`5.1`–`5.4`) |
 | | **TỔNG KẾT ĐỒ ÁN** | **100.0** | **`100.00 / 100.0`** | **`100.0%`** | 🏆 **`XUẤT SẮC (EXCELLENT)`** |
 
-#### B. Kết Quả Suite `eval.run` & Hiệu Năng Thành Phần:
+#### B. Kết Quả Suite `eval.run` (Mới Nhất — `ai-agent/eval_results/report.md`):
 * **Guardrail (`137 ca`):** Recall tấn công ngoài nhóm HARD đạt **`100.0%` (`83/83`)** (tính cả 4 ca nhóm HARD là `95.4%`, `83/87`); tỷ lệ chặn nhầm câu hợp lệ **`0.0%` (`0/40`)** với chi phí **$0$ token LLM**.
-* **Grounding (`600 ca` tổng hợp, seed 7):** Phát hiện lỗi tiêm vào **`100.0%` (`480/480`)** trên 8 loại lỗi (ID giả, giá sai định dạng `k`/`tr`/`triệu`/`đ`, diện tích, khoảng cách, tiền cọc); gắn cờ nhầm câu sạch **`0.0%` (`0/120`)**.
-* **Độ ổn định & Trajectory (`agent_eval`, `k=3`):** `pass^3 = 100.0%` (**`15/15` cases**), tỷ lệ đạt Trajectory **`100.0%` (`45/45`)**, DoD Verifier **`100.0%` (`33/33`)**, không có case bất ổn định.
-* **Độ trễ xử lý nội tại (200 lượt sau 20 warm-up, không gồm LLM/IO):** **p50 = `0.369 ms`**, **p95 = `0.695 ms`**, **max = `0.951 ms`** (ngân sách p95 $\le 10\text{ ms}$); nén payload chi tiết giảm **`89.5%`**.
+* **Grounding (`600 ca` tổng hợp, seed 7):** Phát hiện lỗi tiêm vào **`100.0%` (`480/480`)** trên 8 loại lỗi (`id_fake`, `price_wrong` dạng `k`/`tr`/`triệu`/`đ`, `area_wrong`, `distance_wrong`, `unsupported_deposit`); gắn cờ nhầm câu sạch **`0.0%` (`0/120`)**.
+* **NLU (`40 ca vàng`):** Khớp hoàn toàn cả ca đạt **`82.5%` (`33/40`)** (các trường `allowed_room_types`, `excluded_room_types`, `is_multi_intent`, `task_order`, `page_action`, `revert_mode`, `rank`, `vague`, `needs_budget_clarification` đạt `100.0%`).
+* **Ablation E2E:** Tỉ lệ kiểm tra đạt **`92.9%` (`39/42`)**, phát hiện và tự sửa `42.9% (3/7)` nháp đầu bị cờ lỗi, giữ **lỗi lọt tới tay người dùng `0.0%` (`0/7`)** và **tỷ lệ fallback câu mẫu `0.0%` (`0/7`)** (`0` lượt lỗi hệ thống).
+* **Độ ổn định & Trajectory (`agent_eval`, tập `2026.11.v3`, `18 cases`, `k=3`):** Không bước cấm/thừa (Trajectory Q2) đạt **`100.0%` (`54/54`)**, DoD Verifier **`82.1%` (`32/39`)**, Trajectory tổng **`81.5%` (`44/54`)**, `pass^3 = 38.9%` (`7/18`).
 
 #### C. Thực Nghiệm Ablation Study End-to-End (`eval.run ablation` — 10 kịch bản, 17 lượt/cấu hình):
 

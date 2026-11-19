@@ -113,7 +113,7 @@ Là bảng lưu trữ trung tâm của toàn bộ hệ thống:
 | `area_m2` | `FLOAT` | `INDEX` | Diện tích phòng ($m^2$). |
 | `price_million_per_m2`| `FLOAT` | `NULLABLE` | Đơn giá triệu/m2 (tính toán tự động). |
 | `deposit` | `FLOAT` | `NULLABLE` | Tiền cọc (VNĐ). |
-| `furnishing_code` | `INTEGER` | `NULLABLE` | Mã tình trạng nội thất (`0`: Trống, `1`: Cơ bản, `2`: Đầy đủ). |
+| `furnishing_code` | `INTEGER` | `NULLABLE` | Mã tình trạng nội thất (`1`: Nội thất cao cấp, `2`: Nội thất đầy đủ [cũng là mã auto-fill khi gốc là NULL nhưng LLM phát hiện có nội thất], `3`: Nhà trống). |
 | `bedrooms` | `INTEGER` | `INDEX, NULLABLE` | Số phòng ngủ (`> 0`, lấy từ raw parser hoặc LLM `numeric`). |
 | `bathrooms` | `INTEGER` | `NULLABLE` | Số phòng vệ sinh (`> 0`, lấy từ raw parser hoặc LLM `numeric`). |
 | `address_raw` | `VARCHAR` | `NULLABLE` | Địa chỉ thô người cho thuê nhập vào. |
@@ -123,9 +123,9 @@ Là bảng lưu trữ trung tâm của toàn bộ hệ thống:
 | `is_active` | `BOOLEAN` | `NOT NULL, DEFAULT TRUE, INDEX` | Cờ trạng thái: `True` = còn cho thuê, `False` = đã hết hạn/gỡ. |
 | `status` | `VARCHAR(50)`| `NOT NULL, DEFAULT 'active'` | Trạng thái: `active`, `expired_or_deleted`. |
 | `last_checked_at` | `TIMESTAMP` | `NULLABLE` | Thời điểm spider verify kiểm tra lần cuối. |
-| `safety_score` | `FLOAT` | `NULLABLE` | Điểm an ninh tính từ camera, bảo vệ, vân tay (0.0 - 1.0). |
+| `safety_score` | `FLOAT` | `NULLABLE` | Điểm an ninh v2 theo đường cong cận biên giảm dần: nền nhẹ theo loại phòng + bằng chứng camera, bảo vệ/lễ tân, vân tay/khóa từ, khu an ninh, PCCC, cổng riêng (`0.0 - 1.0`). |
 | `concept_scores` | `JSON` | `NULLABLE` | Object chứa điểm xác thực từng tiện ích (0.0 - 1.0). |
-| `amenity_overall`| `FLOAT` | `NULLABLE` | Điểm tiện nghi tổng thể tích lũy theo trọng số (0.0 - 1.0). |
+| `amenity_overall`| `FLOAT` | `NULLABLE` | Điểm tiện nghi tổng thể v2 chuẩn hóa theo loại hình phòng & tình trạng nội thất gốc (`0.0 - 1.0`). |
 | `price_score` | `FLOAT` | `NULLABLE` | Điểm thẩm định giá từ mô hình Machine Learning (0.0 - 1.0). |
 | `poster_id` | `VARCHAR` | `FK -> users.id, INDEX` | ID người đăng tin. |
 | `region_id` | `INTEGER` | `FK -> cities.id, INDEX`| ID Tỉnh / Thành phố. |

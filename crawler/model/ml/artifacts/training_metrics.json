@@ -1,5 +1,5 @@
 {
-  "dataset_size": 9693,
+  "dataset_size": 12350,
   "features": [
     "area_m2",
     "lat",
@@ -21,10 +21,10 @@
     "dist_nearest_hub_km",
     "dist_nearest_uni_km"
   ],
-  "mae_vnd": 599687.27,
-  "rmse_vnd": 860174.89,
-  "r2_score": 0.6659,
-  "r2_log_score": 0.722,
-  "conformal_coverage": 0.8246,
-  "trained_at": "2026-11-05 17:01:57"
+  "mae_vnd": 575869.76,
+  "rmse_vnd": 775127.59,
+  "r2_score": 0.6893,
+  "r2_log_score": 0.7242,
+  "conformal_coverage": 0.7879,
+  "trained_at": "2026-11-19 14:23:22"
 }

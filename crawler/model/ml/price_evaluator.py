@@ -79,17 +79,18 @@ class PriceEvaluator:
 
         X_in = X_in[self.features_in]
 
-        # 2. Dự đoán khoảng giá (low, high) và giá kỳ vọng blend (mid)
-        rng = self.interval.predict(X_in)
+        # 2. Dự đoán khoảng giá (low, high) và giá kỳ vọng blend (mid) (chống Inference Self-Leakage)
+        rng = self.interval.predict(X_in, exclude_self_match=True)
         lows = rng["low"].to_numpy(dtype=float)
         highs = rng["high"].to_numpy(dtype=float)
 
-        mids = blend_predict(self.results, X_in, smear=True)
+        mids = blend_predict(self.results, X_in, smear=True, exclude_self_match=True)
         mids = np.clip(mids, lows, highs)
 
         # 3. Tính độ lệch z-score trong không gian log và điểm price_score [0, 100]
         llo, lhi = np.log1p(lows), np.log1p(highs)
-        center = (llo + lhi) / 2.0
+        lmid = np.log1p(np.clip(mids, 1.0, None))
+        center = 0.5 * lmid + 0.5 * ((llo + lhi) / 2.0)
         half = np.maximum((lhi - llo) / 2.0, 1e-6)
 
         # Safe log price

@@ -160,8 +160,8 @@ def test_process_chunk_result_verification():
     assert "amenity_overall_score" in res_report
     assert "safety_score" in res_report
     assert "concept_scores" in res_report
-    # private_wc (20) + aircon (20) = 40 pts -> 0.40
-    assert res_report["amenity_overall_score"] == 0.40
+    # private_wc (18) + aircon (18) = 36 pts -> 0.36
+    assert res_report["amenity_overall_score"] == 0.36
 
 
 def test_create_dynamic_chunks():

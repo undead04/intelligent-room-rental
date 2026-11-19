@@ -11,8 +11,9 @@ if _PROJECT_ROOT not in sys.path:
 from crawler.config.settings import GEMINI_API_KEYS, setup_windows_encoding
 setup_windows_encoding()
 
-from crawler.config.paths import LLM_CHECKPOINT_PATH
+from crawler.config.paths import LLM_CHECKPOINT_PATH, TRANSFORMED_JSONL_PATH
 from crawler.etl.extract import extract_raw_listings
+from crawler.etl.io_utils import write_jsonl
 from crawler.etl.transform import ListingTransformer
 from crawler.etl.load import DataLoader
 from crawler.staging_db import staging_db
@@ -27,6 +28,7 @@ def run_pipeline(
     checkpoint_path: str = None,
     eval_price: bool = False,
     limit: int = None,
+    save_intermediate: bool = False,
 ) -> list[dict]:
     """
     Điều phối luồng ETL toàn diện:
@@ -91,7 +93,11 @@ def run_pipeline(
         embedder = ListingEmbedder()
         cleaned_records = embedder.embed_records(cleaned_records)
 
-    # 4. LOAD (Chỉ nạp trực tiếp vào PostgreSQL, không tạo file parquet hay csv)
+    if save_intermediate:
+        out_path = write_jsonl(TRANSFORMED_JSONL_PATH, cleaned_records)
+        print(f"[ETL] Đã lưu file trung gian sau Transform/Embed tại: {out_path}", flush=True)
+
+    # 4. LOAD (Nạp trực tiếp vào PostgreSQL)
     loader = DataLoader()
     load_success = False
     try:
@@ -148,6 +154,11 @@ if __name__ == "__main__":
         help="Bật trọn gói: LLM + ML Price Score + E5 Embedding + Nạp DB",
     )
     parser.add_argument(
+        "--save-intermediate",
+        action="store_true",
+        help="Lưu thêm file trung gian JSONL sau bước Transform/Embed",
+    )
+    parser.add_argument(
         "--dest",
         nargs="+",
         default=["db"],
@@ -168,5 +179,6 @@ if __name__ == "__main__":
         extract_llm=extract_llm,
         eval_price=eval_price,
         limit=args.limit,
+        save_intermediate=args.save_intermediate,
     )
 

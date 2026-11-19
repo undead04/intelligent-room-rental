@@ -40,41 +40,41 @@ Mỗi tin đăng được trích xuất thành vector 19 đặc trưng cốt lõ
 
 ### 2.2. Đặc Trưng Phái Sinh & `SpatialTE` Trọng Số Khoảng Cách (`models.py`)
 - **`make_base_features`:** Tính mật độ tiện nghi trên quy mô diện tích `amenity_density = amenity_overall / ln(1 + area_m2)` và tương quan tọa độ phẳng `lat_lng_sum`, `lat_lng_diff` (đã loại bỏ các biến đa cộng tuyến `log_area` và `n_amenities`).
-- **Inverse-Distance Weighted `SpatialTE`:** Sử dụng `BallTree(metric="haversine")` tìm $k \in \{5, 20\}$ phòng láng giềng gần nhất và tính trung bình có trọng số nghịch đảo khoảng cách $w_j = \frac{1}{1 + d_j(\text{km})}$ (`nb5_logy_mean`, `nb5_logppm_mean`, `nb20_logy_mean`, `nb20_logppm_mean`, `nb5_dist_km`, `nb20_dist_km`, `nb20_logy_std`), đồng thời loại bỏ chính điểm đang xét trong `transform_train` để chống rò rỉ dữ liệu 100%.
+- **Segment-Aware & Anti-Leakage `SpatialTE`:** Sử dụng `BallTree(metric="haversine")` tìm $k \in \{5, 20\}$ phòng láng giềng gần nhất và tính trung bình có trọng số nghịch đảo khoảng cách $w_j = \frac{1}{1 + d_j(\text{km})}$ (`nb5_logy_mean`, `nb5_logppm_mean`, `nb20_logy_mean`, `nb20_logppm_mean`, `nb5_dist_km`, `nb20_dist_km`, `nb20_logy_std`). Tách riêng cây `BallTree` cho nhóm `SLEEPBOX` (giá theo giường) với nhóm phòng/căn hộ nguyên căn (`1, 2, 3, 5`), loại chính điểm đang xét trong `transform_train` và bật `exclude_self_match=True` trong `PriceEvaluator` để triệt tiêu 100% Inference Self-Leakage khi chấm điểm DB.
 
 ### 2.3. Ensemble, Mondrian Conformal Prediction & `InputGuard` Toàn Quốc
 1. **Dự đoán giá kỳ vọng ($P_{\text{mid}}$):** Kết hợp (Blend) giữa **LightGBM** và **XGBoost** được tối ưu siêu tham số qua **Optuna 5-Fold Stratified CV** trên không gian logarit $\ln(1 + P)$ kèm hệ số hiệu chỉnh chệch bình phương tối thiểu (Least-Squares Smearing Calibration).
-2. **Dự đoán khoảng tin cậy ($[P_{\text{low}}, P_{\text{high}}]$):** Áp dụng **Mondrian Conformal Prediction** (`MondrianPriceInterval`, `n_bins=5`, độ phủ danh định $80\%$) phân tầng theo mức giá dự đoán.
+2. **Dự đoán khoảng tin cậy ($[P_{\text{low}}, P_{\text{high}}]$):** Áp dụng **Mondrian Conformal Prediction** (`MondrianPriceInterval`, `n_bins=5`, độ phủ danh định $80\%$) phân tầng theo mức giá dự đoán kèm hiệu chuẩn dịch tâm `shift_k` trên tập calibration để khử lệch co cụm về trung bình.
 3. **`InputGuard` Toàn Quốc & Thích Ứng Theo `room_type_id`:** Hỗ trợ toàn lãnh thổ Việt Nam ($\text{lat} \in [8.0, 23.5]$, $\text{lng} \in [102.0, 110.0]$) và áp dụng bảng ngưỡng diện tích/giá/đơn giá (`ppm`) riêng biệt cho từng loại phòng (bảo vệ phân khúc `SLEEPBOX`/KTX/ở ghép có $\text{ppm} \ge 5.000\ \text{đ/m}^2$ và `WHOLE_HOUSE` diện tích lớn).
 
-### 2.4. Kết Quả Thực Nghiệm (Tập Dữ Liệu Toàn Quốc `N = 9.693` Bản Ghi Sạch)
+### 2.4. Kết Quả Thực Nghiệm (Tập Dữ Liệu Toàn Quốc `N = 12.350` Train / `13.054` Clean ML Samples)
 
-| Chỉ Số Đánh Giá (Trên Tập Test Độc Lập 15%) | Mô Hình v1 (1.249 mẫu) | Mô Hình v2 (9.693 mẫu - 19 Features) | Mức Cải Thiện |
+| Chỉ Số Đánh Giá (Trên Tập Test Độc Lập 15%) | Mô Hình v1 (1.249 mẫu) | Mô Hình v2.1 (Dataset sạch - 19 Features) | Mức Cải Thiện |
 | :--- | :---: | :---: | :---: |
-| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$598.769\ \text{VNĐ}$** | **$-40,4\%$ sai số** |
-| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$856.392\ \text{VNĐ}$** | **$-42,9\%$ sai số** |
-| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6689$** | **Tăng $\times 2,15$ lần (+35,78 điểm %)** |
-| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7235$** | Giải thích $> 72,3\%$ phương sai |
-| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$83,15\%$** | Đạt chuẩn $[78\%, 85\%]$ |
+| **MAE (Sai số tuyệt đối trung bình)** | $1.004.361\ \text{VNĐ}$ | **$575.326\ \text{VNĐ}$** *(train: 575.870 đ)* | **$-42,7\%$ sai số** |
+| **RMSE (Sai số toàn phương trung bình)** | $1.499.317\ \text{VNĐ}$ | **$782.484\ \text{VNĐ}$** *(train: 775.128 đ)* | **$-47,8\%$ sai số** |
+| **$R^2$ Score (Không gian tiền tệ VNĐ)** | $0.3111$ | **$0.6836$** *(train: 0.6893)* | **Tăng $\times 2,20$ lần (+37,25 điểm %)** |
+| **$R^2$ Score (Không gian Log-Price)** | — | **$0.7247$** *(train: 0.7242)* | Giải thích $> 72,4\%$ phương sai |
+| **Conformal Coverage Thực Tế (Kỳ vọng 80%)** | $79,3\%$ | **$81,42\%$** | Đạt chuẩn $[78\%, 85\%]$ (Dưới $8,17\%$, Trên $10,41\%$) |
 
 ### 2.5. Phân Tích Dữ Liệu (EDA), Giải Trình Đặc Trưng & Đánh Giá Chi Tiết
 Xem báo cáo đầy đủ được sinh tự động tại [`artifacts/evaluation_report.md`](./artifacts/evaluation_report.md) và [`artifacts/evaluation_report.json`](./artifacts/evaluation_report.json):
-- **Phễu làm sạch (EDA Funnel):** Từ **10.430** tin gốc $\rightarrow$ loại **3** tin lỗi tọa độ ngoài Việt Nam (`10.427`) $\rightarrow$ loại **734** tin ngoài ngưỡng diện tích/giá/đơn giá theo từng loại phòng $\rightarrow$ **9.693 tin sạch (92,93%)**. Phân bố gồm `ROOM` (5.940 - 61,28%), `STUDIO` (2.114 - 21,81%), `APARTMENT` (1.174 - 12,11%), `SLEEPBOX` (351 - 3,62%) và `WHOLE_HOUSE` (114 - 1,18%).
+- **Phễu làm sạch (EDA & ML Training Funnel):** Từ **15.553** tin thô trong `staging.db` $\rightarrow$ `ListingTransformer` lọc bỏ **1.585** tin thiếu giá/diện tích, tọa độ ngoài VN, ngoài ngưỡng loại phòng hoặc phi nhà ở/thuê ngày (`13.968` bản ghi hợp lệ lưu vào `listings_clean.parquet`, `99,98%` đạt chuẩn EDA) $\rightarrow$ loại tin thiếu nhãn LLM, lỗi gõ diện tích, đuôi ngoại lai `> 8.5M` & khử trùng lặp vật lý $\rightarrow$ **`13.054` mẫu sạch huấn luyện ML (`0` NaN, `0` trùng lặp)**.
 - **Lý do chọn 19 Features + `SpatialTE` (29 cột vào cây):**
-  - `area_m2` vs `log_area` có $\text{Spearman} = 1.0000$; `n_amenities` vs `amenity_overall` có $\text{Pearson} = 0.9462$ $\rightarrow$ Loại biến đa cộng tuyến, giữ `amenity_density`.
-  - **7 cờ bị cắt (`PRUNED_LOW_IMPACT_FLAGS`)** đều có `Mutual Info <= 0.0107` và đã được tóm tắt trong `amenity_overall` (`is_kitchen`: $r = +0.726$) & `safety_score` (`is_camera`: $r = +0.742$, `is_fingerprint_lock`: $r = +0.720$).
-  - **Ablation Study (Holdout Test 15%, zero-leakage):** Cấu hình `4_Pruned_19_With_SpatialTE` (29 cột) đạt `MAE = 602.648 đ`, `R² = 0.6669`, **vượt trội** cả khi giữ đủ 26 đặc trưng (`MAE = 603.455 đ`, `R² = 0.6654`) và khi bỏ `SpatialTE` (`MAE = 604.912 đ`, `R² = 0.6625`).
-  - **Top 5 Ensemble Gain (`rent_pipeline.joblib`):** `room_type_id` (25,00%), `area_m2` (18,39%), `is_furniture` (13,55%), `nb20_logy_mean` (7,62%), `furnishing_code` (3,92%).
-- **So sánh Holdout 15% (1.454 mẫu) & Tổng quát hóa Toàn Quốc:**
-  - `Baseline (Room-Type Median)`: `MAE = 944.079 đ`, `MdAPE = 20,93%`, `R² = 0.2510`.
-  - `LightGBM`: `MAE = 600.658 đ`, `R² = 0.6667`, `R²_log = 0.7207`.
-  - `XGBoost`: `MAE = 601.623 đ`, `R² = 0.6667`, `R²_log = 0.7219`.
-  - **`Ensemble Blend (LGBM + XGB)`:** `MAE = 598.769 đ`, `MdAPE = 12,45%`, `RMSE = 856.392 đ`, **`R² = 0.6689`**, **`R²_log = 0.7235`**.
-  - Theo địa lý: TP.HCM đạt `R² = 0.6638` (`83,2%` coverage) và Tỉnh/TP khác đạt `R² = 0.7083` (`83,0%` coverage). Mondrian Conformal toàn cục đạt **83,15%** (kỳ vọng 80%).
+  - `area_m2` vs `log_area` có $\text{Spearman} = 1.0000$; `n_amenities` vs `amenity_overall` có $\text{Pearson} = 0.7262$ $\rightarrow$ Loại biến đa cộng tuyến, giữ `amenity_density`.
+  - **7 cờ bị cắt (`PRUNED_LOW_IMPACT_FLAGS`)** đều có `Mutual Info <= 0.0113` và đã được tóm tắt trong `amenity_overall` & `safety_score`.
+  - **Ablation Study (Holdout Test 15%, zero-leakage):** Cấu hình `4_Pruned_19_With_SpatialTE` (29 cột) đạt `MAE = 578.717 đ`, `R² = 0.6801`, **vượt trội** cấu hình giữ đủ 36 cột (`MAE = 580.255 đ`).
+  - **Top 5 Ensemble Gain (`rent_pipeline.joblib`):** `nb20_logy_mean` (24,98%), `area_m2` (18,22%), `nb20_logppm_mean` (10,52%), `is_furniture` (10,08%), `room_type_id` (5,14%).
+- **So sánh Holdout 15% (`1.959` mẫu) & Tổng quát hóa Toàn Quốc:**
+  - `Baseline (Room-Type Median)`: `MAE = 915.227 đ`, `MdAPE = 20,93%`, `R² = 0.2581`.
+  - `LightGBM`: `MAE = 577.778 đ`, `R² = 0.6799`, `R²_log = 0.7228`.
+  - `XGBoost`: `MAE = 574.992 đ`, `R² = 0.6844`, `R²_log = 0.7238`.
+  - **`Ensemble Blend (LGBM + XGB)`:** `MAE = 575.326 đ`, `MdAPE = 12,19%`, `RMSE = 782.484 đ`, **`R² = 0.6836`**, **`R²_log = 0.7247`**.
+  - Theo địa lý: TP.HCM đạt `R² = 0.6899` (`81,7%` coverage) và Tỉnh/TP khác đạt `R² = 0.6260` (`78,3%` coverage). Mondrian Conformal toàn cục đạt **81,42%** (kỳ vọng 80%).
 
 ### 2.6. Công Thức Tính Điểm Hợp Lý Giá (`price_score`)
-Trong không gian logarit $\ell(x) = \ln(1 + x)$:
-$$\mu = \frac{\ell(P_{\text{low}}) + \ell(P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ell(P_{\text{high}}) - \ell(P_{\text{low}})}{2}, 10^{-6}\right)$$
+Trong không gian logarit $\ell(x) = \ln(1 + x)$ (với `exclude_self_match=True` để chống Inference Self-Leakage):
+$$\mu = 0.5 \cdot \ell(P_{\text{mid}}) + 0.5 \cdot \frac{\ell(P_{\text{low}}) + \ell(P_{\text{high}})}{2}, \quad \sigma = \max\left(\frac{\ell(P_{\text{high}}) - \ell(P_{\text{low}})}{2}, 10^{-6}\right)$$
 $$z = \frac{\ell(P_{\text{actual}}) - \mu}{\sigma}$$
 $$\text{PriceScore}_{100} = \text{clip}(50 - 25 \cdot z,\ 0,\ 100), \quad \text{PriceScore} = \frac{\text{PriceScore}_{100}}{100} \in [0.0, 1.0]$$
 

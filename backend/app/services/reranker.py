@@ -228,7 +228,7 @@ def _location_part(listing: object, user_pref: object) -> float:
 
 
 def _price_fit(orm: object, user_pref: object = None, weights: Optional[Mapping[str, float]] = None) -> float:
-    """Điểm hợp lý giá (price_score) do mô hình Machine Learning thẩm định kết hợp độ rẻ tiền danh nghĩa."""
+    """Điểm hợp lý giá (price_score) do mô hình Machine Learning thẩm định kết hợp mức phù hợp ngân sách."""
     price_score = _get(orm, "price_score")
     ml_score = 0.50
     if price_score is not None:
@@ -243,18 +243,23 @@ def _price_fit(orm: object, user_pref: object = None, weights: Optional[Mapping[
         p_val = float(price_vnd)
         m_val = float(max_price)
         if p_val <= m_val:
-            savings_ratio = max(0.0, min(1.0, (m_val - p_val) / m_val))
-
             # Chỉ bật chế độ ưu tiên giá rẻ danh nghĩa khi người dùng/caller yêu cầu tường minh,
             # không suy diễn từ trọng số sau L1-normalization (tránh tự bật khi location/amenity tắt).
             prefer_cheap = bool(_get(user_pref, "prefer_cheapest")) if user_pref else False
 
             if prefer_cheap:
+                savings_ratio = max(0.0, min(1.0, (m_val - p_val) / m_val))
                 # Đẩy tỷ trọng độ rẻ tiền thực tế (savings_ratio) lên 85%, ML score chỉ 15%
                 return _clamp01(0.85 * (0.3 + 0.7 * savings_ratio) + 0.15 * ml_score)
+
+            # Mặc định: giữ điểm tối đa cho dải ngân sách kỳ vọng [0.65 * max_price .. max_price],
+            # tránh thiên vị phòng giá quá thấp (vd 4-5tr) khi khách tìm phân khúc max 10tr.
+            util_ratio = max(0.0, min(1.0, p_val / m_val))
+            if util_ratio >= 0.65:
+                budget_band_fit = 1.0
             else:
-                # Mặc định ưu tiên 80% độ hời giá thị trường (ML) + 20% mức tiết kiệm danh nghĩa
-                return _clamp01(0.80 * ml_score + 0.20 * (0.4 + 0.6 * savings_ratio))
+                budget_band_fit = 0.20 + 0.80 * (util_ratio / 0.65)
+            return _clamp01(0.45 * ml_score + 0.55 * budget_band_fit)
         else:
             return _clamp01(0.3 * ml_score)
 

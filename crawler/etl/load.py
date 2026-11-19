@@ -11,7 +11,9 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from crawler.schema.enums import CANONICAL_ROOM_TYPES, ROOM_TYPE_CODE_TO_ID
+from crawler.config.paths import TRANSFORMED_JSONL_PATH
 from crawler.config.settings import DEFAULT_EMBEDDING_MODEL
+from crawler.etl.io_utils import read_jsonl, restore_record_datetimes
 from crawler.etl.db_models import (
     Base,
     City,
@@ -116,7 +118,8 @@ class DataLoader:
         print(f"\n[LOAD] Bắt đầu nạp {len(records)} bản ghi vào PostgreSQL...", flush=True)
 
         try:
-            for r in records:
+            for raw_rec in records:
+                r = restore_record_datetimes(raw_rec)
                 lid = str(r.get("listing_id") or r.get("id") or "").strip()
                 if not lid:
                     continue
@@ -244,6 +247,8 @@ class DataLoader:
                     session.add(Listing(**listing_vals))
                 else:
                     for k, v in listing_vals.items():
+                        if k == "price_score" and v is None and getattr(existing_listing, "price_score", None) is not None:
+                            continue
                         setattr(existing_listing, k, v)
                 listing_count += 1
 
@@ -324,23 +329,41 @@ class DataLoader:
 
 if __name__ == "__main__":
     import argparse
-    from crawler.etl.extract import extract_raw_listings
-    from crawler.etl.transform import ListingTransformer
+    from crawler.staging_db import staging_db
 
-    parser = argparse.ArgumentParser(description="Test nạp dữ liệu vào PostgreSQL")
-    parser.add_argument("--limit", type=int, default=3, help="Số bản ghi test")
+    parser = argparse.ArgumentParser(description="Nạp dữ liệu từ file trung gian JSONL vào PostgreSQL.")
+    parser.add_argument(
+        "--input",
+        type=str,
+        default=str(TRANSFORMED_JSONL_PATH),
+        help=f"Đường dẫn file trung gian JSONL đã qua Transform (mặc định: {TRANSFORMED_JSONL_PATH})",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Giới hạn số bản ghi nạp (tùy chọn để test nhanh)",
+    )
+    parser.add_argument(
+        "--mark-processed",
+        action="store_true",
+        help="Đánh dấu is_processed = 1 trong Staging DB sau khi nạp PostgreSQL thành công",
+    )
     args = parser.parse_args()
 
-    raws = extract_raw_listings(limit=args.limit)
-    if not raws:
-        print("[LOAD] Không có dữ liệu thô trong Staging DB.")
+    records = read_jsonl(args.input)
+    if args.limit is not None:
+        records = records[: args.limit]
+
+    if not records:
+        print(f"[LOAD] File trung gian rỗng, không có bản ghi để nạp: {args.input}", flush=True)
     else:
-        transformer = ListingTransformer()
-        cleans = transformer.transform(raws)
         loader = DataLoader()
-        try:
-            counts = loader.load_to_postgres(cleans)
-            loader.print_summary(cleans)
-            print(f"[LOAD DEMO] Hoàn tất nạp dữ liệu: {counts[0]} tin, {counts[1]} vector.")
-        except Exception as e:
-            print(f"[LOAD DEMO] Không thể nạp PostgreSQL (CSDL có thể chưa chạy): {e}")
+        counts = loader.load_to_postgres(records)
+        loader.print_summary(records)
+        print(f"[LOAD] Hoàn tất nạp từ {args.input}: {counts[0]} tin, {counts[1]} vector.", flush=True)
+        if args.mark_processed:
+            processed_ids = [str(r.get("listing_id") or "") for r in records if r.get("listing_id")]
+            if processed_ids:
+                updated = staging_db.mark_as_processed(processed_ids)
+                print(f"[LOAD] Đã cập nhật is_processed = 1 cho {updated} tin trong Staging DB.", flush=True)

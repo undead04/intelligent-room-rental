@@ -1,4 +1,4 @@
-from crawler.schema.enums import RoomType
+from crawler.schema.enums import CANONICAL_ROOM_TYPES, RoomType
 import re
 import unicodedata
 from typing import Literal, Optional, List, Union, Dict
@@ -212,10 +212,91 @@ EXTRA_TO_AMENITY_MAP: list[tuple[str, list[str]]] = [
     ("no_shared_landlord", ["không chung chủ", "k chung chủ", "ko chung chủ", "riêng tư"]),
     ("pet_allowed", ["thú cưng", "nuôi pet", "nuôi mèo", "nuôi chó", "cho nuôi"]),
     ("camera", ["camera", "cam an ninh"]),
-    ("guard", ["bảo vệ", "bao ve"]),
-    ("fingerprint_lock", ["vân tay", "thẻ từ", "khóa thông minh", "smart lock"]),
-    ("safe_area", ["khu an ninh", "an ninh tốt", "an ninh đảm bảo", "khu vực an ninh"]),
+    ("guard", ["bảo vệ", "bao ve", "lễ tân", "trực 24", "an ninh 24/24", "an ninh 24/7", "quản lý tòa nhà", "quản lý toà nhà"]),
+    ("fingerprint_lock", ["vân tay", "thẻ từ", "khóa từ", "khoá từ", "khóa mã", "khoá mã", "mật mã", "passcode", "face id", "cửa từ", "khóa điện tử", "khoá điện tử", "khóa thông minh", "smart lock"]),
+    ("safe_area", ["khu an ninh", "an ninh tốt", "an ninh đảm bảo", "khu vực an ninh", "dân trí cao", "hẻm cụt yên tĩnh", "khu dân cư yên tĩnh", "an toàn tuyệt đối", "khu vực yên tĩnh"]),
 ]
+
+# Regex thu hồi bổ sung & điểm thưởng an toàn / tiện nghi v2 (chỉ bổ sung khi LLM trả unknown, không đè 'no')
+P_PCCC = re.compile(r"\bpccc\b|phòng cháy|chữa cháy|báo cháy|lối thoát hiểm|thoát hiểm|bình chữa cháy", re.IGNORECASE)
+P_SMART_LOCK = re.compile(
+    r"vân tay|thẻ từ|khóa từ|khoá từ|khóa mã|khoá mã|mật mã|passcode|face\s*id|cửa từ|"
+    r"khóa điện tử|khoá điện tử|khóa thông minh|khoá thông minh|smart\s*lock",
+    re.IGNORECASE,
+)
+P_GUARD = re.compile(r"bảo vệ|bao ve|lễ tân|trực\s*24|an ninh\s*24/24|an ninh\s*24/7|quản lý tòa nhà|quản lý toà nhà", re.IGNORECASE)
+P_GATE_LOCK = re.compile(r"cổng riêng|khóa riêng|khoá riêng|2 lớp cửa|hai lớp cửa|cổng rào|cửa sắt chắc|lối đi riêng|khóa cổng|khoá cổng", re.IGNORECASE)
+P_SAFE_AREA = re.compile(
+    r"an ninh tốt|khu an ninh|an ninh đảm bảo|khu vực an ninh|dân trí cao|hẻm cụt yên tĩnh|"
+    r"khu dân cư yên tĩnh|an toàn tuyệt đối|khu vực yên tĩnh",
+    re.IGNORECASE,
+)
+P_PREMIUM_EXTRA = re.compile(
+    r"hồ bơi|bể bơi|phòng gym|\bgym\b|sân vườn|bbq|công viên nội khu|siêu thị dưới nhà|sảnh lễ tân|rooftop",
+    re.IGNORECASE,
+)
+P_FULL_FURN_TEXT = re.compile(
+    r"full\s*nội\s*thất|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*đầy\s*đủ|full\s*tiện\s*nghi|xách\s*vali",
+    re.IGNORECASE,
+)
+
+ROOM_TYPE_ID_TO_CODE: dict[int, str] = {info[0]: code for code, info in CANONICAL_ROOM_TYPES.items()}
+
+SAFETY_BASELINE_BY_ROOM_TYPE: dict[str, float] = {
+    RoomType.SLEEPBOX.value: 0.26,
+    RoomType.ROOM.value: 0.30,
+    RoomType.STUDIO.value: 0.34,
+    RoomType.WHOLE_HOUSE.value: 0.36,
+    RoomType.APARTMENT.value: 0.40,
+}
+
+SAFETY_EVIDENCE_WEIGHTS: dict[str, float] = {
+    "fingerprint_lock": 0.28,
+    "camera": 0.25,
+    "guard": 0.22,
+    "safe_area": 0.18,
+}
+
+AMENITY_WEIGHTS_BY_ROOM_TYPE: dict[str, dict[str, float]] = {
+    RoomType.ROOM.value: {
+        "private_wc": 18.0, "aircon": 18.0, "kitchen": 12.0, "furniture": 12.0,
+        "window_balcony": 10.0, "washing_machine": 8.0, "fridge": 8.0, "parking": 6.0, "mezzanine": 8.0,
+    },
+    RoomType.STUDIO.value: {
+        "private_wc": 15.0, "aircon": 18.0, "furniture": 16.0, "kitchen": 13.0,
+        "window_balcony": 10.0, "fridge": 10.0, "washing_machine": 10.0, "elevator": 4.0, "parking": 4.0,
+    },
+    RoomType.APARTMENT.value: {
+        "private_wc": 12.0, "aircon": 18.0, "furniture": 20.0, "kitchen": 12.0,
+        "window_balcony": 10.0, "washing_machine": 10.0, "fridge": 10.0, "elevator": 4.0, "parking": 4.0,
+    },
+    RoomType.SLEEPBOX.value: {
+        "private_wc": 18.0, "aircon": 18.0, "kitchen": 12.0, "furniture": 14.0,
+        "window_balcony": 10.0, "washing_machine": 10.0, "fridge": 10.0, "parking": 8.0,
+    },
+    RoomType.WHOLE_HOUSE.value: {
+        "private_wc": 15.0, "kitchen": 15.0, "aircon": 18.0, "furniture": 18.0,
+        "window_balcony": 10.0, "parking": 10.0, "washing_machine": 7.0, "fridge": 7.0,
+    },
+}
+
+
+def _normalize_room_type_code(
+    room_type: Optional[Union[RoomType, str, int]],
+    fallback: Union[RoomType, str] = RoomType.ROOM,
+) -> str:
+    """Chuẩn hóa loại hình phòng từ Enum, string hoặc canonical room_type_id (1..5)."""
+    candidate = room_type if room_type is not None else fallback
+    if isinstance(candidate, RoomType):
+        return candidate.value
+    if isinstance(candidate, int) and not isinstance(candidate, bool):
+        return ROOM_TYPE_ID_TO_CODE.get(candidate, RoomType.ROOM.value)
+    raw = str(candidate or "").strip().upper()
+    if raw.isdigit():
+        return ROOM_TYPE_ID_TO_CODE.get(int(raw), RoomType.ROOM.value)
+    if raw in SAFETY_BASELINE_BY_ROOM_TYPE:
+        return raw
+    return RoomType.ROOM.value
 
 class ListingExtraction(BaseModel):
     amenities: Amenities = Field(default_factory=Amenities)
@@ -279,32 +360,116 @@ class ListingExtraction(BaseModel):
         data.extra_amenities = cleaned_extra
         return data
 
-    def amenity_overall_score(self) -> float:
-        """Tính điểm tổng thể tiện nghi phòng theo thang tích lũy 100 điểm (0.0 - 1.0).
-        Chỉ những tiện ích xác nhận 'yes' mới được cộng điểm, giải quyết triệt để Score Flattening.
-        """
-        weights = {
-            "private_wc": 20,
-            "aircon": 20,
-            "mezzanine": 15,
-            "kitchen": 15,
-            "fridge": 10,
-            "washing_machine": 10,
-            "window_balcony": 10,
-            "furniture": 5,
-            "parking": 5,
-            "elevator": 5,
-        }
-        earned = sum(
-            weights[name]
-            for name, w in weights.items()
-            if getattr(self.amenities, name).value == "yes"
-        )
-        return round(min(1.0, earned / 100.0), 2)
+    def amenity_overall_score(
+        self,
+        *,
+        room_type: Optional[Union[RoomType, str, int]] = None,
+        furnishing_code: Optional[int] = None,
+        bathrooms: Optional[int] = None,
+        source_text: str = "",
+    ) -> float:
+        """Tính điểm tổng thể tiện nghi v2 chuẩn hóa theo loại phòng & tình trạng nội thất [0.0, 1.0].
 
-    def safety_score(self) -> float:
-        """Điểm an ninh tổng thể [0, 1]."""
-        return round(self.safety.score(), 2)
+        - Áp dụng bộ trọng số 100 điểm riêng cho từng loại phòng (ROOM/STUDIO/APARTMENT/SLEEPBOX/WHOLE_HOUSE).
+        - Suy luận mặc định cấu trúc hiển nhiên (chỉ khi cờ đang 'unknown', tuyệt đối không ghi đè 'no').
+        - Gộp raw_furnishing_code in (1, 2) hoặc mô tả 'full nội thất' hưởng sàn 80% cụm thiết bị (trừ SLEEPBOX).
+        """
+        rt_code = _normalize_room_type_code(room_type, self.room_type)
+        av = {name: getattr(self.amenities, name).value for name in type(self.amenities).model_fields}
+        extra_text = f"{source_text}\n{' '.join(self.extra_amenities or [])}".strip()
+
+        has_private_bath = False
+        if bathrooms is not None and not isinstance(bathrooms, bool):
+            try:
+                has_private_bath = int(float(bathrooms)) >= 1
+            except (TypeError, ValueError):
+                has_private_bath = False
+
+        if av["private_wc"] == "unknown" and (
+            rt_code in (RoomType.STUDIO.value, RoomType.APARTMENT.value, RoomType.WHOLE_HOUSE.value)
+            or (has_private_bath and rt_code != RoomType.SLEEPBOX.value)
+        ):
+            av["private_wc"] = "yes"
+        if av["kitchen"] == "unknown" and rt_code in (RoomType.APARTMENT.value, RoomType.WHOLE_HOUSE.value):
+            av["kitchen"] = "yes"
+        if rt_code == RoomType.APARTMENT.value:
+            if av["elevator"] == "unknown":
+                av["elevator"] = "yes"
+            if av["parking"] == "unknown":
+                av["parking"] = "yes"
+        if av["furniture"] == "unknown" and furnishing_code in (1, 2):
+            av["furniture"] = "yes"
+
+        weights = AMENITY_WEIGHTS_BY_ROOM_TYPE.get(rt_code, AMENITY_WEIGHTS_BY_ROOM_TYPE[RoomType.ROOM.value])
+        earned = sum(w for field_name, w in weights.items() if av.get(field_name) == "yes")
+
+        has_full_furn_signal = furnishing_code in (1, 2) or (
+            furnishing_code is None and bool(extra_text and P_FULL_FURN_TEXT.search(extra_text))
+        )
+        if rt_code != RoomType.SLEEPBOX.value and has_full_furn_signal:
+            cluster_fields = [
+                f for f in ("furniture", "aircon", "fridge", "washing_machine")
+                if f in weights and av.get(f) != "no"
+            ]
+            if cluster_fields:
+                cluster_max = sum(weights[f] for f in cluster_fields)
+                cluster_got = sum(weights[f] for f in cluster_fields if av.get(f) == "yes")
+                floor_target = 0.80 * cluster_max
+                if cluster_got < floor_target:
+                    earned += floor_target - cluster_got
+
+        bonus = 0.0
+        if rt_code == RoomType.ROOM.value and av.get("elevator") == "yes":
+            bonus += 5.0
+        if rt_code in (RoomType.STUDIO.value, RoomType.WHOLE_HOUSE.value) and av.get("mezzanine") == "yes":
+            bonus += 4.0
+        if rt_code == RoomType.WHOLE_HOUSE.value and av.get("elevator") == "yes":
+            bonus += 4.0
+        if self.rules.free_hours.value == "yes":
+            bonus += 3.0
+        if self.rules.no_shared_landlord.value == "yes":
+            bonus += 3.0
+        if self.rules.pet_allowed.value == "yes":
+            bonus += 2.0
+        if extra_text and P_PREMIUM_EXTRA.search(extra_text):
+            bonus += 5.0
+
+        earned += min(10.0, bonus)
+        return round(max(0.0, min(1.0, earned / 100.0)), 2)
+
+    def safety_score(
+        self,
+        *,
+        room_type: Optional[Union[RoomType, str, int]] = None,
+        source_text: str = "",
+    ) -> float:
+        """Điểm an ninh tổng thể v2 theo đường cong lợi ích cận biên giảm dần [0.0, 1.0].
+
+        Kết hợp điểm nền nhẹ theo loại hình (0.26..0.40) và bằng chứng an ninh xác thực,
+        thu hồi deterministic khi cờ đang 'unknown' (không đè 'no') cùng thưởng PCCC/cổng riêng.
+        """
+        rt_code = _normalize_room_type_code(room_type, self.room_type)
+        sv = {k: getattr(self.safety, k).value for k in SAFETY_EVIDENCE_WEIGHTS}
+        check_text = f"{source_text}\n{' '.join(self.extra_amenities or [])}".strip()
+
+        if check_text:
+            if sv["fingerprint_lock"] == "unknown" and P_SMART_LOCK.search(check_text):
+                sv["fingerprint_lock"] = "yes"
+            if sv["guard"] == "unknown" and P_GUARD.search(check_text):
+                sv["guard"] = "yes"
+            if sv["safe_area"] == "unknown" and P_SAFE_AREA.search(check_text):
+                sv["safe_area"] = "yes"
+
+        ev_raw = sum(w for k, w in SAFETY_EVIDENCE_WEIGHTS.items() if sv[k] == "yes")
+        if check_text:
+            if P_PCCC.search(check_text):
+                ev_raw += 0.14
+            if sv["fingerprint_lock"] != "yes" and P_GATE_LOCK.search(check_text):
+                ev_raw += 0.12
+
+        ev_gain = 0.62 * (min(1.0, ev_raw / 0.85) ** 0.68) if ev_raw > 0 else 0.0
+        base = SAFETY_BASELINE_BY_ROOM_TYPE.get(rt_code, 0.30)
+        return round(max(0.0, min(1.0, base + ev_gain)), 2)
 
     # ---- Chuyển sang đầu vào của match_score ----
     def to_concept_scores(self) -> dict[str, float]:

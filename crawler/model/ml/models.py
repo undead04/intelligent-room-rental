@@ -49,7 +49,11 @@ def attach(X: pd.DataFrame, nb: pd.DataFrame) -> pd.DataFrame:
 
 
 class SpatialTE:
-    """Feature giá của k phòng gần nhất theo tọa độ (Inverse-Distance Weighting). Fit trên tập train."""
+    """Feature giá của k phòng gần nhất theo tọa độ (Inverse-Distance Weighting). Fit trên tập train.
+
+    Tách biệt nhóm SLEEPBOX (room_type_id == 4, giá theo giường) khỏi nhóm phòng/căn hộ nguyên phòng
+    và hỗ trợ exclude_self_match để triệt tiêu Inference Self-Leakage khi chấm điểm DB.
+    """
 
     def __init__(self, ks=(5, 20)):
         self.ks = tuple(ks)
@@ -57,13 +61,24 @@ class SpatialTE:
         self.tree = None
         self.logy = None
         self.logppm = None
+        self.fit_areas = None
+        self.group_trees: dict[int, tuple[BallTree, np.ndarray]] = {}
 
     def fit(self, X: pd.DataFrame, y: pd.Series):
-        self.tree = BallTree(np.radians(X[["lat", "lng"]].values), metric="haversine")
+        coords = np.radians(X[["lat", "lng"]].values)
+        self.tree = BallTree(coords, metric="haversine")
         y = np.asarray(y, dtype=float).ravel()
         area = np.asarray(X["area_m2"], dtype=float).ravel()
         self.logy = np.log1p(y)
         self.logppm = np.log(np.clip(y, 1, None) / np.clip(area, 1, None))
+        self.fit_areas = area
+        self.group_trees = {}
+        if "room_type_id" in X.columns:
+            rts = X["room_type_id"].fillna(1).to_numpy(dtype=int)
+            for is_sb in (0, 1):
+                m_idx = np.where((rts == 4) if is_sb == 1 else (rts != 4))[0]
+                if len(m_idx) >= 5:
+                    self.group_trees[is_sb] = (BallTree(coords[m_idx], metric="haversine"), m_idx)
         return self
 
     def _agg(self, dist: np.ndarray, idx: np.ndarray) -> pd.DataFrame:
@@ -81,24 +96,98 @@ class SpatialTE:
         out[f"nb{self.kmax}_logy_std"] = self.logy[idx].std(1)
         return pd.DataFrame(out)
 
+    def _query_subset(
+        self,
+        coords: np.ndarray,
+        areas: np.ndarray,
+        tree: BallTree,
+        map_idx: np.ndarray,
+        is_train: bool,
+        q_glob_idx: np.ndarray | None = None,
+        exclude_self_match: bool = False,
+    ) -> pd.DataFrame:
+        n_fit = len(map_idx)
+        fit_areas = getattr(self, "fit_areas", None)
+        need_extra = is_train or (exclude_self_match and fit_areas is not None)
+        k_q = min(self.kmax + (1 if need_extra else 0), n_fit)
+        d, loc_i = tree.query(coords, k=k_q)
+        glob_i = map_idx[loc_i]
+
+        if is_train and q_glob_idx is not None:
+            keep = glob_i != q_glob_idx[:, None]
+            order = np.argsort(~keep, axis=1, kind="stable")
+            k_take = min(self.kmax, max(1, k_q - 1))
+            glob_i = np.take_along_axis(glob_i, order, 1)[:, :k_take]
+            d = np.take_along_axis(d, order, 1)[:, :k_take]
+        elif exclude_self_match and fit_areas is not None:
+            is_self = (d < 1e-7) & (np.abs(fit_areas[glob_i] - areas[:, None]) < 1e-3)
+            first_self = is_self & (np.cumsum(is_self, axis=1) == 1)
+            keep = ~first_self
+            order = np.argsort(~keep, axis=1, kind="stable")
+            has_any_self = bool(np.any(first_self))
+            k_take = min(self.kmax, max(1, k_q - (1 if (k_q > self.kmax or has_any_self) else 0)))
+            glob_i = np.take_along_axis(glob_i, order, 1)[:, :k_take]
+            d = np.take_along_axis(d, order, 1)[:, :k_take]
+        else:
+            k_take = min(self.kmax, k_q)
+            glob_i = glob_i[:, :k_take]
+            d = d[:, :k_take]
+
+        if k_take < self.kmax:
+            glob_i = np.hstack([glob_i, np.repeat(glob_i[:, -1:], self.kmax - k_take, axis=1)])
+            d = np.hstack([d, np.repeat(d[:, -1:], self.kmax - k_take, axis=1)])
+        return self._agg(d, glob_i)
+
+    def _run(self, X: pd.DataFrame, is_train: bool = False, exclude_self_match: bool = False) -> pd.DataFrame:
+        if len(X) == 0:
+            return pd.DataFrame(
+                columns=[
+                    *(col for k in self.ks for col in (f"nb{k}_logy_mean", f"nb{k}_logppm_mean", f"nb{k}_dist_km")),
+                    f"nb{self.kmax}_logy_std",
+                ]
+            )
+        coords = np.radians(X[["lat", "lng"]].values)
+        areas = np.asarray(X["area_m2"], dtype=float).ravel() if "area_m2" in X.columns else np.zeros(len(X))
+        n = len(X)
+        group_trees = getattr(self, "group_trees", None)
+        if not group_trees or len(group_trees) < 2 or "room_type_id" not in X.columns:
+            return self._query_subset(
+                coords,
+                areas,
+                self.tree,
+                np.arange(len(self.logy)),
+                is_train,
+                np.arange(n) if is_train else None,
+                exclude_self_match,
+            )
+
+        rts = X["room_type_id"].fillna(1).to_numpy(dtype=int)
+        parts = []
+        for is_sb in (0, 1):
+            sub_pos = np.where((rts == 4) if is_sb == 1 else (rts != 4))[0]
+            if len(sub_pos) == 0:
+                continue
+            tree, map_idx = group_trees[is_sb]
+            sub_df = self._query_subset(
+                coords[sub_pos],
+                areas[sub_pos],
+                tree,
+                map_idx,
+                is_train,
+                sub_pos if is_train else None,
+                exclude_self_match,
+            )
+            sub_df.index = sub_pos
+            parts.append(sub_df)
+        return pd.concat(parts).sort_index().reset_index(drop=True)
+
     def transform_train(self, X: pd.DataFrame) -> pd.DataFrame:
         """Cho chính các dòng đã fit: loại chính nó để chống rò rỉ dữ liệu (leakage)."""
-        n = len(X)
-        n_fit = len(self.logy)
-        k_query = min(self.kmax + 1, n_fit)
-        d, i = self.tree.query(np.radians(X[["lat", "lng"]].values), k=k_query)
-        keep = i != np.arange(n)[:, None]
-        order = np.argsort(~keep, axis=1, kind="stable")
-        k_take = min(self.kmax, max(1, k_query - 1))
-        i = np.take_along_axis(i, order, 1)[:, :k_take]
-        d = np.take_along_axis(d, order, 1)[:, :k_take]
-        return self._agg(d, i)
+        return self._run(X, is_train=True, exclude_self_match=False)
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Cho các dòng suy luận / val / test."""
-        k_query = min(self.kmax, len(self.logy))
-        d, i = self.tree.query(np.radians(X[["lat", "lng"]].values), k=k_query)
-        return self._agg(d, i)
+    def transform(self, X: pd.DataFrame, exclude_self_match: bool = False) -> pd.DataFrame:
+        """Cho các dòng suy luận / val / test (tùy chọn exclude_self_match chống Inference Self-Leakage)."""
+        return self._run(X, is_train=False, exclude_self_match=exclude_self_match)
 
 
 FINAL_PREDICT = {
@@ -107,14 +196,19 @@ FINAL_PREDICT = {
 }
 
 
-def predict_log(res: dict, X_raw: pd.DataFrame) -> np.ndarray:
+def predict_log(res: dict, X_raw: pd.DataFrame, exclude_self_match: bool = False) -> np.ndarray:
     Xb = make_base_features(X_raw).reset_index(drop=True)
-    Xf = attach(Xb, res["fe"].transform(Xb))
+    Xf = attach(Xb, res["fe"].transform(Xb, exclude_self_match=exclude_self_match))
     return FINAL_PREDICT[res["model_name"]](res["best_estimator"], Xf)
 
 
-def blend_predict(results: list[dict], X_raw: pd.DataFrame, smear: bool = True) -> np.ndarray:
-    logs = np.mean([predict_log(r, X_raw) for r in results], axis=0)
+def blend_predict(
+    results: list[dict],
+    X_raw: pd.DataFrame,
+    smear: bool = True,
+    exclude_self_match: bool = False,
+) -> np.ndarray:
+    logs = np.mean([predict_log(r, X_raw, exclude_self_match=exclude_self_match) for r in results], axis=0)
     s = np.mean([r["smear"] for r in results]) if smear else 1.0
     return np.expm1(logs) * s
 
@@ -177,9 +271,9 @@ class PriceInterval:
         lo, hi = (m.predict(Xf, num_iteration=m.best_iteration) for m in self.models)
         return np.minimum(lo, hi), np.maximum(lo, hi)
 
-    def predict(self, X_raw: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, X_raw: pd.DataFrame, exclude_self_match: bool = False) -> pd.DataFrame:
         Xb = make_base_features(X_raw).reset_index(drop=True)
-        lo, hi = self._raw(attach(Xb, self.te.transform(Xb)))
+        lo, hi = self._raw(attach(Xb, self.te.transform(Xb, exclude_self_match=exclude_self_match)))
         return pd.DataFrame({
             "low": np.expm1(lo - self.qhat),
             "high": np.expm1(hi + self.qhat),
@@ -187,44 +281,53 @@ class PriceInterval:
 
 
 class MondrianPriceInterval(PriceInterval):
-    """Mondrian Conformal Prediction: qhat hiệu chuẩn riêng theo từng phân khúc giá."""
+    """Mondrian Conformal Prediction: qhat & bias shift hiệu chuẩn riêng theo từng phân khúc giá."""
 
     def __init__(self, lgb_result, n_bins=4, min_bin=150, **kw):
         super().__init__(lgb_result, **kw)
         self.n_bins, self.min_bin = n_bins, min_bin
         self.edges = None
         self.qhats = []
+        self.shifts = []
 
     def fit(self, X_raw: pd.DataFrame, y: pd.Series):
         super().fit(X_raw, y)
         lo, hi, yc = self._cal
         center = (lo + hi) / 2.0
-        score = np.maximum(lo - yc, yc - hi)
 
         nb = int(max(1, min(self.n_bins, len(center) // self.min_bin)))
         self.edges = np.quantile(center, np.linspace(0, 1, nb + 1)[1:-1])
         b = np.searchsorted(self.edges, center, side="right")
 
         self.qhats = []
+        self.shifts = []
         for k in range(nb):
-            s = score[b == k]
-            if len(s) == 0:
+            mask = b == k
+            if not np.any(mask):
+                self.shifts.append(0.0)
                 self.qhats.append(self.qhat)
                 continue
+            shift_k = 0.5 * float(np.median(yc[mask] - center[mask]))
+            lo_k = lo[mask] + shift_k
+            hi_k = hi[mask] + shift_k
+            s = np.maximum(lo_k - yc[mask], yc[mask] - hi_k)
             n = len(s)
             level = min(1.0, np.ceil((n + 1) * self.coverage) / n)
+            self.shifts.append(shift_k)
             self.qhats.append(float(np.quantile(s, level, method="higher")))
         return self
 
-    def predict(self, X_raw: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, X_raw: pd.DataFrame, exclude_self_match: bool = False) -> pd.DataFrame:
         Xb = make_base_features(X_raw).reset_index(drop=True)
-        lo, hi = self._raw(attach(Xb, self.te.transform(Xb)))
+        lo, hi = self._raw(attach(Xb, self.te.transform(Xb, exclude_self_match=exclude_self_match)))
         center = (lo + hi) / 2.0
         b = np.searchsorted(self.edges, center, side="right")
         q = np.array([self.qhats[k] for k in b])
+        shifts = getattr(self, "shifts", None)
+        sh = np.array([shifts[k] for k in b]) if shifts else 0.0
         return pd.DataFrame({
-            "low": np.expm1(lo - q),
-            "high": np.expm1(hi + q),
+            "low": np.expm1(lo + sh - q),
+            "high": np.expm1(hi + sh + q),
         })
 
 
