@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     DB_POOL_PRE_PING: bool = True
 
     # Geocoding & Persistent Cache Settings
-    TRACKASIA_API_KEY: Optional[str] = None
+    GEOAPIFY_API_KEY: Optional[str] = None
     GEOCODE_CACHE_TTL_SECONDS: int = 2592000  # 30 ngày
 
     @property

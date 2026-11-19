@@ -50,7 +50,9 @@ class NhaTotSpider(BaseSpider):
             self.log(f"[{region_tag}] {msg}")
 
         processed_ids = self.get_processed_ids()
-        rlog(f"Đã có {len(processed_ids)} tin đăng trong kho dữ liệu thô.")
+        rlog(
+            f"Đã có {len(self.staging_db.get_processed_ids(self.name, strip_prefix=False))} tin đăng trong kho dữ liệu thô."
+        )
 
         region_code = settings.REGIONS[region]
         rlog(f"Đã chọn vùng: {region_tag} (Code: {region_code})")

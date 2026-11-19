@@ -700,24 +700,30 @@ def test_status_under_review_isolated_from_public_views(db_session, setup_constr
     assert direct_listing.price_vnd == 999999.0
 
 
-def test_geocoder_cache_returns_safe_copy_no_pollution():
+def test_geocoder_cache_returns_safe_copy_no_pollution(monkeypatch: pytest.MonkeyPatch):
     """Nhóm 3: Cache của geocoder.resolve_location trả bản copy an toàn: caller mutate kết quả
     không làm nhiễm bẩn dữ liệu cho lần gọi tiếp theo.
     """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "GEOAPIFY_API_KEY", "test-geoapify-key")
     # Xoá cache trước khi test
     _lookup_nominatim_cached.cache_clear()
 
-    mock_nominatim_data = [
-        {
-            "lat": "10.7725",
-            "lon": "106.6578",
-            "display_name": "Đại học Bách Khoa TP.HCM, Quận 10",
-        }
-    ]
+    mock_geoapify_data = {
+        "results": [
+            {
+                "lat": 10.7725,
+                "lon": 106.6578,
+                "name": "Đại học Bách Khoa TP.HCM",
+                "formatted": "Đại học Bách Khoa TP.HCM, Quận 10",
+            }
+        ]
+    }
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.json.return_value = mock_nominatim_data
+    mock_resp.json.return_value = mock_geoapify_data
 
     with patch("app.services.geocoder._session.get", return_value=mock_resp) as mock_get:
         test_query = "Đại học Bách Khoa TP.HCM"

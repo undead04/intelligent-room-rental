@@ -152,3 +152,33 @@ class ListingEmbedder:
             r["embedding_dim"] = int(vectors.shape[1])
 
         return records
+
+
+if __name__ == "__main__":
+    import argparse
+    from crawler.config.paths import TRANSFORMED_JSONL_PATH
+    from crawler.etl.io_utils import read_jsonl, write_jsonl
+
+    parser = argparse.ArgumentParser(description="Sinh vector embedding E5-base độc lập từ file trung gian JSONL.")
+    parser.add_argument(
+        "--input",
+        type=str,
+        default=str(TRANSFORMED_JSONL_PATH),
+        help=f"File JSONL đầu vào đã qua Transform (mặc định: {TRANSFORMED_JSONL_PATH})",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="File JSONL đầu ra sau khi gắn vector (mặc định: ghi đè lại file --input)",
+    )
+    args = parser.parse_args()
+
+    records = read_jsonl(args.input)
+    if not records:
+        print("[EMBED] File đầu vào rỗng, không có bản ghi để sinh vector.", flush=True)
+    else:
+        embedder = ListingEmbedder()
+        embedded = embedder.embed_records(records)
+        out_path = write_jsonl(args.output or args.input, embedded)
+        print(f"[EMBED] Đã lưu {len(embedded)} bản ghi kèm vector tại: {out_path}", flush=True)

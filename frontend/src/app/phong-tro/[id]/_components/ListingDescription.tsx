@@ -9,7 +9,7 @@ export default function ListingDescription({ description }: ListingDescriptionPr
         Mô tả chi tiết
       </h2>
       <div className="text-sm text-gray-700 space-y-2 leading-relaxed">
-        <p>{description || "Thông tin mô tả đang được cập nhật."}</p>
+        <p className="whitespace-pre-line">{description || "Thông tin mô tả đang được cập nhật."}</p>
       </div>
     </div>
   );

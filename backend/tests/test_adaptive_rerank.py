@@ -545,3 +545,48 @@ def test_freshness_and_completeness_priority_in_rerank():
     res_guard = rerank([bad_fresh, great_old], user_pref={"max_price": 4_000_000}, limit=5)
     assert res_guard[0][1]["id"] == "great_old"
 
+
+def test_budget_band_fit_prevents_5m_bias_when_searching_max_10m():
+    """Khi người dùng tìm max_price=10tr (prefer_cheapest=False), căn hộ 8.5tr chất lượng cao phải xếp trên
+    phòng trọ 4.5tr; còn khi bật prefer_cheapest=True hoặc đặt max_price=5tr thì phòng 4.5tr lên Top 1.
+    """
+    from app.services.reranker import _price_fit
+
+    apartment_8_5m = {
+        "id": "apt_8_5m",
+        "listing": {
+            "id": "apt_8_5m",
+            "price_vnd": 8_500_000,
+            "price_score": 0.25,
+            "safety_score": 0.62,
+            "amenity_overall": 0.85,
+            "concept_scores": {"amenity_overall": 0.85},
+            "similarity_score": 0.78,
+        },
+    }
+    room_4_5m = {
+        "id": "room_4_5m",
+        "listing": {
+            "id": "room_4_5m",
+            "price_vnd": 4_500_000,
+            "price_score": 0.47,
+            "safety_score": 0.48,
+            "amenity_overall": 0.58,
+            "concept_scores": {"amenity_overall": 0.58},
+            "similarity_score": 0.78,
+        },
+    }
+
+    pref_10m = {"max_price": 10_000_000, "prefer_cheapest": False}
+    assert _price_fit(apartment_8_5m["listing"], pref_10m) > _price_fit(room_4_5m["listing"], pref_10m)
+    res_10m = rerank([room_4_5m, apartment_8_5m], user_pref=pref_10m, limit=5)
+    assert res_10m[0][1]["id"] == "apt_8_5m"
+
+    pref_cheapest_10m = {"max_price": 10_000_000, "prefer_cheapest": True}
+    res_cheapest = rerank([room_4_5m, apartment_8_5m], user_pref=pref_cheapest_10m, limit=5)
+    assert res_cheapest[0][1]["id"] == "room_4_5m"
+
+    pref_5m = {"max_price": 5_000_000, "prefer_cheapest": False}
+    res_5m = rerank([room_4_5m, apartment_8_5m], user_pref=pref_5m, limit=5)
+    assert res_5m[0][1]["id"] == "room_4_5m"
+

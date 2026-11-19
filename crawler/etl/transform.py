@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 from datetime import datetime
@@ -18,6 +19,82 @@ from crawler.etl.enricher import (
     build_enriched_embedding_text,
     extract_room_data_from_record,
 )
+
+_P_NON_RESIDENTIAL_AD = re.compile(
+    r"(?:cho\s*thuê|sang\s*nhượng)\s*(?:kho\b|kho\s*xưởng|kho\s*chứa|xưởng|mặt\s*bằng\s*kinh\s*doanh|ki\s*ốt|kiot|sạp\s*chợ)"
+    r"|cho\s*thục\b|cho\s*thụt\b",
+    re.IGNORECASE,
+)
+_P_DAILY_RENTAL = re.compile(
+    r"thuê\s*theo\s*(?:ngày|giờ)|\b\d{2,3}\s*k\s*/\s*(?:ngày|đêm|giờ)\b",
+    re.IGNORECASE,
+)
+_P_KTX_TITLE = re.compile(
+    r"\bktx\b|ký\s*túc\s*xá|ki\s*tuc\s*xa|sleep\s*box|sleepbox|hộp\s*ngủ|giường\s*tầng",
+    re.IGNORECASE,
+)
+_P_OGHEP_TITLE = re.compile(
+    r"ở\s*ghép|o\s*ghep|tìm\s*(?:\d+\s*)?(?:bạn|nam|nữ|người)\s*ở\s*(?:ghép|chung)|share\s*phòng|ghép\s*phòng",
+    re.IGNORECASE,
+)
+_P_STUDIO_TITLE = re.compile(
+    r"\bstudio\b|\bchdv\b|căn\s*hộ\s*dịch\s*vụ|can\s*ho\s*dich\s*vu|\bduplex\b",
+    re.IGNORECASE,
+)
+
+_VIETNAM_LAT_RANGE = (8.0, 23.5)
+_VIETNAM_LNG_RANGE = (102.0, 110.0)
+_ROOM_TYPE_FILTER_RULES: dict[int, dict[str, tuple[float, float]]] = {
+    1: {"area": (6.0, 100.0), "price": (500_000.0, 15_000_000.0), "ppm": (12_000.0, 500_000.0)},
+    2: {"area": (12.0, 90.0), "price": (1_200_000.0, 20_000_000.0), "ppm": (40_000.0, 700_000.0)},
+    3: {"area": (15.0, 160.0), "price": (1_000_000.0, 30_000_000.0), "ppm": (15_000.0, 700_000.0)},
+    4: {"area": (3.0, 120.0), "price": (400_000.0, 4_500_000.0), "ppm": (5_000.0, 800_000.0)},
+    5: {"area": (12.0, 250.0), "price": (1_500_000.0, 35_000_000.0), "ppm": (12_000.0, 600_000.0)},
+}
+
+
+def _is_valid_transformed_record(cleaned: dict[str, object]) -> bool:
+    """Kiểm tra giá, diện tích, tọa độ Việt Nam và ngưỡng hợp lệ theo từng loại phòng."""
+    price_val = cleaned.get("price_vnd")
+    area_val = cleaned.get("area_m2")
+    try:
+        price = float(price_val) if price_val is not None else 0.0  # type: ignore[arg-type]
+        area = float(area_val) if area_val is not None else 0.0  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+
+    if price <= 0.0 or area <= 0.0:
+        return False
+
+    lat_val = cleaned.get("lat")
+    lng_val = cleaned.get("lng")
+    if lat_val is not None or lng_val is not None:
+        if lat_val is None or lng_val is None:
+            return False
+        try:
+            lat = float(lat_val)  # type: ignore[arg-type]
+            lng = float(lng_val)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+        if not (
+            _VIETNAM_LAT_RANGE[0] <= lat <= _VIETNAM_LAT_RANGE[1]
+            and _VIETNAM_LNG_RANGE[0] <= lng <= _VIETNAM_LNG_RANGE[1]
+        ):
+            return False
+
+    rt_raw = cleaned.get("room_type_id")
+    try:
+        rt_id = int(rt_raw) if rt_raw is not None else 1  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        rt_id = 1
+    rule = _ROOM_TYPE_FILTER_RULES.get(rt_id, _ROOM_TYPE_FILTER_RULES[1])
+    ppm = price / area
+    return (
+        rule["area"][0] <= area <= rule["area"][1]
+        and rule["price"][0] <= price <= rule["price"][1]
+        and rule["ppm"][0] <= ppm <= rule["ppm"][1]
+    )
+
 
 class ListingTransformer:
     """
@@ -253,8 +330,6 @@ class ListingTransformer:
                 rep_obj = rep
 
             if rep_obj:
-                record["safety_score"] = rep_obj.safety_score()
-                record["amenity_overall"] = rep_obj.amenity_overall_score()
                 record["concept_scores"] = rep_obj.to_concept_scores()
                 record["report"] = rep_obj.model_dump(mode="json")
                 if getattr(rep_obj, "numeric", None):
@@ -287,6 +362,12 @@ class ListingTransformer:
         else:
             record.pop("num_bathrooms", None)
 
+        raw_furnishing_code = record["furnishing_code"]
+
+        # 8.5. Tự động điền furnishing_code = 2 (Nội thất đầy đủ) nếu hiện tại là None và LLM phát hiện có nội thất
+        if record["furnishing_code"] is None and self._has_llm_furniture(rep_obj, rep, record):
+            record["furnishing_code"] = 2
+
         # 9. Chuẩn hóa phân loại phòng (room_type & room_type_id) theo canonical 1..5
         room_type_val = None
         if rep_obj and rep_obj.room_type:
@@ -300,15 +381,44 @@ class ListingTransformer:
         if norm_code not in ROOM_TYPE_CODE_TO_ID:
             norm_code = RoomType.ROOM.value
 
+        # Quy tắc nghiệp vụ:
+        # - Giá thuê dưới 1.000.000 VNĐ (< 1 củ), hoặc tiêu đề KTX/Sleepbox (<= 3.5tr), hoặc tìm người ở ghép (<= 3tr) -> SLEEPBOX
+        # - Tiêu đề ghi rõ Studio/CHDV/Duplex (>= 3.5tr) đang gán ROOM -> STUDIO
+        p_val = price_vnd or 0.0
+        if (
+            (0 < p_val < 1_000_000)
+            or (0 < p_val <= 3_500_000 and _P_KTX_TITLE.search(clean_title))
+            or (0 < p_val <= 3_000_000 and _P_OGHEP_TITLE.search(clean_title))
+        ):
+            norm_code = RoomType.SLEEPBOX.value
+        elif norm_code == RoomType.ROOM.value and p_val >= 3_500_000 and _P_STUDIO_TITLE.search(clean_title):
+            norm_code = RoomType.STUDIO.value
+
         record["room_type"] = norm_code
         record["room_type_id"] = ROOM_TYPE_CODE_TO_ID[norm_code]
+        if isinstance(record.get("report"), dict):
+            record["report"] = {**record["report"], "room_type": norm_code}
+
+        # 9.5. Chấm safety_score & amenity_overall v2 sau khi đã chốt room_type, bathrooms và giữ raw_furnishing_code gốc
+        desc_for_embed = f"{clean_title}\n{clean_desc}".strip()
+        if rep_obj is not None:
+            record["safety_score"] = rep_obj.safety_score(
+                room_type=norm_code,
+                source_text=desc_for_embed,
+            )
+            record["amenity_overall"] = rep_obj.amenity_overall_score(
+                room_type=norm_code,
+                furnishing_code=raw_furnishing_code,
+                bathrooms=final_bathrooms,
+                source_text=desc_for_embed,
+            )
 
         # 10. Giữ price_score (nếu đã có thì giữ nguyên, ngược lại để None chờ ML định giá)
         record["price_score"] = self.clean_number(record.get("price_score"), default=None)
 
         # 10. Tạo chuỗi văn bản giàu ngữ cảnh cho mô hình Embedding
         extracted_data = extract_room_data_from_record(record, rep)
-        desc_for_embed = f"{clean_title}\n{clean_desc}".strip()
+        extracted_data.room_type = RoomType(norm_code)
         record["embedding_text"] = build_enriched_embedding_text(extracted_data, clean_desc=desc_for_embed)
 
         return record
@@ -327,6 +437,40 @@ class ListingTransformer:
                 unique_records.append(r)
 
         return unique_records
+
+    @staticmethod
+    def _has_llm_furniture(
+        rep_obj: Optional[ListingExtraction],
+        rep: Optional[object],
+        record: dict[str, object],
+    ) -> bool:
+        """Kiểm tra báo cáo LLM / concept_scores có xác nhận phòng có nội thất hay không."""
+        if rep_obj and getattr(rep_obj, "amenities", None):
+            furn = getattr(rep_obj.amenities, "furniture", None)
+            val = getattr(furn, "value", None)
+            if str(val or "").strip().lower() == "yes":
+                return True
+
+        if isinstance(rep, dict):
+            amenities = rep.get("amenities")
+            if isinstance(amenities, dict):
+                furn = amenities.get("furniture")
+                val = furn.get("value") if isinstance(furn, dict) else furn
+                if str(val or "").strip().lower() == "yes":
+                    return True
+
+        concept_scores = record.get("concept_scores")
+        if isinstance(concept_scores, dict):
+            amenities_scores = concept_scores.get("amenities")
+            if isinstance(amenities_scores, dict):
+                score = amenities_scores.get("furniture")
+                try:
+                    if score is not None and float(score) >= 0.5:
+                        return True
+                except (TypeError, ValueError):
+                    pass
+
+        return False
 
     def transform(
         self,
@@ -358,8 +502,15 @@ class ListingTransformer:
 
             cleaned = self.clean_record(r, report=report_for_item)
 
-            # Loại bỏ các tin rác không có cả giá lẫn diện tích
-            if cleaned["price_vnd"] <= 0 and cleaned["area_m2"] <= 0:
+            # Loại bỏ các tin rác thiếu giá/diện tích, tọa độ ngoài VN hoặc ngoài ngưỡng loại phòng
+            if not _is_valid_transformed_record(cleaned):
+                skipped_invalid += 1
+                continue
+
+            # Loại bỏ tin phi nhà ở (kho/xưởng/mặt bằng/ki-ốt/cho thục) hoặc thuê theo ngày/giờ
+            clean_title_str = str(cleaned.get("clean_title") or "")
+            full_clean_text = f"{clean_title_str}\n{cleaned.get('clean_description') or ''}"
+            if _P_NON_RESIDENTIAL_AD.search(clean_title_str) or _P_DAILY_RENTAL.search(full_clean_text):
                 skipped_invalid += 1
                 continue
 
@@ -370,7 +521,7 @@ class ListingTransformer:
             cleaned_records.append(cleaned)
 
         if skipped_invalid > 0:
-            print(f"[TRANSFORM] Đã loại bỏ {skipped_invalid} bản ghi không hợp lệ (thiếu giá & diện tích).", flush=True)
+            print(f"[TRANSFORM] Đã loại bỏ {skipped_invalid} bản ghi không hợp lệ (thiếu giá/diện tích, ngoài biên hoặc phi nhà ở).", flush=True)
 
         # 3. Tùy chọn chạy PriceEvaluator nếu enable_price_evaluator=True
         if self.enable_price_evaluator and cleaned_records:
@@ -394,27 +545,67 @@ class ListingTransformer:
 
 if __name__ == "__main__":
     import argparse
-    import json
+    import os
+    from crawler.config.paths import LLM_CHECKPOINT_PATH, TRANSFORMED_JSONL_PATH
+    from crawler.config.settings import GEMINI_API_KEYS
     from crawler.etl.extract import extract_raw_listings
+    from crawler.etl.io_utils import read_jsonl, write_jsonl
 
-    parser = argparse.ArgumentParser(description="Chạy Transform làm sạch dữ liệu.")
-    parser.add_argument("--limit", type=int, default=5, help="Số bản ghi test")
+    parser = argparse.ArgumentParser(description="Chạy Transform độc lập và xuất file trung gian JSONL.")
+    parser.add_argument("--input", type=str, default=None, help="File JSONL dữ liệu thô đầu vào (nếu bỏ trống sẽ đọc từ Staging DB)")
+    parser.add_argument("--limit", type=int, default=None, help="Giới hạn số bản ghi xử lý")
+    parser.add_argument("--all", action="store_true", help="Xử lý toàn bộ dữ liệu trong Staging DB (mặc định chỉ lấy tin chưa xử lý)")
+    parser.add_argument("--active-only", action="store_true", help="Chỉ giữ lại tin đang active")
+    parser.add_argument("--llm", action="store_true", help="Chạy Gemini LLM trích xuất trước khi Transform")
     parser.add_argument("--checkpoint", type=str, default=None, help="Đường dẫn file báo cáo LLM")
     parser.add_argument("--eval-price", action="store_true", help="Bật PriceEvaluator ML")
+    parser.add_argument("--embed", action="store_true", help="Sinh luôn vector embedding E5-base vào file trung gian")
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=str(TRANSFORMED_JSONL_PATH),
+        help=f"Đường dẫn file trung gian JSONL đầu ra (mặc định: {TRANSFORMED_JSONL_PATH})",
+    )
     args = parser.parse_args()
 
-    raws = extract_raw_listings(limit=args.limit)
-    if not raws:
-        print("[TRANSFORM] Không có dữ liệu thô trong Staging DB.")
+    if args.input:
+        raws = read_jsonl(args.input)
+        if args.limit is not None:
+            raws = raws[: args.limit]
     else:
-        transformer = ListingTransformer(llm_reports=args.checkpoint, enable_price_evaluator=args.eval_price)
-        cleans = transformer.transform(raws)
-        print(f"\n[TRANSFORM DEMO] Đã xử lý {len(cleans)}/{len(raws)} bản ghi.")
+        raws = extract_raw_listings(unprocessed_only=not args.all, limit=args.limit)
+
+    if not raws:
+        print("[TRANSFORM] Không có dữ liệu thô để xử lý.")
+    else:
+        ckpt_path = args.checkpoint
+        if args.llm:
+            keys = [k.strip() for k in (GEMINI_API_KEYS or "").split(",") if k.strip()]
+            if keys:
+                from crawler.model.llm.pipeline import run_pipeline_chunking
+                ckpt_p = Path(ckpt_path) if ckpt_path else LLM_CHECKPOINT_PATH
+                run_pipeline_chunking(datas=raws, api_keys=keys, checkpoint_path=ckpt_p)
+                ckpt_path = str(ckpt_p)
+            else:
+                print("[TRANSFORM] Cảnh báo: --llm được bật nhưng chưa cấu hình GEMINI_API_KEYS.")
+        elif not ckpt_path and os.path.exists(LLM_CHECKPOINT_PATH):
+            ckpt_path = str(LLM_CHECKPOINT_PATH)
+
+        transformer = ListingTransformer(llm_reports=ckpt_path, enable_price_evaluator=args.eval_price)
+        cleans = transformer.transform(raws, active_only=args.active_only)
+
+        if args.embed and cleans:
+            from crawler.etl.embed import ListingEmbedder
+            cleans = ListingEmbedder().embed_records(cleans)
+
+        out_path = write_jsonl(args.output, cleans)
+        print(f"\n[TRANSFORM] Đã xử lý {len(cleans)}/{len(raws)} bản ghi và lưu file trung gian: {out_path}", flush=True)
         if cleans:
             sample = {
                 "listing_id": cleans[0].get("listing_id"),
                 "title": cleans[0].get("title"),
                 "room_type": cleans[0].get("room_type"),
+                "furnishing_code": cleans[0].get("furnishing_code"),
                 "embedding_text": (cleans[0].get("embedding_text") or "")[:200] + "...",
             }
             print("Mẫu kết quả:\n", json.dumps(sample, ensure_ascii=False, indent=2))

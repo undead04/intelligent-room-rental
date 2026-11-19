@@ -236,8 +236,8 @@ class GeocodeCache:
     def make_key(query: str, hint: Optional[str]) -> tuple[str, str, str]:
         qn = _norm_text(query)
         hn = _norm_text(hint)
-        # Prefix v3 để vô hiệu hoá cache cũ khi chuyển sang TrackAsia
-        return f"v3||{qn}||{hn}", qn, hn
+        # Prefix v4 để vô hiệu hoá cache cũ khi chuyển sang Geoapify
+        return f"v4||{qn}||{hn}", qn, hn
 
     def get(self, query: str, hint: Optional[str] = None, *, now: Optional[float] = None) -> Optional[GeocodeResponse]:
         if self.ttl_seconds <= 0:
@@ -321,95 +321,80 @@ def clear_geocode_cache() -> None:
     get_geocode_cache().clear()
 
 
-def geocode_trackasia_candidates(
+def _parse_geoapify_items(payload: object) -> list[tuple[float, float, Optional[str], str]]:
+    """Trích xuất (lat, lon, name, formatted_address) từ payload JSON hoặc GeoJSON của Geoapify."""
+    if not isinstance(payload, dict):
+        return []
+    parsed: list[tuple[float, float, Optional[str], str]] = []
+    if isinstance(payload.get("results"), list):
+        for item in payload["results"]:
+            if not isinstance(item, dict):
+                continue
+            lat, lon = item.get("lat"), item.get("lon")
+            if lat is None or lon is None:
+                continue
+            addr = str(item.get("formatted") or item.get("address_line2") or item.get("address_line1") or "")
+            name = item.get("name") or item.get("address_line1")
+            parsed.append((float(lat), float(lon), str(name) if name else None, addr))
+    elif isinstance(payload.get("features"), list):
+        for feat in payload["features"]:
+            if not isinstance(feat, dict):
+                continue
+            props = feat.get("properties") or {}
+            coords = (feat.get("geometry") or {}).get("coordinates") or []
+            lat = props.get("lat", coords[1] if len(coords) >= 2 else None)
+            lon = props.get("lon", coords[0] if len(coords) >= 2 else None)
+            if lat is None or lon is None:
+                continue
+            addr = str(props.get("formatted") or props.get("address_line2") or props.get("address_line1") or "")
+            name = props.get("name") or props.get("address_line1")
+            parsed.append((float(lat), float(lon), str(name) if name else None, addr))
+    return parsed
+
+
+def geocode_geoapify_candidates(
     query: str,
     api_key: Optional[str] = None,
     *,
     target_region: Optional[str] = None,
     limit: int = 5,
 ) -> list[GeocodeCandidate]:
-    """Tra cứu địa danh Việt Nam qua TrackAsia Text Search v2 (hỗ trợ cả địa giới cũ & mới)."""
-    key = (api_key or settings.TRACKASIA_API_KEY or "").strip()
+    """Lấy tối đa top `limit` ứng viên từ Geoapify Geocoding API trong Việt Nam và vùng target_region."""
+    key = (api_key or settings.GEOAPIFY_API_KEY or "").strip()
     clean = (query or "").strip()
     if not key or not clean:
         return []
-    url = "https://maps.track-asia.com/api/v2/place/textsearch/json"
+
+    url = "https://api.geoapify.com/v1/geocode/search"
     params: dict[str, object] = {
-        "query": clean,
-        "key": key,
-        "new_admin": "true",
-        "include_old_admin": "true",
+        "text": clean,
+        "apiKey": key,
+        "limit": limit,
+        "lang": "vi",
+        "format": "json",
     }
+    if target_region and target_region in REGION_BBOXES:
+        min_lon, min_lat, max_lon, max_lat = REGION_BBOXES[target_region]
+        params["filter"] = f"rect:{min_lon},{min_lat},{max_lon},{max_lat}"
+    else:
+        params["filter"] = "countrycode:vn"
+
     out: list[GeocodeCandidate] = []
     try:
         res = _session.get(url, params=params, headers=_DEFAULT_HEADERS, timeout=4)
         if res.status_code != 200:
             return []
-        for item in (res.json().get("results") or [])[:limit]:
-            loc = (item.get("geometry") or {}).get("location") or {}
-            lat = loc.get("lat")
-            lon = loc.get("lng", loc.get("lon"))
-            if lat is None or lon is None:
-                continue
-            lat_f, lon_f = float(lat), float(lon)
+        for lat_f, lon_f, raw_name, raw_addr in _parse_geoapify_items(res.json())[:limit]:
             if not is_in_region_bbox(lat_f, lon_f, target_region):
                 continue
-            addr = str(item.get("formatted_address") or clean)
+            addr = raw_addr or clean
             out.append(
                 GeocodeCandidate(
-                    name=_build_short_name(item.get("name"), addr),
+                    name=_build_short_name(raw_name, addr),
                     lat=lat_f,
                     lon=lon_f,
                     formatted_address=addr,
-                    provider="TrackAsia",
-                )
-            )
-    except Exception:
-        return []
-    return out
-
-
-def geocode_nominatim_candidates(
-    query: str,
-    *,
-    target_region: Optional[str] = None,
-    limit: int = 5,
-) -> list[GeocodeCandidate]:
-    """Lấy tối đa top `limit` ứng viên Nominatim hợp lệ trong Việt Nam và vùng target_region."""
-    clean = (query or "").strip()
-    if not clean:
-        return []
-    url = "https://nominatim.openstreetmap.org/search"
-    params: dict[str, object] = {
-        "q": clean,
-        "format": "json",
-        "limit": limit,
-        "countrycodes": "vn",
-        "accept-language": "vi",
-    }
-    if target_region and target_region in REGION_BBOXES:
-        min_lon, min_lat, max_lon, max_lat = REGION_BBOXES[target_region]
-        # viewbox theo định dạng Nominatim: left,top,right,bottom (không ép bounded=1 để tương thích mock)
-        params["viewbox"] = f"{min_lon},{max_lat},{max_lon},{min_lat}"
-
-    out: list[GeocodeCandidate] = []
-    try:
-        res = _session.get(url, params=params, headers=_DEFAULT_HEADERS, timeout=3)
-        if res.status_code != 200:
-            return []
-        for item in res.json() or []:
-            lat_f = float(item["lat"])
-            lon_f = float(item["lon"])
-            if not is_in_region_bbox(lat_f, lon_f, target_region):
-                continue
-            display = str(item.get("display_name") or clean)
-            out.append(
-                GeocodeCandidate(
-                    name=_build_short_name(item.get("name"), display),
-                    lat=lat_f,
-                    lon=lon_f,
-                    formatted_address=display,
-                    provider="Nominatim OSM",
+                    provider="Geoapify",
                 )
             )
     except Exception:
@@ -522,12 +507,6 @@ def _candidates_to_response(original_query: str, candidates: list[GeocodeCandida
     )
 
 
-def geocode_nominatim(query: str) -> Optional[GeocodeResponse]:
-    """Tra cứu một truy vấn qua Nominatim (tương thích ngược)."""
-    cands = geocode_nominatim_candidates(query, limit=5)
-    return _candidates_to_response(query, cands)
-
-
 class _NominatimCacheShim:
     """Shim tương thích ngược cho caller/test gọi `_lookup_nominatim_cached.cache_clear()`."""
 
@@ -535,9 +514,9 @@ class _NominatimCacheShim:
         clear_geocode_cache()
 
     def __call__(self, query_lower: str) -> tuple[float, float, str, str]:
-        cands = geocode_nominatim_candidates(query_lower, limit=3)
+        cands = geocode_geoapify_candidates(query_lower, limit=3)
         if not cands:
-            raise ValueError(f"Nominatim not found for: {query_lower}")
+            raise ValueError(f"Geoapify not found for: {query_lower}")
         first = cands[0]
         return (first.lat, first.lon, first.formatted_address, first.provider)
 
@@ -624,24 +603,18 @@ def resolve_location(
 
     query_variants = _build_query_variants(query, hint)
 
-    providers = []
-    if (settings.TRACKASIA_API_KEY or "").strip():
-        providers.append(lambda q_str: geocode_trackasia_candidates(q_str, target_region=target_region, limit=5))
-    providers.append(lambda q_str: geocode_nominatim_candidates(q_str, target_region=target_region, limit=5))
-
-    for fetch_candidates in providers:
-        for variant, probe in query_variants:
-            raw_cands = fetch_candidates(variant)
-            if not raw_cands:
-                continue
-            # Lọc bỏ các ứng viên lạc đề không khớp từ khóa định danh riêng của địa điểm
-            cands = [c for c in raw_cands if _is_candidate_relevant(probe, c, hint)]
-            if not cands:
-                continue
-            resp = _candidates_to_response(user_input, cands)
-            if resp is not None:
-                if use_cache and active_cache is not None:
-                    active_cache.set(query, hint, resp)
-                return resp
+    for variant, probe in query_variants:
+        raw_cands = geocode_geoapify_candidates(variant, target_region=target_region, limit=5)
+        if not raw_cands:
+            continue
+        # Lọc bỏ các ứng viên lạc đề không khớp từ khóa định danh riêng của địa điểm
+        cands = [c for c in raw_cands if _is_candidate_relevant(probe, c, hint)]
+        if not cands:
+            continue
+        resp = _candidates_to_response(user_input, cands)
+        if resp is not None:
+            if use_cache and active_cache is not None:
+                active_cache.set(query, hint, resp)
+            return resp
 
     return None

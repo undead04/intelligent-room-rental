@@ -8,6 +8,8 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from crawler.config.paths import RAW_EXTRACT_JSONL_PATH
+from crawler.etl.io_utils import write_jsonl
 from crawler.staging_db import staging_db
 
 
@@ -46,10 +48,16 @@ if __name__ == "__main__":
     import argparse
     import json
 
-    parser = argparse.ArgumentParser(description="Trích xuất dữ liệu thô từ Staging Database.")
-    parser.add_argument("--limit", type=int, default=5, help="Số lượng tin tối đa cần trích xuất")
+    parser = argparse.ArgumentParser(description="Trích xuất dữ liệu thô từ Staging Database ra file trung gian JSONL.")
+    parser.add_argument("--limit", type=int, default=None, help="Số lượng tin tối đa cần trích xuất (mặc định: tất cả)")
     parser.add_argument("--unprocessed-only", action="store_true", help="Chỉ trích xuất tin chưa xử lý")
     parser.add_argument("--source", type=str, default=None, help="Nguồn crawl (ví dụ: nhatot, phongtro123)")
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=str(RAW_EXTRACT_JSONL_PATH),
+        help=f"Đường dẫn file trung gian JSONL đầu ra (mặc định: {RAW_EXTRACT_JSONL_PATH})",
+    )
     args = parser.parse_args()
 
     records = extract_raw_listings(
@@ -57,7 +65,10 @@ if __name__ == "__main__":
         source=args.source,
         limit=args.limit,
     )
-    print(f"\n[EXTRACT DEMO] Trích xuất thành công {len(records)} tin đăng.")
+    print(f"\n[EXTRACT] Trích xuất thành công {len(records)} tin đăng.", flush=True)
+    if records and args.output:
+        out_path = write_jsonl(args.output, records)
+        print(f"[EXTRACT] Đã ghi file trung gian tại: {out_path}", flush=True)
     if records:
         sample = {
             "listing_id": records[0].get("listing_id"),

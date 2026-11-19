@@ -310,8 +310,9 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
     lat = _safe_float(raw_lat, default=0.0)
     lng = _safe_float(raw_lng, default=0.0)
     price_vnd = _safe_float(r.get("price_vnd"), default=0.0)
-    raw_furnishing = _safe_float(r.get("furnishing_code"), default=2.0)
-    furnishing_code = raw_furnishing if raw_furnishing > 0 else 2.0
+    raw_furnishing = _safe_float(r.get("furnishing_code"), default=0.0)
+    has_explicit_furnishing = r.get("furnishing_code") is not None and raw_furnishing > 0
+    furnishing_code = raw_furnishing if has_explicit_furnishing else 2.0
 
     # Đọc report và concept_scores (hỗ trợ cả dict lẫn JSON string từ Parquet)
     concept = r.get("concept_scores")
@@ -400,34 +401,29 @@ def extract_features_from_record(r: dict[str, Any]) -> dict[str, Any]:
 
         row[f"is_{k}"] = int(val)
 
+    # Đồng bộ rule nghiệp vụ ETL: nếu furnishing_code gốc chưa có (None/<=0) và LLM xác nhận có nội thất -> 1.0
+    if not has_explicit_furnishing and row.get("is_furniture") == 1:
+        row["furnishing_code"] = 1.0
+
     # Điểm chất lượng ngữ nghĩa LLM (amenity_overall và safety_score)
-    # 1. amenity_overall: ưu tiên lấy điểm có sẵn trong bản ghi, fallback nội suy từ 10 cờ tiện ích
-    if r.get("amenity_overall") is not None:
-        try:
-            row["amenity_overall"] = float(r["amenity_overall"])
-        except (ValueError, TypeError):
-            row["amenity_overall"] = 0.0
-    elif report.get("amenity_overall") is not None or report.get("amenity_overall_score") is not None:
-        raw_sc = report.get("amenity_overall") if report.get("amenity_overall") is not None else report.get("amenity_overall_score")
-        try:
-            row["amenity_overall"] = float(raw_sc)
-        except (ValueError, TypeError):
-            row["amenity_overall"] = 0.0
+    # 1. amenity_overall: ưu tiên lấy điểm hợp lệ (khác None/NaN) trong bản ghi, fallback nội suy từ 10 cờ tiện ích
+    raw_amen = r.get("amenity_overall")
+    rep_amen = report.get("amenity_overall") if report.get("amenity_overall") is not None else report.get("amenity_overall_score")
+    if pd.notna(raw_amen):
+        row["amenity_overall"] = _safe_float(raw_amen, 0.0)
+    elif pd.notna(rep_amen):
+        row["amenity_overall"] = _safe_float(rep_amen, 0.0)
     else:
         earned_amen = sum(AMENITY_WEIGHTS[k] for k in AMENITY_WEIGHTS if row.get(f"is_{k}") == 1)
         row["amenity_overall"] = round(min(1.0, earned_amen / 100.0), 2)
 
-    # 2. safety_score: ưu tiên lấy điểm có sẵn trong bản ghi, fallback nội suy từ 4 cờ an ninh
-    if r.get("safety_score") is not None:
-        try:
-            row["safety_score"] = float(r["safety_score"])
-        except (ValueError, TypeError):
-            row["safety_score"] = 0.0
-    elif report.get("safety_score") is not None:
-        try:
-            row["safety_score"] = float(report["safety_score"])
-        except (ValueError, TypeError):
-            row["safety_score"] = 0.0
+    # 2. safety_score: ưu tiên lấy điểm hợp lệ (khác None/NaN) trong bản ghi, fallback nội suy từ 4 cờ an ninh
+    raw_safe = r.get("safety_score")
+    rep_safe = report.get("safety_score")
+    if pd.notna(raw_safe):
+        row["safety_score"] = _safe_float(raw_safe, 0.0)
+    elif pd.notna(rep_safe):
+        row["safety_score"] = _safe_float(rep_safe, 0.0)
     else:
         earned_safe = sum(SAFETY_WEIGHTS[k] for k in SAFETY_WEIGHTS if row.get(f"is_{k}") == 1)
         row["safety_score"] = round(min(1.0, earned_safe), 2)
@@ -503,6 +499,59 @@ def filter_valid_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df_valid[keep_mask].reset_index(drop=True)
 
 
+def _has_valid_labels(r: dict[str, Any]) -> bool:
+    """Kiểm tra bản ghi có nhãn tiện nghi/LLM thực tế hay chưa (tránh sinh vector toàn 0 giả tạo)."""
+    for field in ("report", "concept_scores"):
+        val = r.get(field)
+        if isinstance(val, dict) and len(val) > 0:
+            return True
+        if isinstance(val, str):
+            s = val.strip()
+            if s and s not in ("null", "{}", "None", "nan") and s.startswith("{"):
+                return True
+    if pd.notna(r.get("amenity_overall")):
+        return True
+    for k in ALL_BINARY_KEYS:
+        if r.get(f"is_{k}") is not None or r.get(k) is not None:
+            return True
+    return False
+
+
+def clean_training_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Làm sạch chuyên sâu cho tập huấn luyện ML:
+    1. Loại bỏ lỗi gõ dư số 0 diện tích ở ROOM/STUDIO (area_m2 >= 85m² mà giá <= 5.5tr).
+    2. Loại bỏ ngoại lai đuôi phải cực đoan (> 8.5tr) khỏi tập huấn luyện để tránh nhiễu phân khúc cao cấp.
+    3. Khử trùng lặp bản ghi vật lý theo (lat_round_5, lng_round_5, price_vnd, area_m2, room_type_id)
+       nhằm triệt tiêu spam môi giới và chống rò rỉ dữ liệu qua SpatialTE.
+    """
+    if df.empty:
+        return df.copy()
+
+    df_clean = df.copy()
+    is_room_or_studio = df_clean["room_type_id"].isin([1, 2])
+    area_typo_mask = (
+        is_room_or_studio
+        & (df_clean["area_m2"] >= 85.0)
+        & (df_clean["price_vnd"] <= 5_500_000.0)
+    )
+    df_clean = df_clean[~area_typo_mask]
+    df_clean = df_clean[df_clean["price_vnd"] <= 8_500_000.0].copy()
+    if df_clean.empty:
+        return df_clean.reset_index(drop=True)
+
+    df_clean["_lat_r"] = df_clean["lat"].round(5)
+    df_clean["_lng_r"] = df_clean["lng"].round(5)
+    df_clean = (
+        df_clean.drop_duplicates(
+            subset=["_lat_r", "_lng_r", "price_vnd", "area_m2", "room_type_id"],
+            keep="first",
+        )
+        .drop(columns=["_lat_r", "_lng_r"])
+        .reset_index(drop=True)
+    )
+    return df_clean
+
+
 def export_records_to_parquet(records: list[dict[str, Any]], output_path: str | Path) -> Path:
     """Xuất danh sách records sạch ra file Parquet nhị phân chuẩn hóa JSON string cho dict struct."""
     out_path = Path(output_path)
@@ -561,17 +610,25 @@ def load_and_preprocess_dataset(
     data_path: str | Path = DEFAULT_DATA_PATH,
     auto_build_cache: bool = True,
     pruned: bool = True,
+    rebuild_cache: bool = False,
     **kwargs: Any,
 ) -> Tuple[pd.DataFrame, pd.Series]:
     """Nạp dataset từ Parquet (ưu tiên) hoặc JSON/Staging DB, áp dụng bộ lọc Toàn Quốc và trả về (X, y).
     
     Tham số `pruned`: Mặc định True (Phương án B: Tinh gọn 19 features loại bỏ các cờ ít đóng góp cho định giá ML).
     Nếu truyền `pruned=False`, trả về đầy đủ 26 features.
+    Tham số `rebuild_cache`: Nếu True, ép tổng hợp lại `listings_clean.parquet` từ `staging.db` + `checkpoint_reports.jsonl`.
     """
-    path_obj = Path(data_path)
+    path_obj: Path | None = Path(data_path)
 
     # 1. Tìm hoặc tự động tổng hợp dữ liệu
-    if not path_obj.exists():
+    if rebuild_cache:
+        print("[DATA] Bắt đầu tổng hợp lại dữ liệu sạch từ Staging DB & Checkpoint LLM...")
+        raw_data = _build_or_load_clean_dataset()
+        if not raw_data:
+            raise FileNotFoundError(f"Không thể tổng hợp dữ liệu từ Staging DB tại {STAGING_DB_PATH}.")
+        path_obj = None
+    elif not path_obj.exists():
         if DEFAULT_PARQUET_PATH.exists():
             path_obj = DEFAULT_PARQUET_PATH
         elif auto_build_cache:
@@ -591,12 +648,22 @@ def load_and_preprocess_dataset(
             with open(path_obj, "r", encoding="utf-8") as f:
                 raw_data = json.load(f)
 
-    # 2. Trích xuất đặc trưng cho từng bản ghi
-    extracted_rows = [extract_features_from_record(r) for r in raw_data]
+    # 2. Loại bỏ các bản ghi thiếu hoàn toàn nhãn LLM/tiện nghi (tránh sinh vector toàn 0 giả tạo)
+    labeled_data = [r for r in raw_data if _has_valid_labels(r)]
+
+    # 3. Trích xuất đặc trưng cho từng bản ghi
+    extracted_rows = [extract_features_from_record(r) for r in labeled_data]
     df = pd.DataFrame(extracted_rows)
 
-    # 3. Lọc dữ liệu thích ứng theo Bounding Box Toàn Quốc và loại phòng
-    df_clean = filter_valid_dataframe(df)
+    # 4. Lọc dữ liệu thích ứng theo Bounding Box Toàn Quốc, loại phòng, lỗi gõ diện tích & khử trùng lặp vật lý
+    df_valid = filter_valid_dataframe(df)
+    df_clean = clean_training_dataframe(df_valid)
+
+    if df_clean.empty:
+        empty_cols = PRUNED_19_FEATURES if pruned else [
+            c for c in PRUNED_19_FEATURES[:5]
+        ] + [f"is_{k}" for k in ALL_BINARY_KEYS] + PRUNED_19_FEATURES[-4:]
+        return pd.DataFrame(columns=empty_cols), pd.Series(dtype=float)
 
     y = df_clean["price_vnd"].copy()
     X = df_clean.drop(columns=["listing_id", "price_vnd"]).copy()
@@ -609,7 +676,16 @@ def load_and_preprocess_dataset(
 
 
 if __name__ == "__main__":
-    X, y = load_and_preprocess_dataset()
+    import sys
+
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+    X, y = load_and_preprocess_dataset(rebuild_cache=True)
     print("=" * 60)
     print("   BÁO CÁO TRÍCH XUẤT ĐẶC TRƯNG TOÀN QUỐC (FEATURE EXTRACTOR v2)")
     print("=" * 60)
