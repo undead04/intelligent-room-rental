@@ -333,3 +333,63 @@ def test_patch_min_bedrooms_bounds_clear_and_postprocess():
     )
     assert processed.is_multi_intent is True
 
+
+def test_analyze_turn_include_raw_preserves_usage_metadata_for_understand_trace():
+    from langchain_core.messages import AIMessage
+    from core.session_store import SessionStore
+    from graph.deps import Deps
+    from graph.nodes.understand import make_understand_node
+    from graph.tracing import TraceStore, bind_trace_store, reset_trace_store
+
+    raw_ai = AIMessage(
+        content="",
+        usage_metadata={
+            "input_tokens": 1850,
+            "output_tokens": 95,
+            "total_tokens": 1945,
+            "input_token_details": {"cache_read": 1420},
+        },
+    )
+    parsed_analysis = TurnAnalysis(intent="new_search", patch=PreferencePatch(location_text="UIT", max_price=3_500_000))
+
+    class RawEnabledModel:
+        include_raw = True
+
+        def with_structured_output(self, schema, **kwargs):
+            assert kwargs.get("include_raw") is True
+
+            class _Runner:
+                def invoke(self_inner, messages):
+                    return {"raw": raw_ai, "parsed": parsed_analysis, "parsing_error": None}
+
+            return _Runner()
+
+    trace_store = TraceStore(run_id="run_nlu_raw")
+    deps = Deps(
+        sessions=SessionStore(),
+        get_llm=lambda temperature=None: RawEnabledModel(),
+        base_prompt="BASE",
+        decision_system_prompt="DECISION",
+        search_rooms=lambda args: {"ok": True, "data": []},
+        geocode=lambda q, hint: None,
+        admin_lookup=lambda *a, **kw: [],
+        consult_skill=lambda slug, q: {"ok": True},
+        skills=lambda: dict(SKILLS),
+        trace_store=trace_store,
+    )
+    node = make_understand_node(deps)
+    tok = bind_trace_store(trace_store)
+    try:
+        out = node({"session_id": "s-raw", "user_message": "tìm phòng gần UIT dưới 3tr5"})
+    finally:
+        reset_trace_store(tok)
+
+    assert out["intent"] == "new_search"
+    spans = [s for s in trace_store.snapshot() if s.get("type") == "model_response" and s.get("node") == "understand_node"]
+    assert len(spans) == 1
+    assert spans[0]["tokens_in"] == 1850
+    assert spans[0]["tokens_out"] == 95
+    assert spans[0]["cached_tokens"] == 1420
+    assert spans[0]["tokens_estimated"] is False
+
+

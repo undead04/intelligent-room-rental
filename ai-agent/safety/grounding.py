@@ -472,6 +472,7 @@ def _find_referenced_rooms(sub: str, rooms: Sequence[RoomItem]) -> list[RoomItem
     matched_by_rank: list[RoomItem] = []
     for m in re.finditer(r"\b(?:top|phòng số|phong so|lựa chọn|lua chon)\s*[-#]?\s*(\d+)\b", sub_lower):
         try:
+            phrase = m.group(0)
             rank_num = int(m.group(1))
             found = False
             for r in rooms:
@@ -479,6 +480,12 @@ def _find_referenced_rooms(sub: str, rooms: Sequence[RoomItem]) -> list[RoomItem
                     matched_by_rank.append(r)
                     found = True
                     break
+            if not found:
+                for r in rooms:
+                    if phrase in (r.title or "").lower():
+                        matched_by_rank.append(r)
+                        found = True
+                        break
             if not found and 1 <= rank_num <= len(rooms):
                 matched_by_rank.append(rooms[rank_num - 1])
         except (ValueError, IndexError):

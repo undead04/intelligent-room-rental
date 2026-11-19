@@ -387,6 +387,8 @@ export function summarizeModelOutput(item: ModelCallTraceItem): string {
     }
     const highlights: string[] = [];
     if (obj.intent) highlights.push(`intent=${String(obj.intent)}`);
+    if (obj.page_action) highlights.push(`page_action=${String(obj.page_action)}`);
+    if (typeof obj.target_page === "number") highlights.push(`trang=${obj.target_page}`);
     if (obj.location_text) highlights.push(`vị trí="${String(obj.location_text)}"`);
     const maxP = formatCompactPrice(obj.max_price);
     if (maxP) highlights.push(`giá ≤ ${maxP}`);

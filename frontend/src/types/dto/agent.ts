@@ -180,6 +180,7 @@ export interface SessionRoomsPageResponse {
   total_pages: number;
   has_prev: boolean;
   has_next: boolean;
+  insights?: DecisionInsight | null;
 }
 
 export interface AgentChatRequest {

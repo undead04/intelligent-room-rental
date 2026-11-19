@@ -57,9 +57,11 @@ def build_decision_insights(
     if not rooms:
         return None
     top1 = rooms[0]
+    top1_rank = getattr(top1, "rank", None) or 1
+    top1_label = f"Top {top1_rank}"
     explain = top1.explain_match or {}
     key_factors = [FACTOR_VN[f["name"]] for f in (explain.get("top_factors") or []) if f.get("name") in FACTOR_VN][:3]
-    reason = [f"Phòng được xếp hạng Top 1 nhờ đạt điểm phù hợp cao nhất ({top1.match_percent}%)."]
+    reason = [f"Phòng được xếp hạng {top1_label} nhờ đạt điểm phù hợp cao nhất ({top1.match_percent}%)."]
     if key_factors:
         reason.append(f"Các yếu tố nổi bật: {', '.join(key_factors)}.")
     if weight_explanations:
@@ -68,15 +70,17 @@ def build_decision_insights(
     trade_offs: list[TradeOffAnalysis] = []
     if len(rooms) > 1:
         top2 = rooms[1]
+        top2_rank = getattr(top2, "rank", None) or (top1_rank + 1)
+        top2_label = f"Top {top2_rank}"
         d = top1.priceNum - top2.priceNum if top1.priceNum > 0 and top2.priceNum > 0 else 0
         line = price_trade_off(top1, top2)
         if d < 0:
-            adv, dis = f"Điểm phù hợp cao hơn ({top1.match_percent}% so với {top2.match_percent}%) và giá thấp hơn. {line}".strip(), f"Top 2 ({top2.title[:30]}...) có thể có vị trí hoặc tiện nghi khác biệt."
+            adv, dis = f"Điểm phù hợp cao hơn ({top1.match_percent}% so với {top2.match_percent}%) và giá thấp hơn. {line}".strip(), f"{top2_label} ({top2.title[:30]}...) có thể có vị trí hoặc tiện nghi khác biệt."
         elif d > 0:
-            adv, dis = f"Điểm phù hợp cao hơn ({top1.match_percent}% so với {top2.match_percent}%) nhờ đáp ứng tốt các tiêu chí ưu tiên.", f"Giá thuê cao hơn Top 2. {line}".strip()
+            adv, dis = f"Điểm phù hợp cao hơn ({top1.match_percent}% so với {top2.match_percent}%) nhờ đáp ứng tốt các tiêu chí ưu tiên.", f"Giá thuê cao hơn {top2_label}. {line}".strip()
         else:
-            adv, dis = f"Điểm phù hợp cao hơn ({top1.match_percent}% so với {top2.match_percent}%). {line}".strip(), f"Top 2 ({top2.title[:30]}...) có thể có diện tích hoặc tiện nghi khác biệt."
-        trade_offs.append(TradeOffAnalysis(compared_with=f"Top 2 ({top2.title[:35]}...)", advantage=adv, disadvantage=dis))
+            adv, dis = f"Điểm phù hợp cao hơn ({top1.match_percent}% so với {top2.match_percent}%). {line}".strip(), f"{top2_label} ({top2.title[:30]}...) có thể có diện tích hoặc tiện nghi khác biệt."
+        trade_offs.append(TradeOffAnalysis(compared_with=f"{top2_label} ({top2.title[:35]}...)", advantage=adv, disadvantage=dis))
 
     return DecisionInsight(
         selected_top_1_id=top1.id, top_1_reason=" ".join(reason), key_factors=key_factors,

@@ -69,6 +69,9 @@ class ListingResponse(BaseModel):
     ward: Optional[WardResponse] = None
     room_type: Optional[RoomTypeResponse] = None
     posted_date: Optional[datetime] = None
+    description: Optional[str] = None
+    deposit: Optional[float] = None
+    poster: Optional[UserResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 

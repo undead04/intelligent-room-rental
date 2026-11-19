@@ -18,6 +18,7 @@ from core.paths import DEFAULT_DB_PATH
 from core.session_store import PersistentSessionStore
 from domain.schemas import AgentResponse, SessionRoomsPageResponse
 from graph import build_housing_graph, default_deps, run_turn
+from intelligence.insights import build_decision_insights
 from tools.http import set_client
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,7 @@ def get_session_rooms_page(
         page_size=eff_size,
         total_rooms=total_rooms,
         total_pages=total_pages,
+        insights=build_decision_insights(rooms),
     )
 
 

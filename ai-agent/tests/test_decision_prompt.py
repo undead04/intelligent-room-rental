@@ -50,12 +50,20 @@ def test_decision_rules_mentions_key_rules():
 def test_prefix_caching_context_and_query_builders():
     room = _room()
     pref = UserPreferenceState(max_price=3e6)
-    ctx_msg = build_decision_context_message(pref, [room], target_room_detail="detail_sample")
-    assert "<criteria>" in ctx_msg and "<rooms_data>" in ctx_msg and "<prefetched_listing_detail>" in ctx_msg
+    ctx_msg = build_decision_context_message(pref, [room])
+    assert "<criteria>" in ctx_msg and "<rooms_data>" in ctx_msg
+    assert "<prefetched_listing_detail>" not in ctx_msg
     assert "<user_message>" not in ctx_msg
 
-    q_msg = build_decision_query_message("Phòng này cọc bao nhiêu?", focus_rank=1, retry_issues=["Chưa nêu tiền cọc"])
+    q_msg = build_decision_query_message(
+        "Phòng này cọc bao nhiêu?",
+        focus_rank=1,
+        retry_issues=["Chưa nêu tiền cọc"],
+        target_room_detail="detail_sample",
+    )
+    assert "<prefetched_listing_detail>\ndetail_sample\n</prefetched_listing_detail>" in q_msg
     assert "<user_message>\nPhòng này cọc bao nhiêu?\n</user_message>" in q_msg
+    assert q_msg.index("<prefetched_listing_detail>") < q_msg.index("<user_message>")
     assert "<focus>Người dùng đang hỏi về phòng Top 1.</focus>" in q_msg
     assert "<previous_attempt_issues>" in q_msg and "Chưa nêu tiền cọc" in q_msg
     assert "<rooms_data>" not in q_msg

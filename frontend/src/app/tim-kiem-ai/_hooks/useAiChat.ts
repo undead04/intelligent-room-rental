@@ -116,6 +116,9 @@ export function useAiChat() {
       setCurrentPage(pageData.page);
       setTotalPages(pageData.total_pages);
       setTotalRooms(pageData.total_rooms);
+      if (pageData.insights) {
+        setInsights(pageData.insights);
+      }
       if (pageData.rooms && pageData.rooms.length > 0) {
         setSelectedRoomId(pageData.rooms[0].id);
       }

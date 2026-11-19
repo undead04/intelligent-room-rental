@@ -234,3 +234,139 @@ def test_budget_clarification_flow_and_invariants():
 
     p_smalltalk = _postprocess(TurnAnalysis(intent="smalltalk", needs_budget_clarification=True))
     assert p_smalltalk.needs_budget_clarification is False
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "đại học uit ở đâu",
+        "trường bách khoa nằm ở quận mấy",
+        "chỉ đường tới đại học uit",
+        "học phí uit bao nhiêu",
+        "đăng tin cho thuê phòng",
+        "mua đất nền Thủ Đức",
+        "đặt phòng số 1 giúp mình",
+        "giữ phòng top 1 giúp mình",
+        "gọi điện cho chủ trọ giúp mình",
+        "tìm bạn ở ghép",
+    ],
+)
+def test_off_topic_llm_decision_cleans_payload_and_blocks_without_search(query):
+    """Nhóm 1 & 2: Khi LLM phân loại intent='off_topic' (kể cả lỡ kèm patch/semantic_query), _postprocess & interpret_turn dọn sạch và chặn về OFF_TOPIC_QUERY."""
+    from intelligence.nlu import _postprocess
+
+    noisy_off_topic = _postprocess(
+        TurnAnalysis(
+            intent="off_topic",
+            page_action="next",
+            patch=PreferencePatch(location_text="đại học uit", location_kind="place"),
+            semantic_query="tìm phòng gần đại học uit",
+        ),
+        user_text=query,
+    )
+    assert noisy_off_topic.intent == "off_topic"
+    assert noisy_off_topic.patch.is_empty()
+    assert noisy_off_topic.page_action is None
+    assert noisy_off_topic.semantic_query is None
+
+    plan, _ = run(noisy_off_topic, text=query)
+    assert plan.blocked_reason == "OFF_TOPIC_QUERY"
+    assert plan.intent == "off_topic"
+    assert plan.commit is False
+    assert plan.preferences.location_text is None
+    assert route_after_understand({"guardrail_result": type("G", (), {"allowed": False})()}) == "formatter_node"
+
+
+@pytest.mark.parametrize(
+    "query,analysis_obj",
+    [
+        ("tìm phòng gần đại học uit", TurnAnalysis(intent="new_search", patch=PreferencePatch(location_text="đại học uit", location_kind="place"))),
+        ("phòng 1 địa chỉ ở đâu?", TurnAnalysis(intent="room_followup", referenced_room_rank=1)),
+        ("phòng 1 cách UIT bao xa?", TurnAnalysis(intent="room_followup", referenced_room_rank=1)),
+        ("tìm phòng cho 2 bạn ở ghép gần UIT", TurnAnalysis(intent="new_search", patch=PreferencePatch(location_text="UIT", location_kind="place"))),
+        ("lưu ý khi đặt phòng trọ là gì?", TurnAnalysis(intent="skill_advice", skill_slug="rental-contract-advisor")),
+    ],
+)
+def test_valid_housing_queries_with_similar_words_are_not_false_blocked(query, analysis_obj):
+    """Nhóm 2 (Boundary): Câu tìm trọ / hỏi chi tiết phòng hợp lệ có chữ 'ở đâu', 'bao xa', 'ở ghép', 'đặt phòng' không bị chặn nhầm."""
+    sess = make_session(rooms=[room(1), room(2)])
+    plan, _ = run(analysis_obj, session=sess, text=query)
+    assert plan.blocked_reason is None
+    assert plan.intent != "off_topic"
+
+
+def test_blocked_unsupported_query_preserves_existing_session_preferences():
+    """Nhóm 3 (State Mutation & Zero Leakage): Khi LLM chọn off_topic (dù kèm patch nhiễu) vẫn bị chặn OFF_TOPIC_QUERY, 0 ghi đè preferences, 0 gọi search/geocode."""
+    from tests.e2e_helpers import FakeLLM, Harness, nlu
+
+    llm = FakeLLM().on("TurnAnalysis", nlu("off_topic", location_text="đại học uit", location_kind="place"))
+    h = Harness(llm, [])
+    h.session.preferences = UserPreferenceState(location_text="Quận 7", max_price=4_000_000)
+    h.session.last_rooms = [room(1)]
+
+    res = h.turn("đại học uit ở đâu")
+    assert h.search_calls == []
+    assert h.geo_calls == []
+    assert res.rooms == []
+    assert h.session.preferences.location_text == "Quận 7"
+    assert h.session.preferences.max_price == 4_000_000
+    assert [r.id for r in h.session.last_rooms] == ["nhatot_1"]
+
+
+def test_nlu_postprocess_cleans_default_room_type_noise_on_page_action():
+    """Nhóm 4 (NLU Invariant): Khi bật page_action mà patch chỉ dính ROOM/SLEEPBOX mặc định thì dọn sạch patch; giữ nguyên nếu chọn loại phòng khác."""
+    from intelligence.nlu import _postprocess
+
+    noisy = TurnAnalysis(
+        intent="refine_search",
+        page_action="next",
+        reset_priorities=True,
+        patch=PreferencePatch(allowed_room_types=[RoomType.ROOM], excluded_room_types=[RoomType.SLEEPBOX]),
+    )
+    cleaned = _postprocess(noisy, user_text="xem các phòng khác đi", n_rooms=10)
+    assert cleaned.intent == "page_navigation"
+    assert cleaned.patch.is_empty()
+    assert cleaned.reset_priorities is False
+
+    studio_change = TurnAnalysis(
+        intent="refine_search",
+        page_action="next",
+        patch=PreferencePatch(allowed_room_types=[RoomType.STUDIO]),
+    )
+    kept = _postprocess(studio_change, user_text="xem phòng studio khác đi", n_rooms=10)
+    assert kept.patch.allowed_room_types == [RoomType.STUDIO]
+
+
+def test_nlu_postprocess_normalizes_structured_page_navigation_invariants_and_routing():
+    """Nhóm 1 & 3: Chuẩn hóa bất biến cấu trúc khi LLM chọn page_navigation hoặc điền page_action mà không dùng regex."""
+    from intelligence.nlu import _postprocess
+
+    # 1. LLM điền page_action='goto' nhưng quên đổi intent khỏi refine_search -> chuẩn hóa về page_navigation & dọn semantic_query
+    with_action = _postprocess(
+        TurnAnalysis(
+            intent="refine_search",
+            page_action="goto",
+            target_page=5,
+            semantic_query="tìm phòng ở trang 5",
+        ),
+        user_text="ok đc rồi zay trang thứ 5 đi",
+        n_rooms=24,
+    )
+    assert with_action.intent == "page_navigation"
+    assert with_action.page_action == "goto"
+    assert with_action.target_page == 5
+    assert with_action.semantic_query is None
+    assert with_action.patch.is_empty()
+
+    # 2. LLM chọn intent='page_navigation' nhưng bỏ trống page_action -> mặc định 'next'
+    intent_only = _postprocess(
+        TurnAnalysis(intent="page_navigation", semantic_query="xem thêm"),
+        user_text="xem thêm phòng khác đi",
+        n_rooms=24,
+    )
+    assert intent_only.intent == "page_navigation"
+    assert intent_only.page_action == "next"
+    assert intent_only.semantic_query is None
+
+    assert route_after_understand({"intent": "page_navigation", "page_switched": True, "direct_reply": False}) == "decision_node"
+    assert route_after_understand({"intent": "page_navigation", "page_switched": False, "direct_reply": True}) == "formatter_node"

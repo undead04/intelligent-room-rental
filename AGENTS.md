@@ -53,3 +53,16 @@ Tài liệu này là **Hiến pháp làm việc cốt lõi** dành cho mọi AI 
    - **Pha Lập Kế Hoạch (Planning Model):** Trực tiếp khảo sát `docs/architecture/` và mã nguồn, chia mốc theo lát cắt dọc (*Vertical Slice*), tạo Implementation Plan Artifact (khi cần duyệt trước) và bàn giao qua `exit_plan_mode`.
    - **Pha Thực Thi & Kiểm Thử (Execution Model):** Trực tiếp viết code, tự sửa lỗi qua terminal log (*Self-healing*), đồng bộ `docs/architecture/`, và áp dụng skill `rigorous-testing` để viết/chạy Black-box test (4 nhóm) ngay trong phiên chính.
    - **Quy tắc tiết kiệm Token:** **Không gọi lặp `invoke_subagent` tuần tự 3 bước** (`codebase-researcher` $\rightarrow$ `core-developer` $\rightarrow$ `quality-tester`) cho các task đã có Orchestrator điều phối. Chỉ dùng [`.agents/agents/`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghi%E1%BB%87p/.agents/agents/README.md) khi cần khảo sát diện rộng độc lập (*context isolation*) hoặc khi người dùng chủ động yêu cầu `/teamwork`.
+
+---
+
+## 6. 🧠 Nguyên Tắc Thiết Kế AI-First & 0 Regex Ngữ Nghĩa (`ai-agent/`)
+
+1. **LLM Quyết Định Ngữ Nghĩa (0 Semantic Regex trong `nlu.py` & `understand.py`):**
+   - Tuyệt đối **KHÔNG** viết hay dùng Regex trên `user_text` để đoán `intent`, `page_action`, `off_topic`, `room_followup` hoặc bóc tách tiêu chí thay cho AI trong [`ai-agent/intelligence/nlu.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghi%E1%BB%87p/ai-agent/intelligence/nlu.py) và [`ai-agent/intelligence/understand.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghi%E1%BB%87p/ai-agent/intelligence/understand.py).
+   - Mọi phán đoán ngữ nghĩa phải do Cloud LLM quyết định qua Structured Output `TurnAnalysis` và hướng dẫn trong [`ai-agent/prompts/nlu_prompt.py`](file:///c:/UIT/Lab/Đồ%20Án%20tốt%20nghi%E1%BB%87p/ai-agent/prompts/nlu_prompt.py).
+2. **Code Chỉ Thực Thi Bất Biến Cấu Trúc (Structural & State Invariants):**
+   - Tầng `_postprocess` và `interpret_turn` chỉ kiểm định tính hợp lệ cấu trúc trên các trường dữ liệu mà LLM trả về (chuẩn hóa Enum, kiểm tra biên `1..total_pages`, dọn `patch` nhiễu khi LLM đã chọn `off_topic` hoặc `page_action`), tuyệt đối không dùng Regex đọc lại câu chat để ghi đè quyết định của LLM.
+3. **Kiến Trúc Graph Theo Nhóm Luồng Xử Lý & Thin Dispatcher:**
+   - Không tạo node mới tràn lan theo từng tên intent. Gom các intent vào 4 nhóm luồng cố định trên LangGraph (`retrieval_node`, `decision_node`, `advisory_node`, `formatter_node`), giữ Node đóng vai trò *thin dispatcher* và tách logic nghiệp vụ sang các module độc lập trong `ai-agent/intelligence/`.
+

@@ -247,9 +247,10 @@ Các đối tượng trạng thái cốt lõi trao đổi giữa LangGraph State
   - `min_bedrooms: Optional[int]`: Số phòng ngủ tối thiểu người dùng yêu cầu rõ ràng (dùng cho tìm nhà nhiều phòng / ở ghép nhiều người).
   - `allowed_room_types: list[RoomType]`: Danh sách các loại phòng người dùng cho phép (1 hoặc nhiều loại, ví dụ `['STUDIO']` hoặc `['ROOM', 'STUDIO']`). Chuẩn hóa tự động qua `normalize_room_types`.
   - `excluded_room_types: list[RoomType]`: Danh sách loại phòng bị loại trừ (ví dụ cấm `SLEEPBOX`).
-* **`RoomItem` (Thực thể phòng trọ chuẩn hóa trả về cho Frontend UI):**
+* **`RoomItem` (Thực thể phòng trọ chuẩn hóa trả về cho Frontend UI & lưu trong Session State):**
   - `bedrooms: Optional[int]` / `bathrooms: Optional[int]`: Số phòng ngủ / phòng vệ sinh trích xuất từ Backend (bỏ qua nếu thiếu).
   - `lat: Optional[float]` / `lng: Optional[float]`: Tọa độ địa lý thực tế (đã loại bỏ các trường tọa độ giả lập `latPercent` / `lngPercent`).
+  - `description: Optional[str]`, `deposit: Optional[float]`, `contact_name: Optional[str]`: Thông tin chi tiết được Backend `ListingResponse` trả kèm ngay lúc `vector-search` để lưu sẵn trong `SessionData.paged_rooms` phục vụ follow-up tại chỗ không cần gọi lại API (nhưng `compact_room()` tự động ẩn khỏi `<rooms_data>` tổng hợp).
   - `@computed_field @property def room_type_id(self) -> Optional[int]`: Tự động suy ra mã ID loại phòng phục vụ render Badge / Icon trực tiếp trên Next.js.
   - `concept_scores: dict[str, float]`: Điểm số xác thực cho đủ 17 nhãn tiện ích chuẩn hóa.
   - `tags: list[str]`: Danh sách nhãn hiển thị trực quan tiếng Việt sinh động từ `_CONCEPT_TAGS`.

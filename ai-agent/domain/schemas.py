@@ -117,6 +117,9 @@ class RoomItem(BaseModel):
     source_url: Optional[str] = Field(None, description="Link gốc bài đăng")
     concept_scores: dict[str, float] = Field(default_factory=dict, description="Điểm concept ML cho từng tiện ích")
     explain_match: Optional[dict[str, Any]] = Field(None, description="Chi tiết giải thích từ rerank backend")
+    description: Optional[str] = Field(None, description="Mô tả chi tiết từ chủ nhà (đã rút gọn)")
+    deposit: Optional[float] = Field(None, description="Tiền đặt cọc (VNĐ)")
+    contact_name: Optional[str] = Field(None, description="Tên người đăng / chủ trọ")
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -213,6 +216,24 @@ class RoomItem(BaseModel):
             except (TypeError, ValueError):
                 return None
 
+        raw_desc = listing.get("description")
+        desc_str: Optional[str] = None
+        if isinstance(raw_desc, str) and raw_desc.strip():
+            trimmed = raw_desc.strip()
+            desc_str = trimmed[:1500] + "... (đã rút gọn)" if len(trimmed) > 1500 else trimmed
+
+        raw_dep = listing.get("deposit")
+        deposit_val: Optional[float] = None
+        if isinstance(raw_dep, (int, float)) and not isinstance(raw_dep, bool) and raw_dep > 0:
+            deposit_val = float(raw_dep)
+
+        poster = listing.get("poster")
+        contact_name: Optional[str] = None
+        if isinstance(poster, dict) and poster.get("name"):
+            contact_name = str(poster["name"]).strip() or None
+        elif isinstance(listing.get("contact_name"), str) and listing.get("contact_name").strip():
+            contact_name = listing.get("contact_name").strip()
+
         return cls(
             id=str(listing.get("id", f"room-{rank}")),
             rank=rank,
@@ -236,6 +257,9 @@ class RoomItem(BaseModel):
             source_url=listing.get("url"),
             concept_scores=concept_scores if isinstance(concept_scores, dict) else {},
             explain_match=explain,
+            description=desc_str,
+            deposit=deposit_val,
+            contact_name=contact_name,
         )
 
 
@@ -540,3 +564,4 @@ class SessionRoomsPageResponse(BaseModel):
     page_size: int = 5
     total_rooms: int = 0
     total_pages: int = 0
+    insights: Optional[DecisionInsight] = Field(None, description="Bảng phân tích hỗ trợ ra quyết định cho trang hiện tại")

@@ -145,7 +145,37 @@ def _estimate_tokens(obj: Any) -> int:
     return max(1, (len(raw) + 3) // 4)
 
 
-def _extract_model_metrics(res: Any, input_obj: Any = None) -> dict[str, Any]:
+def _read_usage_from_message(target_msg: Any, llm_output: Optional[Mapping[str, Any]] = None) -> tuple[int, int, int]:
+    """Đọc `(tokens_in, tokens_out, cached_tokens)` từ `usage_metadata` hoặc `response_metadata` của message LLM."""
+    tokens_in = 0
+    tokens_out = 0
+    cached_tokens = 0
+    usage_meta = getattr(target_msg, "usage_metadata", None)
+    if isinstance(usage_meta, Mapping):
+        tokens_in = int(usage_meta.get("input_tokens") or usage_meta.get("prompt_tokens") or 0)
+        tokens_out = int(usage_meta.get("output_tokens") or usage_meta.get("completion_tokens") or 0)
+        details = usage_meta.get("input_token_details") or {}
+        if isinstance(details, Mapping):
+            cached_tokens = int(details.get("cache_read") or details.get("cached_tokens") or 0)
+
+    if tokens_in == 0 and tokens_out == 0:
+        resp_meta = getattr(target_msg, "response_metadata", None) or {}
+        usage = (
+            (resp_meta.get("token_usage") if isinstance(resp_meta, Mapping) else None)
+            or (resp_meta.get("usage") if isinstance(resp_meta, Mapping) else None)
+            or (llm_output.get("token_usage") if isinstance(llm_output, Mapping) else None)
+            or {}
+        )
+        if isinstance(usage, Mapping):
+            tokens_in = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+            tokens_out = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+            details = usage.get("prompt_tokens_details") or {}
+            if isinstance(details, Mapping):
+                cached_tokens = int(details.get("cached_tokens") or 0)
+    return tokens_in, tokens_out, cached_tokens
+
+
+def _extract_model_metrics(res: Any, input_obj: Any = None, raw_source: Any = None) -> dict[str, Any]:
     """Trích xuất output và thông số tokens_in / tokens_out từ kết quả gọi model."""
     tokens_in = 0
     tokens_out = 0
@@ -167,28 +197,20 @@ def _extract_model_metrics(res: Any, input_obj: Any = None) -> dict[str, Any]:
             if isinstance(tc, dict) and tc.get("name"):
                 requested_tools.append(str(tc["name"]))
 
-    usage_meta = getattr(msg, "usage_metadata", None)
-    if isinstance(usage_meta, Mapping):
-        tokens_in = int(usage_meta.get("input_tokens") or usage_meta.get("prompt_tokens") or 0)
-        tokens_out = int(usage_meta.get("output_tokens") or usage_meta.get("completion_tokens") or 0)
-        details = usage_meta.get("input_token_details") or {}
-        if isinstance(details, Mapping):
-            cached_tokens = int(details.get("cache_read") or details.get("cached_tokens") or 0)
+    tokens_in, tokens_out, cached_tokens = _read_usage_from_message(msg, llm_output)
 
-    if tokens_in == 0 and tokens_out == 0:
-        resp_meta = getattr(msg, "response_metadata", None) or {}
-        usage = (
-            (resp_meta.get("token_usage") if isinstance(resp_meta, Mapping) else None)
-            or (resp_meta.get("usage") if isinstance(resp_meta, Mapping) else None)
-            or (llm_output.get("token_usage") if isinstance(llm_output, Mapping) else None)
-            or {}
+    if tokens_in == 0 and tokens_out == 0 and raw_source is not None:
+        meta_carrier = (
+            getattr(raw_source, "_raw_response", None)
+            or getattr(getattr(raw_source, "analysis", None), "_raw_response", None)
+            or (
+                raw_source
+                if (hasattr(raw_source, "usage_metadata") or hasattr(raw_source, "response_metadata"))
+                else None
+            )
         )
-        if isinstance(usage, Mapping):
-            tokens_in = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
-            tokens_out = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
-            details = usage.get("prompt_tokens_details") or {}
-            if isinstance(details, Mapping):
-                cached_tokens = int(details.get("cached_tokens") or 0)
+        if meta_carrier is not None:
+            tokens_in, tokens_out, cached_tokens = _read_usage_from_message(meta_carrier)
 
     plain_output = _safe_redacted(getattr(msg, "content", msg) if hasattr(msg, "content") and not requested_tools else msg)
     if tokens_in == 0 and input_obj is not None:
@@ -653,7 +675,7 @@ def traced_call(
     finally:
         duration_ms = round((time.time() - t0) * 1000)
         extracted = output_extractor(out) if (out is not None and output_extractor is not None) else out
-        metrics = _extract_model_metrics(extracted, input_obj=safe_input)
+        metrics = _extract_model_metrics(extracted, input_obj=safe_input, raw_source=out)
         emit_trace(
             events,
             "model_response",

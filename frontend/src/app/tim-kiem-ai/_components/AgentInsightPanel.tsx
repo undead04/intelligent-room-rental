@@ -246,7 +246,7 @@ export default function AgentInsightPanel({
             <div className="bg-gradient-to-r from-[#E6F4EE]/90 via-[#F0FDF8] to-white rounded-xl p-3.5 border border-[#0F5F4A]/25 shadow-2xs space-y-2">
               <div className="flex items-center gap-1.5 text-[#0F5F4A] font-bold text-[12.5px]">
                 <span className="material-symbols-outlined text-[16px]">psychology</span>
-                <span>Lý do lựa chọn Top 1 (Dynamic MCDM)</span>
+                <span>Lý do lựa chọn Top #{room.rank} (Dynamic MCDM)</span>
               </div>
               <p className="text-[12px] text-[#121E1A] leading-relaxed">
                 {insights.top_1_reason}

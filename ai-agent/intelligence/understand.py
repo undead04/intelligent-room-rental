@@ -17,6 +17,7 @@ from intelligence.intent_weights import compute_normalized_weights
 from intelligence.nlu import (
     CRITERIA,
     LLMQuotaExceededError,
+    PreferencePatch,
     TurnAnalysis,
     analyze_turn,
     apply_patch,
@@ -24,9 +25,9 @@ from intelligence.nlu import (
     is_market_only_patch,
     sanitize_user_text,
 )
+from intelligence.pagination import plan_page_navigation
 from utils.text import norm_key
 from tools.location_service import (
-    _PLACE_HINTS,
     find_poi_in_text,
     infer_region_from_location_text,
     lookup_local_poi_candidates,
@@ -42,7 +43,8 @@ SAFE_TEXT = {
     ),
     "OFF_TOPIC_QUERY": (
         "Tôi là Homigo AI - Trợ lý hỗ trợ tìm kiếm phòng trọ và căn hộ. "
-        "Tôi chỉ có thể hỗ trợ các câu hỏi liên quan đến chỗ ở, giá thuê và tiện ích sinh hoạt. "
+        "Hiện tại tôi chỉ hỗ trợ tìm phòng cho thuê, phân tích/so sánh thông tin phòng đã đề xuất, mặt bằng giá và tư vấn hợp đồng thuê trọ; "
+        "chưa hỗ trợ tra cứu vị trí/thông tin địa danh thuần túy, mua bán nhà đất, đăng tin hay đặt/giữ phòng hộ. "
         "Bạn có thể cho tôi biết bạn đang muốn tìm phòng gần trường học hay khu vực nào không?"
     ),
 }
@@ -63,6 +65,7 @@ class TurnPlan:
     is_followup: bool = False
     direct_reply: bool = False          # có final_text sẵn, bỏ qua LLM trả lời -> đi thẳng formatter
     focus_rank: Optional[int] = None
+    followup_current_page_first: bool = False
     final_text: Optional[str] = None
     blocked_reason: Optional[str] = None
     vague_location_info: Optional[dict[str, Any]] = None
@@ -74,64 +77,7 @@ class TurnPlan:
     page_switched: bool = False
     target_page: Optional[int] = None
     page_rooms: list[Any] = field(default_factory=list)
-
-
-def _has_priority_change(priorities: Any) -> bool:
-    return any(getattr(priorities, k, None) is not None for k in CRITERIA)
-
-
-def _parse_page_navigation(
-    analysis: TurnAnalysis,
-    current_page: int,
-    total_pages: int,
-) -> Optional[int]:
-    """Ánh xạ quyết định chuyển trang có cấu trúc từ LLM (`page_action`, `target_page`) sang số trang mục tiêu."""
-    if total_pages <= 0:
-        return None
-    if not analysis.patch.is_empty() or analysis.reset_priorities or _has_priority_change(analysis.priorities):
-        return None
-    if analysis.referenced_room_rank is not None or analysis.intent in ("room_followup", "skill_advice", "prompt_injection", "off_topic"):
-        return None
-
-    action = getattr(analysis, "page_action", None)
-    if not action:
-        return None
-    if action == "goto":
-        tp = getattr(analysis, "target_page", None)
-        return int(tp) if isinstance(tp, int) and tp >= 1 else None
-    if action == "first":
-        return 1
-    if action == "last":
-        return total_pages
-    if action == "next":
-        return current_page + 1
-    if action == "prev":
-        return current_page - 1
-    return None
-
-
-def _format_page_switch_reply(page_rooms: list[Any], page: int, total_pages: int, total_rooms: int) -> str:
-    """Dựng văn bản xác định từ dữ liệu thật của 5 phòng thuộc trang `page`."""
-    if not page_rooms:
-        return "Hiện không có dữ liệu phòng ở trang này."
-    start_rank = getattr(page_rooms[0], "rank", (page - 1) * DEFAULT_PAGE_SIZE + 1)
-    end_rank = getattr(page_rooms[-1], "rank", start_rank + len(page_rooms) - 1)
-    lines = [
-        f"Mình đã chuyển sang **Trang {page}/{total_pages}** (hiển thị phòng **Top {start_rank}–{end_rank}** trong tổng số **{total_rooms} phòng** phù hợp):",
-        "",
-    ]
-    for r in page_rooms:
-        meta = [f"Giá: {r.price}"]
-        if getattr(r, "area_m2", None):
-            meta.append(f"{r.area_m2:g} m²")
-        if getattr(r, "distance", ""):
-            meta.append(f"cách {r.distance}")
-        lines.append(f"- **Top {r.rank}. {r.title}** ({' | '.join(meta)})")
-    lines.extend([
-        "",
-        "Bạn có thể bấm trực tiếp số trang `1..10` ở danh sách bên cạnh, click vào phòng để xem phân tích chi tiết hoặc hỏi mình về bất kỳ **Top N** nào nhé!",
-    ])
-    return "\n".join(lines)
+    insights: Optional[Any] = None
 
 
 def _active_skills(analysis: TurnAnalysis) -> list[str]:
@@ -379,9 +325,11 @@ def interpret_turn(
         pref = kw.pop("preferences", pref0)
         mult = kw.pop("multipliers", mult0)
         sem_q = kw.pop("semantic_query", getattr(analysis, "semantic_query", None))
+        eff_intent = kw.pop("intent", analysis.intent)
+        analysis.intent = eff_intent
         return TurnPlan(
             analysis=analysis,
-            intent=analysis.intent,
+            intent=eff_intent,
             preferences=pref,
             multipliers=mult,
             computed_weights=compute_normalized_weights(pref, mult),
@@ -391,45 +339,17 @@ def interpret_turn(
 
     intent = analysis.intent
 
-    # 1) Chặn: injection / off-topic
+    # 1) Chặn: injection / off-topic (100% theo quyết định của LLM)
     if intent in ("prompt_injection", "off_topic"):
         reason = "PROMPT_INJECTION_DETECTED" if intent == "prompt_injection" else "OFF_TOPIC_QUERY"
+        analysis.patch = PreferencePatch()
+        analysis.semantic_query = None
         return plan(blocked_reason=reason, final_text=SAFE_TEXT[reason])
 
-    # 1.2) Chuyển trang trên danh sách đã tìm (0 gọi Backend, 0 tốn LLM Decision)
-    if paged_pool:
-        page_size = max(1, int(getattr(session, "page_size", DEFAULT_PAGE_SIZE) or DEFAULT_PAGE_SIZE))
-        cur_page = max(1, int(getattr(session, "current_page", 1) or 1))
-        total_pages = min(MAX_PAGINATION_PAGES, max(1, math.ceil(len(paged_pool) / page_size)))
-        req_page = _parse_page_navigation(analysis, cur_page, total_pages)
-        if req_page is not None:
-            if 1 <= req_page <= total_pages:
-                start = (req_page - 1) * page_size
-                target_rooms = paged_pool[start : start + page_size]
-                return plan(
-                    direct_reply=True,
-                    page_switched=True,
-                    target_page=req_page,
-                    page_rooms=target_rooms,
-                    final_text=_format_page_switch_reply(target_rooms, req_page, total_pages, len(paged_pool)),
-                )
-            cur_start = (cur_page - 1) * page_size
-            cur_rooms = paged_pool[cur_start : cur_start + page_size]
-            if req_page > total_pages:
-                msg = (
-                    f"Hiện tại chỉ có tổng cộng **{len(paged_pool)} phòng** (**{total_pages} trang**) phù hợp với bộ lọc của bạn "
-                    f"(bạn đang xem đến hết Trang {cur_page}/{total_pages}). "
-                    "Nếu chưa chọn được phòng ưng ý, bạn có thể nhắn mình nới nhẹ ngân sách, bán kính hoặc bỏ bớt tiện ích bắt buộc để tìm thêm nhé!"
-                )
-            else:
-                msg = f"Bạn đang ở **Trang 1/{total_pages}** rồi, không thể lùi về trang trước đó nữa."
-            return plan(
-                direct_reply=True,
-                page_switched=False,
-                target_page=cur_page,
-                page_rooms=cur_rooms,
-                final_text=msg,
-            )
+    # 1.2) Chuyển trang trên danh sách đã tìm (bỏ qua retrieval_node, đi tới decision_node -> verify_node -> formatter_node)
+    page_plan_kwargs = plan_page_navigation(analysis, session, pref0, paged_pool)
+    if page_plan_kwargs is not None:
+        return plan(**page_plan_kwargs)
 
     # 1.5) Lập kế hoạch thực thi tuần tự cho Đa Mệnh Lệnh (Plan & Execute):
     # Sắp xếp tự do theo đúng thứ tự mệnh đề user yêu cầu (hỗ trợ mọi hoán vị followup / search / advisory).
@@ -467,6 +387,7 @@ def interpret_turn(
                 skill_context=_build_skill_context(analysis, pref0, active_skills=active_skills) if multi_has_advisory else None,
                 is_followup=(multi_tasks[0] == "followup"),
                 focus_rank=focus_rank if multi_has_followup else None,
+                followup_current_page_first=bool(getattr(analysis, "followup_current_page_first", False)) if multi_has_followup else False,
                 current_task=multi_tasks[0],
                 pending_tasks=multi_tasks[1:],
             )
@@ -476,13 +397,14 @@ def interpret_turn(
         if not rooms and not paged_pool:
             # Chưa có phòng nào được đề xuất trong phiên -> chuyển sang hỏi làm rõ nhu cầu
             return plan(needs_clarification=True)
+        followup_first = bool(getattr(analysis, "followup_current_page_first", False))
         if analysis.referenced_room_rank is not None:
             current_focus = analysis.referenced_room_rank
-        elif getattr(analysis, "followup_current_page_first", False) and rooms:
+        elif followup_first and rooms:
             current_focus = getattr(rooms[0], "rank", 1)
         else:
             current_focus = getattr(session, "focused_room_rank", None) or (getattr(rooms[0], "rank", 1) if rooms else 1)
-        return plan(is_followup=True, focus_rank=current_focus)
+        return plan(is_followup=True, focus_rank=current_focus, followup_current_page_first=followup_first)
 
     # 3) Tư vấn kỹ năng
     if intent == "skill_advice" and not multi_tasks:
@@ -572,7 +494,7 @@ def interpret_turn(
                     analysis.patch.location_kind == "admin"
                     or bool(infer_region_from_location_text(new_loc))
                 )
-                if looks_modifier and not _PLACE_HINTS.search(new_loc):
+                if looks_modifier:
                     pref.set_location(f"{pending_loc}, {new_loc}", kind="place")
                     explanations.append(f"ghép địa điểm đang làm rõ '{pending_loc}' với '{new_loc}'")
             elif not new_loc and loc_region:
@@ -649,6 +571,7 @@ def interpret_turn(
             skill_context=_build_skill_context(analysis, pref, active_skills=active_skills) if multi_has_advisory else None,
             is_followup=(multi_tasks[0] == "followup"),
             focus_rank=focus_rank,
+            followup_current_page_first=bool(getattr(analysis, "followup_current_page_first", False)) if multi_has_followup else False,
             current_task=multi_tasks[0],
             pending_tasks=multi_tasks[1:],
             commit=commit,
